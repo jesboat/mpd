@@ -27,7 +27,6 @@ char * getTagItemString(int type, char * string) {
 
 	if((node = findNodeInList(tagLists[type], string))) {
 		(*((int *)node->data))++;
-		printf("%s: %i\n", string, *((int *)node->data));
 	}
 	else {
 		int * intPtr = malloc(sizeof(int));
