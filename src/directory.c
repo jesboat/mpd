@@ -1189,17 +1189,15 @@ int printSongInDirectory(FILE * fp, Song * song, void * data) {
 }
 
 static inline int strstrSearchTag(Song * song, int type, char * str) {
-	MpdTagItem * item;
+	int i;
 	char * dup;
 
 	if(!song->tag) return 0;
 
-	for(item = song->tag->tagItems; item && item->type!=TAG_ITEM_END; 
-			item++) 
-	{
-		if(item->type != type) continue;
+	for(i = 0; i < song->tag->numOfItems; i++) { 
+		if(song->tag->items[i].type != type) continue;
 		
-		dup = strDupToUpper(item->value);
+		dup = strDupToUpper(song->tag->items[i].value);
 		if(strstr(dup, str)) return 1;
 		free(dup);
 	}
@@ -1263,16 +1261,14 @@ int searchForSongsIn(FILE * fp, char * name, char * item, char * string) {
 }
 
 static inline int tagItemFoundAndMatches(Song * song, int type, char * str) {
-	MpdTagItem * item;
+	int i;
 
 	if(!song->tag) return 0;
 
-	for(item = song->tag->tagItems; item && item->type != TAG_ITEM_END; 
-			item++) 
-	{
-		if(item->type != type) continue;
+	for(i = 0; i < song->tag->numOfItems; i++) {
+		if(song->tag->items[i].type != type) continue;
 		
-		if( 0 == strcmp(str, item->value)) return 1;
+		if(0 == strcmp(str, song->tag->items[i].value)) return 1;
 	}
 
 	return 0;

@@ -23,6 +23,8 @@
 
 #include "mpd_types.h"
 
+#include <string.h>
+
 #include <stdio.h>
 #ifdef HAVE_ID3TAG
 #ifdef USE_MPD_ID3TAG
@@ -32,7 +34,6 @@
 #endif
 #endif
 
-#define TAG_ITEM_END		-1
 #define TAG_ITEM_ARTIST		0
 #define TAG_ITEM_ALBUM		1
 #define TAG_ITEM_TITLE		2
@@ -52,7 +53,8 @@ typedef struct _MpdTagItem {
 
 typedef struct _MpdTag {
 	int time;
-	MpdTagItem * tagItems;
+	MpdTagItem * items;
+	mpd_uint8 numOfItems;
 } MpdTag;
 
 #ifdef HAVE_ID3TAG
@@ -69,9 +71,10 @@ void clearMpdTag(MpdTag * tag);
 
 void freeMpdTag(MpdTag * tag);
 
-void addItemToMpdTag(MpdTag * tag, int itemType, char * value);
-
 void addItemToMpdTagWithLen(MpdTag * tag, int itemType, char * value, int len);
+
+#define addItemToMpdTag(tag, itemType, value) \
+		addItemToMpdTagWithLen(tag, itemType, value, strlen(value))
 
 void printMpdTag(FILE * fp, MpdTag * tag);
 

@@ -187,6 +187,7 @@ static int matchesAnMpdTagItemKey(char * buffer, int * itemType) {
 		if( 0 == strncmp(mpdTagItemKeys[i], buffer, 
 				strlen(mpdTagItemKeys[i])))
 		{
+			*itemType = i;
 			return 1;
 		}
 	}
@@ -225,7 +226,7 @@ void readSongInfoIntoList(FILE * fp, SongList * list) {
 		else if(matchesAnMpdTagItemKey(buffer, &itemType)) {
 			if(!song->tag) song->tag = newMpdTag();
 			addItemToMpdTag(song->tag, itemType,
-				&(buffer[strlen(mpdTagItemKeys[itemType])]));
+				&(buffer[strlen(mpdTagItemKeys[itemType])+2]));
 		}
 		else if(0==strncmp(SONG_TIME,buffer,strlen(SONG_TIME))) {
 			if(!song->tag) song->tag = newMpdTag();

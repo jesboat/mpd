@@ -375,22 +375,20 @@ static void myShout_closeDevice(AudioOutput * audioOutput) {
 
 static void copyTagToVorbisComment(ShoutData * sd) {
 	if(sd->tag) {
-		MpdTagItem * item = sd->tag->tagItems;
-	
-		while(item && item->type!=TAG_ITEM_END) {
-			switch(item->type) {
+		int i;
+
+		for(i = 0; i < sd->tag->numOfItems; i++) {
+			switch(sd->tag->items[i].type) {
 			case TAG_ITEM_ARTIST:
-				addTag("ARTIST", item->value);
+				addTag("ARTIST", sd->tag->items[i].value);
 				break;
 			case TAG_ITEM_ALBUM:
-				addTag("ALBUM", item->value);
+				addTag("ALBUM", sd->tag->items[i].value);
 				break;
 			case TAG_ITEM_TITLE:
-				addTag("TITLE", item->value);
+				addTag("TITLE", sd->tag->items[i].value);
 				break;
 			}
-
-			item++;
 		}
 	}
 }
