@@ -24,6 +24,7 @@ mpd_headers = \
 	charConv.h \
 	command.h \
 	conf.h \
+	dbUtils.h \
 	decode.h \
 	directory.h \
 	inputPlugin.h \
@@ -67,6 +68,7 @@ mpd_SOURCES = \
 	charConv.c \
 	command.c \
 	conf.c \
+	dbUtils.c \
 	decode.c \
 	directory.c \
 	inputPlugin.c \

@@ -31,6 +31,7 @@
 #include "audio.h"
 #include "buffer2array.h"
 #include "log.h"
+#include "dbUtils.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -441,13 +442,41 @@ int handlePlaylistId(FILE * fp, unsigned int * permission,
 int handleFind(FILE * fp, unsigned int * permission, int argArrayLength, 
 		char ** argArray) 
 {
-        return findSongsIn(fp,NULL,argArray[1],argArray[2]);
+	int ret;
+
+	LocateTagItem * item = newLocateTagItem(argArray[1], argArray[2]);
+
+	if(!item) {
+		commandError(fp, ACK_ERROR_ARG, "\%s\" isn't recognized", 
+				argArray[1]);
+		return -1;
+	}
+
+        ret = findSongsIn(fp, NULL, item);
+
+	freeLocateTagItem(item);
+
+	return ret;
 }
 
 int handleSearch(FILE * fp, unsigned int * permission, int argArrayLength, 
 		char ** argArray) 
 {
-        return searchForSongsIn(fp,NULL,argArray[1],argArray[2]);
+	int ret;
+
+	LocateTagItem * item = newLocateTagItem(argArray[1], argArray[2]);
+
+	if(!item) {
+		commandError(fp, ACK_ERROR_ARG, "\%s\" isn't recognized", 
+				argArray[1]);
+		return -1;
+	}
+
+        ret = searchForSongsIn(fp, NULL, item);
+
+	freeLocateTagItem(item);
+
+	return ret;
 }
 
 int listHandleUpdate(FILE * fp, unsigned int * permission, int argArrayLength, 
