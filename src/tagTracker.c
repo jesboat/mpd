@@ -48,3 +48,9 @@ void removeTagItemString(int type, char * string) {
 		tagLists[type] = NULL;
 	}
 }
+
+int getNumberOfTagItems(int type) {
+	if(tagLists[type] == NULL) return 0;
+
+	return tagLists[type]->numberOfNodes;
+}
