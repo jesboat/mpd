@@ -71,9 +71,14 @@ void printMemorySavedByTagTracker() {
 	for(i = 0; i < TAG_NUM_OF_ITEM_TYPES; i++) {
 		if(!tagLists[i]) continue;
 
+		sum -= sizeof(List);
+		
 		node = tagLists[i]->firstNode;
 
 		while(node != NULL) {
+			sum -= sizeof(ListNode);
+			sum -= sizeof(int);
+			sum -= sizeof(node->key);
 			sum += (strlen(node->key)+1)*(*((int *)node->data));
 			node = node->nextNode;
 		}
