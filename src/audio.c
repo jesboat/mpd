@@ -224,7 +224,7 @@ int isAudioDeviceOpen() {
 	int i;
 
 	for(i = 0; i < audioOutputArraySize; i++) {
-		ret &= audioOutputArray[i]->open;
+		ret |= audioOutputArray[i]->open;
 	}
 
 	return ret;

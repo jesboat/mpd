@@ -87,8 +87,8 @@ ConfigEntry * newConfigEntry(int repeatable, int block) {
 	ret->mask = 0;
 	ret->configParamList = makeList((ListFreeDataFunc *)freeConfigParam);
 
-	if(repeatable) ret->mask &= CONF_REPEATABLE_MASK;
-	if(block) ret->mask &= CONF_BLOCK_MASK;
+	if(repeatable) ret->mask |= CONF_REPEATABLE_MASK;
+	if(block) ret->mask |= CONF_BLOCK_MASK;
 
 	return ret;
 }
@@ -171,7 +171,7 @@ static ConfigParam * readConfigBlock(FILE * fp, int * count, char * string) {
 	int numberOfArgs;
 	int argsMinusComment;
 
-	while(myFgets(string,sizeof(MAX_STRING_SIZE),fp)) {
+	while(myFgets(string, MAX_STRING_SIZE ,fp)) {
 		(*count)++;
 
 		numberOfArgs = buffer2array(string, &array);
@@ -232,7 +232,7 @@ void readConf(char * file) {
 		exit(EXIT_FAILURE);
 	}
 
-	while(myFgets(string,sizeof(MAX_STRING_SIZE),fp)) {
+	while(myFgets(string, MAX_STRING_SIZE, fp)) {
 		count++;
 
 		numberOfArgs = buffer2array(string, &array);
@@ -312,71 +312,107 @@ ConfigParam * getNextConfigParam(char * name, ConfigParam * last) {
 	return param;
 }
 
-	/*for(i=0;i<CONF_NUMBER_OF_PATHS;i++) {
-		if(conf_params[conf_absolutePaths[i]] && 
-			conf_params[conf_absolutePaths[i]][0]!='/' &&
-			conf_params[conf_absolutePaths[i]][0]!='~') 
-		{
-			ERROR("\"%s\" is not an absolute path\n",
-					conf_params[conf_absolutePaths[i]]);
-			exit(EXIT_FAILURE);
+char * getConfigParamValue(char * name) {
+	ConfigParam * param = getConfigParam(name);
+
+	if(!param) return NULL;
+
+	return param->value;
+}
+
+char * forceAndGetConfigParamValue(char * name) {
+	ConfigParam * param = getConfigParam(name);
+
+	if(!param) {
+		ERROR("\"%s\" not found in config file\n", name);
+		exit(EXIT_FAILURE);
+	}
+
+	return param->value;
+}
+
+BlockParam * getBlockParam(ConfigParam * param, char * name) {
+	BlockParam * ret = NULL;
+	int i;
+
+	for(i = 0; i < param->numberOfBlockParams; i++) {
+		if(0 == strcmp(name, param->blockParams[i].name)) {
+			if(ret) {
+				ERROR("\"%s\" first defined on line %i, and "
+					"redefined on line %i\n", name, 
+					ret->line, param->blockParams[i].line);
+			}
+			ret = param->blockParams+i;
 		}
-		// Parse ~ in path 
-		else if(conf_params[conf_absolutePaths[i]] &&
-			conf_params[conf_absolutePaths[i]][0]=='~') 
-		{
-			struct passwd * pwd = NULL;
-			char * path;
-			int pos = 1;
-			if(conf_params[conf_absolutePaths[i]][1]=='/' ||
-				conf_params[conf_absolutePaths[i]][1]=='\0') 
-			{
-				if(conf_params[CONF_USER] && 
-						strlen(conf_params[CONF_USER]))
-				{
-					pwd = getpwnam(
-						conf_params[CONF_USER]);
-					if(!pwd) {
-						ERROR("no such user: %s\n",
-							conf_params[CONF_USER]);
-						exit(EXIT_FAILURE);
-					}
-				}
-				else {
-					uid_t uid = geteuid();
-					if((pwd = getpwuid(uid)) == NULL) {
-						ERROR("problems getting passwd "
-							"entry "
-							"for current user\n");
-						exit(EXIT_FAILURE);
-					}
+	}
+
+	return ret;
+}
+
+char * parseConfigFilePath(char * name, int force) {
+	ConfigParam * param = getConfigParam(name);
+	char * path;
+
+	if(!param && force) {
+		ERROR("config parameter \"%s\" not found\n", name);
+		exit(EXIT_FAILURE);
+	}
+
+	if(!param) return NULL;
+
+	path = param->value;
+
+	if(path[0] != '/' && path[0] != '~') {
+		ERROR("\"%s\" is not an absolute path at line %i\n",
+				param->value, param->line);
+		exit(EXIT_FAILURE);
+	}
+	// Parse ~ in path 
+	else if(path[0] == '~') {
+		struct passwd * pwd = NULL;
+		char * newPath;
+		int pos = 1;
+		if(path[1]=='/' || path[1] == '\0') {
+			ConfigParam * userParam = getConfigParam(CONF_USER);
+
+			if(userParam) {
+				pwd = getpwnam(userParam->value);
+				if(!pwd) {
+					ERROR("no such user %s at line %i\n",
+							userParam->value, 
+							userParam->line);
+					exit(EXIT_FAILURE);
 				}
 			}
 			else {
-				int foundSlash = 0;
-				char * ch = &(
-					conf_params[conf_absolutePaths[i]][1]);
-				for(;*ch!='\0' && *ch!='/';ch++);
-				if(*ch=='/') foundSlash = 1;
-				* ch = '\0';
-				pos+= ch-
-					&(conf_params[
-					conf_absolutePaths[i]][1]);
-				if((pwd = getpwnam(&(conf_params[
-					conf_absolutePaths[i]][1]))) == NULL) 
-				{
-					ERROR("user \"%s\" not found\n",
-						&(conf_params[
-						conf_absolutePaths[i]][1]));
+				uid_t uid = geteuid();
+				if((pwd = getpwuid(uid)) == NULL) {
+					ERROR("problems getting passwd entry "
+							"for current user\n");
 					exit(EXIT_FAILURE);
 				}
-				if(foundSlash) *ch = '/';
 			}
-			path = malloc(strlen(pwd->pw_dir)+strlen(
-				&(conf_params[conf_absolutePaths[i]][pos]))+1);
-			strcpy(path,pwd->pw_dir);
-			strcat(path,&(conf_params[conf_absolutePaths[i]][pos]));
-			free(conf_params[conf_absolutePaths[i]]);
-			conf_params[conf_absolutePaths[i]] = path;
 		}
-	}*/
+		else {
+			int foundSlash = 0;
+			char * ch = path+1;
+			for(;*ch!='\0' && *ch!='/';ch++);
+			if(*ch=='/') foundSlash = 1;
+			* ch = '\0';
+			pos+= ch-path+1;
+			if((pwd = getpwnam(path+1)) == NULL) {
+				ERROR("user \"%s\" not found at line %i\n",
+						path+1, param->line);
+				exit(EXIT_FAILURE);
+			}
+			if(foundSlash) *ch = '/';
+		}
+		newPath = malloc(strlen(pwd->pw_dir)+strlen(path+pos)+1);
+		strcpy(newPath, pwd->pw_dir);
+		strcat(newPath, path+pos);
+		free(param->value);
+		param->value = newPath;
+	}
+
+	return param->value;
+}

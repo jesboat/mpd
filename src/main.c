@@ -165,9 +165,12 @@ void parseOptions(int argc, char ** argv, Options * options) {
                 return;
         }
         else if(argcLeft<=2) {
-                char ** conf = NULL;
-                if(argcLeft==2) readConf(argv[argc-1]);
-                if(argcLeft==1) {
+                int conf = 0;
+                if(argcLeft==2) {
+			readConf(argv[argc-1]);
+			conf = 1;
+		}
+                else if(argcLeft==1) {
                         FILE * fp;
                         char * homedir = getenv("HOME");
                         char userfile[MAXPATHLEN+1] = "";
@@ -180,26 +183,26 @@ void parseOptions(int argc, char ** argv, Options * options) {
                         if(strlen(userfile) && (fp=fopen(userfile,"r"))) {
                                 fclose(fp);
                                 readConf(userfile);
+				conf = 1;
                         }
                         else if((fp=fopen(SYSTEM_CONFIG_FILE_LOCATION,"r"))) {
                                 fclose(fp);
                                 readConf(SYSTEM_CONFIG_FILE_LOCATION);
+				conf = 1;
                         }
                 }
                 if(conf) {
-                        options->portStr = getConfigParamValue(CONF_PORT);
+                        options->portStr = forceAndGetConfigParamValue(
+					CONF_PORT);
                         options->musicDirArg = 
-				getConfigParamValue(CONF_MUSIC_DIR);
+				parseConfigFilePath(CONF_MUSIC_DIR, 1);
                         options->playlistDirArg = 
-				getConfigParamValue(CONF_PLAYLIST_DIR);
-                        options->logFile = getConfigParamValue(CONF_LOG_FILE);
+				parseConfigFilePath(CONF_PLAYLIST_DIR, 1);
+                        options->logFile = parseConfigFilePath(CONF_LOG_FILE,1);
                         options->errorFile = 
-				getConfigParamValue(CONF_ERROR_FILE);
-                        options->usr = getConfigParamValue(CONF_USER);
-                        if(getConfigParamValue(CONF_DB_FILE)) {
-                                options->dbFile = 
-					getConfigParamValue(CONF_DB_FILE);
-                        }
+				parseConfigFilePath(CONF_ERROR_FILE, 1);
+                        options->usr = parseConfigFilePath(CONF_USER, 0);
+                        options->dbFile = parseConfigFilePath(CONF_DB_FILE, 0);
                         return;
                 }
         }
