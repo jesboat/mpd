@@ -77,6 +77,10 @@ void readConf(char * file);
    set _last_ to NULL to get first entry */
 ConfigParam * getNextConfigParam(char * name, ConfigParam * last);
 
+#define getConfigParam(name) 	getNextConfigParam(name, NULL);
+
 void registerConfigParam(char * name, int repeats, int block);
+
+BlockParam * getBlockParam(ConfigParam * param, char * name);
 
 #endif

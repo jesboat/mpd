@@ -48,25 +48,13 @@ typedef struct _configEntry {
 
 static List * configEntriesList = NULL;
 
-static BlockParam * newBlockParam(char * name, char * value) {
-	BlockParam * ret = malloc(sizeof(BlockParam));
-
-	ret->name = strdup(name);
-	ret->value = strdup(value);
-
-	return ret;
-}
-
-static void freeBlockParam(BlockParam * param) {
-	free(param->name);
-	free(param->value);
-	free(param);
-}
-
-static ConfigParam * newConfigParam(char * value) {
+static ConfigParam * newConfigParam(char * value, int line) {
 	ConfigParam * ret = malloc(sizeof(ConfigParam));
 
-	if(value) ret->value = NULL;
+	if(!value) ret->value = NULL;
+	else ret->value = strdup(value);
+
+	ret->line = line;
 
 	ret->numberOfBlockParams = 0;
 	ret->blockParams = NULL;
@@ -77,11 +65,18 @@ static ConfigParam * newConfigParam(char * value) {
 static void freeConfigParam(ConfigParam * param) {
 	int i;
 
-	free(param->value);
+	if(param->value) free(param->value);
 
 	for(i=0; i<param->numberOfBlockParams; i++) {
-		freeBlockParam(param->blockParams+i);
+		if(param->blockParams[i].name) {
+			free(param->blockParams[i].name);
+		}
+		if(param->blockParams[i].value) {
+			free(param->blockParams[i].value);
+		}
 	}
+
+	if(param->numberOfBlockParams) free(param->blockParams);
 
 	free(param);
 }
@@ -155,9 +150,22 @@ void initConf() {
 	registerConfigParam(CONF_ID3V1_ENCODING,		0,	0);
 }
 
-ConfigParam * readConfigBlock(FILE * fp, int * count, char * string, 
-		char * name, char * value) 
+static void addBlockParam(ConfigParam * param, char * name, char * value,
+		int line) 
 {
+	param->numberOfBlockParams++;
+
+	param->blockParams = realloc(param->blockParams, 
+			param->numberOfBlockParams*sizeof(BlockParam));
+	
+	param->blockParams[param->numberOfBlockParams-1].name = strdup(name);
+	param->blockParams[param->numberOfBlockParams-1].value = strdup(value);
+	param->blockParams[param->numberOfBlockParams-1].line = line;
+}
+
+static ConfigParam * readConfigBlock(FILE * fp, int * count, char * string) {
+	ConfigParam * ret = newConfigParam(NULL, *count);
+
 	char ** array;
 	int i;
 	int numberOfArgs;
@@ -176,39 +184,35 @@ ConfigParam * readConfigBlock(FILE * fp, int * count, char * string,
 
 		if(0 == argsMinusComment) continue;
 
+		if(1 == argsMinusComment && 
+				0 == strcmp(array[0], CONF_BLOCK_END))
+		{
+			break;
+		}
+
 		if(2 != argsMinusComment) {
 			ERROR("improperly formated config file at line %i:"
 					" %s\n", count, string);
 			exit(EXIT_FAILURE);
 		}
 
-		if(!findInList(configEntriesList, array[0], &voidPtr)) {
-			ERROR("unrecognized paramater in config file at line "
-					"%i: %s\n", count, string);
-			exit(EXIT_FAILURE);
-		}
-
-		entry = (ConfigEntry *) voidPtr;
-
-		if( !(entry->mask & CONF_REPEATABLE_MASK) &&
-			entry->configParamList->numberOfNodes)
+		if(0 == strcmp(array[0], CONF_BLOCK_BEGIN) ||
+				0 == strcmp(array[1], CONF_BLOCK_BEGIN) ||
+				0 == strcmp(array[0], CONF_BLOCK_END) ||
+				0 == strcmp(array[1], CONF_BLOCK_END))
 		{
-			param = entry->configParamList->firstNode->data;
-			ERROR("config paramter \"%s\" is first defined on line "
-					"%i and redefined on line %i\n",
-					array[0], param->line, count);
+			ERROR("improperly formated config file at line %i:"
+					" %s\n", count, string);
+			ERROR("in block begging at line %i\n", ret->line);
 			exit(EXIT_FAILURE);
 		}
 
-		if(entry->mask & CONF_BLOCK_MASK) {
-			param = readConfigBlock(fp, &count, string, array[0], array[1]);
-		}
-		else param = newConfigParam(array[1]);
+		addBlockParam(ret, array[0], array[1], *count);
 
-		addConfigParamToEntry(entry, param);
-
-		freeArgArray(&array, numberOfArgs);
+		freeArgArray(array, numberOfArgs);
 	}
+
+	return ret;
 }
 
 void readConf(char * file) {
@@ -266,65 +270,49 @@ void readConf(char * file) {
 		}
 
 		if(entry->mask & CONF_BLOCK_MASK) {
-			param = readConfigBlock(fp, &count, string, array[0], array[1]);
+			if(0 != strcmp(array[1], CONF_BLOCK_BEGIN)) {
+				ERROR("improperly formated config file at "
+					"line %i: %s\n", count, string);
+				exit(EXIT_FAILURE);
+			}
+			param = readConfigBlock(fp, &count, string);
 		}
-		else {
-		}
+		else param = newConfigParam(array[1], count);
 
-		freeArgArray(&array, numberOfArgs);
+		insertInListWithoutKey(entry->configParamList, param);
+
+		freeArgArray(array, numberOfArgs);
 	}
 }
 
+ConfigParam * getNextConfigParam(char * name, ConfigParam * last) {
+	void * voidPtr;
+	ConfigEntry * entry;
+	ListNode * node;
+	ConfigParam * param;
 
-//////// OLD CODE
-	while(myFgets(string,sizeof(string),fp)) {
-		count++;
+	if(!findInList(configEntriesList, name, &voidPtr)) return NULL;
 
-		if(string[0]==CONF_COMMENT) continue;
-		numberOfArgs = buffer2array(string,&array);
-		if(numberOfArgs==0) continue;
-		if(2!=numberOfArgs) {
-			ERROR("improperly formated config file at line %i: %s\n",count,string);
-			exit(EXIT_FAILURE);
-		}
-		i = 0;
-		while(i<CONF_NUMBER_OF_PARAMS && 0!=strcmp(conf_strings[i],array[0])) i++;
-		if(i>=CONF_NUMBER_OF_PARAMS) {
-			ERROR("unrecognized paramater in conf at line %i: %s\n",count,string);
-			exit(EXIT_FAILURE);
-		}
-		
-		if(conf_params[i]!=NULL) {
-			if(allowCat[i]) {
-				conf_params[i] = realloc(conf_params[i],
-						strlen(conf_params[i])+
-						strlen(CONF_CAT_CHAR)+
-						strlen(array[1])+1);
-				strcat(conf_params[i],CONF_CAT_CHAR);
-				strcat(conf_params[i],array[1]);
-			}
-			else {
-				free(conf_params[i]);
-				conf_params[i] = strdup(array[1]);
-			}
-		}
-		else conf_params[i] = strdup(array[1]);
-		free(array[0]);
-		free(array[1]);
-		free(array);
-	}
+	entry = voidPtr;
 
-	fclose(fp);
+	node = entry->configParamList->firstNode;
 
-	for(i=0;i<CONF_NUMBER_OF_REQUIRED;i++) {
-		if(conf_params[conf_required[i]] == NULL) {
-			ERROR("%s is unassigned in conf file\n",
-					conf_strings[conf_required[i]]);
-			exit(EXIT_FAILURE);
+	if(last) {
+		while(node!=NULL) {
+			param = node->data;
+			node = node->nextNode;
+			if(param == last) break;
 		}
 	}
 
-	for(i=0;i<CONF_NUMBER_OF_PATHS;i++) {
+	if(node == NULL)  return NULL;
+
+	param = node->data;
+
+	return param;
+}
+
+	/*for(i=0;i<CONF_NUMBER_OF_PATHS;i++) {
 		if(conf_params[conf_absolutePaths[i]] && 
 			conf_params[conf_absolutePaths[i]][0]!='/' &&
 			conf_params[conf_absolutePaths[i]][0]!='~') 
@@ -333,7 +321,7 @@ void readConf(char * file) {
 					conf_params[conf_absolutePaths[i]]);
 			exit(EXIT_FAILURE);
 		}
-		/* Parse ~ in path */
+		// Parse ~ in path 
 		else if(conf_params[conf_absolutePaths[i]] &&
 			conf_params[conf_absolutePaths[i]][0]=='~') 
 		{
@@ -391,11 +379,4 @@ void readConf(char * file) {
 			free(conf_params[conf_absolutePaths[i]]);
 			conf_params[conf_absolutePaths[i]] = path;
 		}
-	}
-
-	return conf_params;
-}
-
-char ** getConf() {
-	return conf_params;
-}
+	}*/
