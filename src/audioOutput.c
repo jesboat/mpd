@@ -11,11 +11,13 @@
 static List * audioOutputPluginList;
 
 void loadAudioOutputPlugin(AudioOutputPlugin * audioOutputPlugin) {
+	if(!audioOutputPlugin->name) return;
 	insertInList(audioOutputPluginList, audioOutputPlugin->name,
 			audioOutputPlugin);
 }
 
 void unloadAudioOutputPlugin(AudioOutputPlugin * audioOutputPlugin) {
+	if(!audioOutputPlugin->name) return;
 	deleteFromList(audioOutputPluginList, audioOutputPlugin->name);
 }
 
@@ -91,6 +93,8 @@ void closeAudioOutput(AudioOutput * audioOutput) {
 void finishAudioOutput(AudioOutput * audioOutput) {
 	closeAudioOutput(audioOutput);
 	audioOutput->finishDriverFunc(audioOutput);
+	free(audioOutput->type);
+	free(audioOutput->name);
 	free(audioOutput);
 }
 
