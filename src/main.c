@@ -34,6 +34,7 @@
 #include "replayGain.h"
 #include "inputPlugin.h"
 #include "inputStream.h"
+#include "tag.h"
 #include "../config.h"
 
 #include <stdio.h>
@@ -402,6 +403,7 @@ int main(int argc, char * argv[]) {
         parseOptions(argc, argv, &options);
 
         initStats();
+	initTagConfig();
         initLog();
 
         establishListen(&options);

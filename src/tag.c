@@ -26,6 +26,7 @@
 #include "conf.h"
 #include "charConv.h"
 #include "tagTracker.h"
+#include "mpd_types.h"
 
 #include <sys/stat.h>
 #include <stdlib.h>
@@ -51,6 +52,51 @@ char * mpdTagItemKeys[TAG_NUM_OF_ITEM_TYPES] =
 	"Genre",
 	"Date"
 };
+
+static mpd_sint8 ignoreTagItems[TAG_NUM_OF_ITEM_TYPES];
+
+void initTagConfig() {
+	int quit = 0;
+	char * temp;
+	char * s;
+	char * c;
+	ConfigParam * param;
+	int i;
+	
+	memset(ignoreTagItems, 0, TAG_NUM_OF_ITEM_TYPES);
+
+	param = getConfigParam(CONF_METADATA_TO_USE);
+	
+	if(!param) return;
+
+	memset(ignoreTagItems, 1, TAG_NUM_OF_ITEM_TYPES);
+
+	if(0 == strcasecmp(param->value, "none")) return;
+
+	temp = c = s = strdup(param->value);
+	while(!quit) {
+		if(*s == ',' || *s == '\0') {
+			if(*s == '\0') quit = 1;
+			*s = '\0';
+			for(i = 0; i < TAG_NUM_OF_ITEM_TYPES; i++) {
+				if(strcasecmp(c, mpdTagItemKeys[i]) == 0) {
+					ignoreTagItems[i] = 0;
+					break;
+				}
+			}
+			if(strlen(c) && i == TAG_NUM_OF_ITEM_TYPES) {
+				ERROR("error parsing metadata item \"%s\" at "
+					"line %i\n", c, param->line);
+				exit(EXIT_FAILURE);
+			}
+			s++;
+			c = s;
+		}
+		s++;
+	}
+
+	free(temp);
+}
 
 void printMpdTag(FILE * fp, MpdTag * tag) {
 	int i;
@@ -254,12 +300,12 @@ inline static void appendToTagItems(MpdTag * tag, int type, char * value,
 {
 	int i = tag->numOfItems;
 	
-	char * temp;
-	temp = malloc(len+1);
-	strncpy(temp, value, len);
-	temp[len] = '\0';
+	char * t;
+	t = malloc(len+1);
+	strncpy(t, value, len);
+	t[len] = '\0';
 
-	fixUtf8(temp);
+	fixUtf8(t);
 
 	tag->numOfItems++;
 	tag->items = realloc(tag->items, tag->numOfItems*sizeof(MpdTagItem));
@@ -267,10 +313,12 @@ inline static void appendToTagItems(MpdTag * tag, int type, char * value,
 	tag->items[i].type = type;
 	tag->items[i].value = getTagItemString(type, value);
 
-	free(temp);
+	free(t);
 }
 
 void addItemToMpdTagWithLen(MpdTag * tag, int itemType, char * value, int len) {
+	if(ignoreTagItems[itemType]) return;
+			
 	appendToTagItems(tag, itemType, value, len);
 }
 
