@@ -166,7 +166,7 @@ void parseOptions(int argc, char ** argv, Options * options) {
         }
         else if(argcLeft<=2) {
                 char ** conf = NULL;
-                if(argcLeft==2) conf = readConf(argv[argc-1]);
+                if(argcLeft==2) readConf(argv[argc-1]);
                 if(argcLeft==1) {
                         FILE * fp;
                         char * homedir = getenv("HOME");
@@ -179,22 +179,26 @@ void parseOptions(int argc, char ** argv, Options * options) {
                         }
                         if(strlen(userfile) && (fp=fopen(userfile,"r"))) {
                                 fclose(fp);
-                                conf = readConf(userfile);
+                                readConf(userfile);
                         }
                         else if((fp=fopen(SYSTEM_CONFIG_FILE_LOCATION,"r"))) {
                                 fclose(fp);
-                                conf = readConf(SYSTEM_CONFIG_FILE_LOCATION);
+                                readConf(SYSTEM_CONFIG_FILE_LOCATION);
                         }
                 }
                 if(conf) {
-                        options->portStr = conf[CONF_PORT];
-                        options->musicDirArg = conf[CONF_MUSIC_DIRECTORY];
-                        options->playlistDirArg = conf[CONF_PLAYLIST_DIRECTORY];
-                        options->logFile = conf[CONF_LOG_FILE];
-                        options->errorFile = conf[CONF_ERROR_FILE];
-                        options->usr = conf[CONF_USER];
-                        if(conf[CONF_DB_FILE]) {
-                                options->dbFile = conf[CONF_DB_FILE];
+                        options->portStr = getConfigParamValue(CONF_PORT);
+                        options->musicDirArg = 
+				getConfigParamValue(CONF_MUSIC_DIR);
+                        options->playlistDirArg = 
+				getConfigParamValue(CONF_PLAYLIST_DIR);
+                        options->logFile = getConfigParamValue(CONF_LOG_FILE);
+                        options->errorFile = 
+				getConfigParamValue(CONF_ERROR_FILE);
+                        options->usr = getConfigParamValue(CONF_USER);
+                        if(getConfigParamValue(CONF_DB_FILE)) {
+                                options->dbFile = 
+					getConfigParamValue(CONF_DB_FILE);
                         }
                         return;
                 }
