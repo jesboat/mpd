@@ -79,6 +79,8 @@ ConfigParam * getNextConfigParam(char * name, ConfigParam * last);
 
 #define getConfigParam(name) 	getNextConfigParam(name, NULL);
 
+char * getConfigParamValue(char * name);
+
 void registerConfigParam(char * name, int repeats, int block);
 
 BlockParam * getBlockParam(ConfigParam * param, char * name);
