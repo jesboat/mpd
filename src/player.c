@@ -25,7 +25,6 @@
 #include "listen.h"
 #include "log.h"
 #include "utils.h"
-#include "tables.h"
 #include "directory.h"
 #include "volume.h"
 #include "playerData.h"
@@ -116,7 +115,6 @@ int playerInit() {
 		freeAllInterfaces();
 		closeMp3Directory();
 		finishPlaylist();
-		closeTables();
 		finishPermissions();
 		finishCommands();
 		finishVolume();

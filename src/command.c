@@ -21,7 +21,6 @@
 #include "playlist.h"
 #include "ls.h"
 #include "directory.h"
-#include "tables.h"
 #include "volume.h"
 #include "path.h"
 #include "stats.h"
@@ -588,7 +587,8 @@ int handleList(FILE * fp, unsigned int * permission, int argArrayLength,
         char * arg1 = NULL;
 
         if(argArrayLength==3) arg1 = argArray[2];
-        return printAllKeysOfTable(fp,argArray[1],arg1);
+        //return printAllKeysOfTable(fp,argArray[1],arg1);
+	return 0;
 }
 
 int handleMove(FILE * fp, unsigned int * permission, int argArrayLength, 

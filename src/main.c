@@ -20,7 +20,6 @@
 #include "command.h"
 #include "playlist.h"
 #include "directory.h"
-#include "tables.h"
 #include "player.h"
 #include "listen.h"
 #include "conf.h"
@@ -415,7 +414,6 @@ int main(int argc, char * argv[]) {
 	initPermissions();
         initReplayGainState();
 
-        initTables();
         initPlaylist();
         initInputPlugins();
 
@@ -450,7 +448,6 @@ int main(int argc, char * argv[]) {
         freeAllInterfaces();
 	closeAllListenSockets();
         closeMp3Directory();
-        closeTables();
         finishPlaylist();
         freePlayerData();
         finishAudioDriver();

@@ -19,13 +19,11 @@
 #include "song.h"
 #include "ls.h"
 #include "directory.h"
-#include "tables.h"
 #include "utils.h"
 #include "tag.h"
 #include "log.h"
 #include "path.h"
 #include "playlist.h"
-#include "tables.h"
 #include "inputPlugin.h"
 
 #define SONG_KEY	"key: "
@@ -72,7 +70,6 @@ Song * newSong(char * utf8url, SONG_TYPE type) {
 			freeSong(song);
 			song = NULL;
 		}
-		else addSongToTables(song);
 	}
 
 	return song;
@@ -80,7 +77,6 @@ Song * newSong(char * utf8url, SONG_TYPE type) {
 
 void freeSong(Song * song) {
 	deleteASongFromPlaylist(song);
-	if(song->type == SONG_TYPE_FILE) removeASongFromTables(song);
 	free(song->utf8url);
 	if(song->tag) freeMpdTag(song->tag);
 	free(song);
@@ -172,23 +168,19 @@ void insertSongIntoList(SongList * list, ListNode ** nextSongNode, char * key,
 
 	if(!(*nextSongNode)) {
 		insertInList(list,key,(void *)song);
-		addSongToTables(song);
 	}
 	else if(cmpRet == 0) {
 		Song * tempSong = (Song *)((*nextSongNode)->data);
 		if(tempSong->mtime != song->mtime) {
-			removeASongFromTables(tempSong);
 			freeMpdTag(tempSong->tag);
 			tempSong->tag = song->tag;
 			tempSong->mtime = song->mtime;
 			song->tag = NULL;
-			addSongToTables(tempSong);
 		}
 		freeJustSong(song);
 		*nextSongNode = (*nextSongNode)->nextNode;
 	}
 	else {
-		addSongToTables(song);
 		insertInListBeforeNode(list,*nextSongNode,key,(void *)song);
 	}
 }
@@ -272,7 +264,6 @@ int updateSongInfo(Song * song) {
 	if(song->type == SONG_TYPE_FILE) {
                 InputPlugin * plugin;
 
-		removeASongFromTables(song);
 		if(song->tag) freeMpdTag(song->tag);
 
 		song->tag = NULL;
@@ -283,7 +274,6 @@ int updateSongInfo(Song * song) {
 	                if(song->tag) validateUtf8Tag(song->tag);
                 }
 		if(!song->tag || song->tag->time<0) return -1;
-		else addSongToTables(song);
 	}
 
 	return 0;
