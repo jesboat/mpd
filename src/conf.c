@@ -22,8 +22,7 @@
 
 #include "utils.h"
 #include "buffer2array.h"
-#include "audio.h"
-#include "volume.h"
+#include "list.h"
 
 #include <sys/param.h>
 #include <stdio.h>
@@ -35,67 +34,126 @@
 
 #define MAX_STRING_SIZE	MAXPATHLEN+80
 
-#define CONF_COMMENT	'#'
+#define CONF_COMMENT		'#'
 
-#define CONF_NUMBER_OF_PARAMS		43
-#define CONF_NUMBER_OF_PATHS		6
-#define CONF_NUMBER_OF_REQUIRED		5
-#define CONF_NUMBER_OF_ALLOW_CATS	1
+#define CONF_REPEATABLE_MASK	0x01
+#define CONF_BLOCK_MASK		0x02
 
-#define CONF_CONNECTION_TIMEOUT_DEFAULT			"60"
-#define CONF_MAX_CONNECTIONS_DEFAULT			"5"
-#define CONF_MAX_PLAYLIST_LENGTH_DEFAULT		"16384"
-#define CONF_BUFFER_BEFORE_PLAY_DEFAULT			"25%"
-#define CONF_MAX_COMMAND_LIST_SIZE_DEFAULT		"2048"
-#define CONF_MAX_OUTPUT_BUFFER_SIZE_DEFAULT		"2048"
-#define CONF_AO_DRIVER_DEFAULT				AUDIO_AO_DRIVER_DEFAULT
-#define CONF_AO_DRIVER_OPTIONS_DEFAULT			""
-#define CONF_SAVE_ABSOLUTE_PATHS_IN_PLAYLISTS_DEFAULT	"no"
-#define CONF_BIND_TO_ADDRESS_DEFAULT			"any"
-#define CONF_USER_DEFAULT				""
-#define CONF_LOG_LEVEL_DEFAULT				"default"
-#define CONF_AUDIO_WRITE_SIZE_DEFAULT			"1024"
-#define CONF_BUFFER_SIZE_DEFAULT			"2048"
-#ifndef NO_OSS_MIXER
-#define CONF_MIXER_TYPE_DEFAULT				VOLUME_MIXER_OSS
-#define CONF_MIXER_DEVICE_DEFAULT			""
-#else
-#ifdef HAVE_ALSA
-#define CONF_MIXER_TYPE_DEFAULT				VOLUME_MIXER_ALSA
-#define CONF_MIXER_DEVICE_DEFAULT			""
-#else
-#define CONF_MIXER_TYPE_DEFAULT				VOLUME_MIXER_SOFTWARE
-#define CONF_MIXER_DEVICE_DEFAULT			""
-#endif
-#endif
+typedef struct _configEntry {
+	unsigned char mask;
+	List * configParamList;
+} ConfigEntry;
 
-static char * conf_params[CONF_NUMBER_OF_PARAMS];
+static List * configEntriesList = NULL;
 
-void initConf() {
-	int i;
+static BlockParam * newBlockParam(char * name, char * value) {
+	BlockParam * ret = malloc(sizeof(BlockParam));
 
-	for(i=0;i<CONF_NUMBER_OF_PARAMS;i++) conf_params[i] = NULL;
+	ret->name = strdup(name);
+	ret->value = strdup(value);
 
-	/* we don't specify these on the command line */
-	conf_params[CONF_CONNECTION_TIMEOUT] = strdup(CONF_CONNECTION_TIMEOUT_DEFAULT);
-	conf_params[CONF_MIXER_DEVICE] = strdup(CONF_MIXER_DEVICE_DEFAULT);
-	conf_params[CONF_MAX_CONNECTIONS] = strdup(CONF_MAX_CONNECTIONS_DEFAULT);
-	conf_params[CONF_MAX_PLAYLIST_LENGTH] = strdup(CONF_MAX_PLAYLIST_LENGTH_DEFAULT);
-	conf_params[CONF_BUFFER_BEFORE_PLAY] = strdup(CONF_BUFFER_BEFORE_PLAY_DEFAULT);
-	conf_params[CONF_MAX_COMMAND_LIST_SIZE] = strdup(CONF_MAX_COMMAND_LIST_SIZE_DEFAULT);
-	conf_params[CONF_MAX_OUTPUT_BUFFER_SIZE] = strdup(CONF_MAX_OUTPUT_BUFFER_SIZE_DEFAULT);
-	conf_params[CONF_AO_DRIVER] = strdup(CONF_AO_DRIVER_DEFAULT);
-	conf_params[CONF_AO_DRIVER_OPTIONS] = strdup(CONF_AO_DRIVER_OPTIONS_DEFAULT);
-	conf_params[CONF_SAVE_ABSOLUTE_PATHS_IN_PLAYLISTS] = strdup(CONF_SAVE_ABSOLUTE_PATHS_IN_PLAYLISTS_DEFAULT);
-	conf_params[CONF_BIND_TO_ADDRESS] = strdup(CONF_BIND_TO_ADDRESS_DEFAULT);
-	conf_params[CONF_MIXER_TYPE] = strdup(CONF_MIXER_TYPE_DEFAULT);
-	conf_params[CONF_USER] = strdup(CONF_USER_DEFAULT);
-	conf_params[CONF_LOG_LEVEL] = strdup(CONF_LOG_LEVEL_DEFAULT);
-	conf_params[CONF_AUDIO_WRITE_SIZE] = strdup(CONF_AUDIO_WRITE_SIZE_DEFAULT);
-	conf_params[CONF_BUFFER_SIZE] = strdup(CONF_BUFFER_SIZE_DEFAULT);
+	return ret;
 }
 
-char ** readConf(char * file) {
+static void freeBlockParam(BlockParam * param) {
+	free(param->name);
+	free(param->value);
+	free(param);
+}
+
+static ConfigParam * newConfigParam(char * value) {
+	ConfigParam * ret = malloc(sizeof(ConfigParam));
+
+	if(value) ret->value = NULL;
+
+	ret->numberOfBlockParams = 0;
+	ret->blockParams = NULL;
+
+	return ret;
+}
+
+static void freeConfigParam(ConfigParam * param) {
+	int i;
+
+	free(param->value);
+
+	for(i=0; i<param->numberOfBlockParams; i++) {
+		freeBlockParam(param->blockParams+i);
+	}
+
+	free(param);
+}
+
+ConfigEntry * newConfigEntry(int repeatable, int block) {
+	ConfigEntry * ret =  malloc(sizeof(ConfigEntry));
+
+	ret->mask = 0;
+	ret->configParamList = makeList((ListFreeDataFunc *)freeConfigParam);
+
+	if(repeatable) ret->mask &= CONF_REPEATABLE_MASK;
+	if(block) ret->mask &= CONF_BLOCK_MASK;
+
+	return ret;
+}
+
+void freeConfigEntry(ConfigEntry * entry) {
+	freeList(entry->configParamList);
+	free(entry);
+}
+
+void registerConfigParam(char * name, int repeatable, int block) {
+	ConfigEntry * entry;
+
+	if(findInList(configEntriesList, name, NULL)) {
+		ERROR("config parameter \"%s\" already registered\n", name);
+		exit(EXIT_FAILURE);
+	}
+
+	entry = newConfigEntry(repeatable, block);
+
+	insertInList(configEntriesList, name, entry);
+}
+
+void initConf() {
+	configEntriesList = makeList((ListFreeDataFunc *)freeConfigEntry);
+
+	registerConfigParam(CONF_PORT, 				0,	0);
+	registerConfigParam(CONF_MUSIC_DIR,			0,	0);
+	registerConfigParam(CONF_PLAYLIST_DIR,			0,	0);
+	registerConfigParam(CONF_LOG_FILE,			0,	0);
+	registerConfigParam(CONF_ERROR_FILE,			0,	0);
+	registerConfigParam(CONF_CONN_TIMEOUT,			0,	0);
+	registerConfigParam(CONF_MIXER_DEVICE,			0,	0);
+	registerConfigParam(CONF_MAX_CONN,			0,	0);
+	registerConfigParam(CONF_MAX_PLAYLIST_LENGTH,		0,	0);
+	registerConfigParam(CONF_BUFFER_BEFORE_PLAY,		0,	0);
+	registerConfigParam(CONF_MAX_COMMAND_LIST_SIZE,		0,	0);
+	registerConfigParam(CONF_MAX_OUTPUT_BUFFER_SIZE,	0,	0);
+	registerConfigParam(CONF_AUDIO_OUTPUT,			1,	1);
+	registerConfigParam(CONF_SAVE_ABSOLUTE_PATHS,		0,	0);
+	registerConfigParam(CONF_BIND_TO_ADDRESS,		1,	0);
+	registerConfigParam(CONF_MIXER_TYPE,			0,	0);
+	registerConfigParam(CONF_STATE_FILE,			0,	0);
+	registerConfigParam(CONF_USER,				0,	0);
+	registerConfigParam(CONF_DB_FILE,			0,	0);
+	registerConfigParam(CONF_LOG_LEVEL,			0,	0);
+	registerConfigParam(CONF_MIXER_CONTROL,			0,	0);
+	registerConfigParam(CONF_AUDIO_WRITE_SIZE,		0,	0);
+	registerConfigParam(CONF_FS_CHARSET,			0,	0);
+	registerConfigParam(CONF_PASSWORD,			1,	0);
+	registerConfigParam(CONF_DEFAULT_PERMS,			0,	0);
+	registerConfigParam(CONF_AUDIO_BUFFER_SIZE,		0,	0);
+	registerConfigParam(CONF_REPLAYGAIN,			0,	0);
+	registerConfigParam(CONF_AUDIO_OUTPUT_FORMAT,		0,	0);
+	registerConfigParam(CONF_HTTP_PROXY_HOST,		0,	0);
+	registerConfigParam(CONF_HTTP_PROXY_PORT,		0,	0);
+	registerConfigParam(CONF_HTTP_PROXY_USER,		0,	0);
+	registerConfigParam(CONF_HTTP_PROXY_PASSWORD,		0,	0);
+	registerConfigParam(CONF_REPLAYGAIN_PREAMP,		0,	0);
+	registerConfigParam(CONF_ID3V1_ENCODING,		0,	0);
+}
+
+int readConf(char * file) {
 	char * conf_strings[CONF_NUMBER_OF_PARAMS] = {
 		"port",
 		"music_directory",
