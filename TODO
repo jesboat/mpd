@@ -14,6 +14,14 @@
 		indicating the type of metadata and its value)
 	*) MpdDBTag <-> MpdTag interface
 
+*) rewrite filename handling
+	*) use memory more efficiently, by iteratively constructing filename
+	*) create a function for creating directory names:
+		*) returns a static string
+		*) when creating the string, check that the same directory
+		 	string wasn't just created (store last Directory * ptr)
+		*) this should be very fast! and save memory
+
 *) implement listener socket protocol as documented here:
 	http://www.musicpd.org/wiki/moin.cgi/MpdListenerProtocol
 
