@@ -154,90 +154,26 @@ void initConf() {
 }
 
 int readConf(char * file) {
-	char * conf_strings[CONF_NUMBER_OF_PARAMS] = {
-		"port",
-		"music_directory",
-		"playlist_directory",
-		"log_file",
-		"error_file",
-		"connection_timeout",
-		"mixer_device",
-		"max_connections",
-		"max_playlist_length",
-		"buffer_before_play",
-		"max_command_list_size",
-		"max_output_buffer_size",
-		"ao_driver",
-		"ao_driver_options",
-		"save_absolute_paths_in_playlists",
-		"bind_to_address",
-		"mixer_type",
-		"state_file",
-		"user",
-		"db_file",
-		"log_level",
-		"mixer_control",
-		"audio_write_size",
-		"filesystem_charset",
-		"password",
-		"default_permissions",
-		"audio_buffer_size",
-                "replaygain",
-                "audio_output_format",
-                "http_proxy_host",
-                "http_proxy_port",
-		"http_proxy_user",
-		"http_proxy_password",
-		"replaygain_preamp",
-		"shout_host",
-		"shout_port",
-		"shout_password",
-		"shout_mount",
-		"shout_name",
-		"shout_user",
-		"shout_quality",
-		"id3v1_encoding",
-		"shout_format"
-	};
-
-	int conf_absolutePaths[CONF_NUMBER_OF_PATHS] = {
-		CONF_MUSIC_DIRECTORY,
-		CONF_PLAYLIST_DIRECTORY,
-		CONF_LOG_FILE,
-		CONF_ERROR_FILE,
-		CONF_STATE_FILE,
-		CONF_DB_FILE
-	};
-
-	int conf_required[CONF_NUMBER_OF_REQUIRED] = {
-		CONF_MUSIC_DIRECTORY,
-		CONF_PLAYLIST_DIRECTORY,
-		CONF_LOG_FILE,
-		CONF_ERROR_FILE,
-		CONF_PORT
-	};
-
-	short conf_allowCat[CONF_NUMBER_OF_ALLOW_CATS] = {
-		CONF_PASSWORD
-	};
-
 	FILE * fp;
 	char string[MAX_STRING_SIZE+1];
 	char ** array;
 	int i;
 	int numberOfArgs;
-	short allowCat[CONF_NUMBER_OF_PARAMS];
 	int count = 0;
-
-	for(i=0;i<CONF_NUMBER_OF_PARAMS;i++) allowCat[i] = 0;
-
-	for(i=0;i<CONF_NUMBER_OF_ALLOW_CATS;i++) allowCat[conf_allowCat[i]] = 1;
 
 	if(!(fp=fopen(file,"r"))) {
 		ERROR("problems opening file %s for reading\n",file);
 		exit(EXIT_FAILURE);
 	}
 
+	while(myFgets(string,sizeof(string),fp)) {
+		count++;
+
+		numberOfArgs = buffer2array(string, &array);
+}
+
+
+//////// OLD CODE
 	while(myFgets(string,sizeof(string),fp)) {
 		count++;
 
