@@ -136,10 +136,8 @@ MpdTag * getID3Info(struct id3_tag * tag, char * id, int type, MpdTag * mpdTag)
 		utf8 = id3_ucs4_utf8duplicate(ucs4);
 		if(!utf8) continue;
 
-		if(strlen(utf8)) {
-			if( NULL == mpdTag ) mpdTag = newMpdTag();
-			addItemToMpdTag(mpdTag, type, utf8);
-		}
+		if( NULL == mpdTag ) mpdTag = newMpdTag();
+		addItemToMpdTag(mpdTag, type, utf8);
 
 		free(utf8);
 	}
@@ -200,7 +198,10 @@ MpdTag * newMpdTag() {
 static void deleteItem(MpdTag * tag, int index) {
 	tag->numOfItems--;
 
+	assert(index < tag->numOfItems);
+
 	removeTagItemString(tag->items[index].type, tag->items[index].value);
+	//free(tag->items[index].value);
 
 	if(tag->numOfItems-index > 0) {
 		memmove(tag->items+index, tag->items+index+1, 
@@ -234,6 +235,7 @@ void clearMpdTag(MpdTag * tag) {
 
 	for(i = 0; i < tag->numOfItems; i++) {
 		removeTagItemString(tag->items[i].type, tag->items[i].value);
+		//free(tag->items[i].value);
 	}
 
 	if(tag->items) free(tag->items);
@@ -300,24 +302,27 @@ inline static void appendToTagItems(MpdTag * tag, int type, char * value,
 {
 	int i = tag->numOfItems;
 	
-	char * t;
-	t = malloc(len+1);
-	strncpy(t, value, len);
-	t[len] = '\0';
+	char * dup;
+	dup = malloc(len+1);
+	strncpy(dup, value, len);
+	dup[len] = '\0';
 
-	fixUtf8(t);
+	fixUtf8(dup);
 
 	tag->numOfItems++;
 	tag->items = realloc(tag->items, tag->numOfItems*sizeof(MpdTagItem));
 
 	tag->items[i].type = type;
-	tag->items[i].value = getTagItemString(type, value);
+	tag->items[i].value = getTagItemString(type, dup);
+	//tag->items[i].value = strdup(dup);
 
-	free(t);
+	free(dup);
 }
 
 void addItemToMpdTagWithLen(MpdTag * tag, int itemType, char * value, int len) {
 	if(ignoreTagItems[itemType]) return;
+
+	if(!value || !len) return;
 			
 	appendToTagItems(tag, itemType, value, len);
 }

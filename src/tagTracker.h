@@ -9,4 +9,6 @@ void removeTagItemString(int type, char * string);
 
 int getNumberOfTagItems(int type);
 
+void printMemorySavedByTagTracker();
+
 #endif

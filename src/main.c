@@ -35,6 +35,7 @@
 #include "inputPlugin.h"
 #include "inputStream.h"
 #include "tag.h"
+#include "tagTracker.h"
 #include "../config.h"
 
 #include <stdio.h>
@@ -427,8 +428,10 @@ int main(int argc, char * argv[]) {
         initAudioDriver();
         initVolume();
         initInterfaces();
-	initInputStream();
+	initInputStream(); 
 
+	printMemorySavedByTagTracker();
+	
         daemonize(&options);
 
         setupLogOutput(&options, out, err);
