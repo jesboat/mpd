@@ -13,4 +13,8 @@ void printMemorySavedByTagTracker();
 
 void sortTagTrackerInfo();
 
+void resetVisitedFlagsInTagTracker(int type);
+ 
+int wasVisitedInTagTracker(int type, char * str);
+
 #endif

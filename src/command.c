@@ -613,11 +613,35 @@ int handleClearError(FILE * fp, unsigned int * permission, int argArrayLength,
 int handleList(FILE * fp, unsigned int * permission, int argArrayLength, 
 		char ** argArray) 
 {
-        char * arg1 = NULL;
+	int numConditionals = 0;
+	LocateTagItem * conditionals = NULL;
+	int tagType = getLocateTagItemType(argArray[1]);
+	int ret;
 
-        if(argArrayLength==3) arg1 = argArray[2];
-        //return printAllKeysOfTable(fp,argArray[1],arg1);
-	return 0;
+	if(tagType < 0) {
+                commandError(fp, ACK_ERROR_ARG,
+				"\"%s\" is not known", argArray[1]);
+		return -1;
+	}
+
+	/* for compatibility with < 0.12.0 */
+        if(argArrayLength==3) {
+		if(tagType != TAG_ITEM_ALBUM) {
+                	commandError(fp, ACK_ERROR_ARG,
+					"should be \"%s\" for 3 arguments", 
+					mpdTagItemKeys[TAG_ITEM_ALBUM]);
+			return -1;
+		}
+		conditionals = newLocateTagItem(mpdTagItemKeys[TAG_ITEM_ARTIST],
+					argArray[2]);
+		numConditionals = 1;
+	}
+        
+	ret = listAllUniqueTags(fp, tagType, numConditionals,conditionals);
+
+	if(conditionals) free(conditionals);
+
+	return ret;
 }
 
 int handleMove(FILE * fp, unsigned int * permission, int argArrayLength, 

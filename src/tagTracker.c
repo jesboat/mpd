@@ -16,6 +16,11 @@ static List * tagLists[TAG_NUM_OF_ITEM_TYPES] =
 	NULL
 };
 
+typedef struct tagTrackerItem {
+	int count;
+	mpd_sint8 visited;
+} TagTrackerItem;
+
 char * getTagItemString(int type, char * string) {
 	ListNode * node;
 
@@ -26,12 +31,13 @@ char * getTagItemString(int type, char * string) {
 	}
 
 	if((node = findNodeInList(tagLists[type], string))) {
-		(*((int *)node->data))++;
+		((TagTrackerItem *)node->data)->count++;
 	}
 	else {
-		int * intPtr = malloc(sizeof(int));
-		*intPtr = 1;
-		node = insertInList(tagLists[type], string, intPtr);
+		TagTrackerItem * item = malloc(sizeof(TagTrackerItem));
+		item->count = 1;
+		item->visited = 0;
+		node = insertInList(tagLists[type], string, item);
 	}
 
 	return node->key;
@@ -53,9 +59,9 @@ void removeTagItemString(int type, char * string) {
 	node = findNodeInList(tagLists[type], string);
 	assert(node);
 	if(node) {
-		int * countPtr = node->data;
-		(*countPtr)--;
-		if(*countPtr <= 0) deleteNodeFromList(tagLists[type], node);
+		TagTrackerItem * item = node->data;
+		item->count--;
+		if(item->count <= 0) deleteNodeFromList(tagLists[type], node);
 	}
 
 	if(tagLists[type]->numberOfNodes == 0) {
@@ -84,7 +90,7 @@ void printMemorySavedByTagTracker() {
 
 		while(node != NULL) {
 			sum -= sizeof(ListNode);
-			sum -= sizeof(int);
+			sum -= sizeof(TagTrackerItem);
 			sum -= sizeof(node->key);
 			sum += (strlen(node->key)+1)*(*((int *)node->data));
 			node = node->nextNode;
@@ -102,4 +108,35 @@ void sortTagTrackerInfo() {
 
 		sortList(tagLists[i]);
 	}
+}
+
+void resetVisitedFlagsInTagTracker(int type) {
+	ListNode * node;
+
+	if(!tagLists[type]) return;
+
+	node = tagLists[type]->firstNode;
+
+	while(node) {
+		((TagTrackerItem *)node->data)->visited = 0;
+		node = node->nextNode;
+	}
+}
+
+int wasVisitedInTagTracker(int type, char * str) {
+	int ret;
+	ListNode * node;
+	TagTrackerItem * item;
+
+	if(!tagLists[type]) return 0;
+
+	node = findNodeInList(tagLists[type], str);
+
+	if(!node) return 0;
+
+	item = node->data;
+	ret = item->visited;
+	item->visited = 1;
+
+	return ret;
 }
