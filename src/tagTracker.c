@@ -54,7 +54,7 @@ void removeTagItemString(int type, char * string) {
 	assert(node);
 	if(node) {
 		int * countPtr = node->data;
-		*countPtr--;
+		(*countPtr)--;
 		if(*countPtr <= 0) deleteNodeFromList(tagLists[type], node);
 	}
 
