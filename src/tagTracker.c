@@ -93,3 +93,13 @@ void printMemorySavedByTagTracker() {
 
 	DEBUG("saved memory: %li\n", (long)sum);
 }
+
+void sortTagTrackerInfo() {
+	int i;
+
+	for(i = 0; i < TAG_NUM_OF_ITEM_TYPES; i++) {
+		if(!tagLists[i]) continue;
+
+		sortList(tagLists[i]);
+	}
+}

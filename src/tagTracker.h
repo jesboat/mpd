@@ -11,4 +11,6 @@ int getNumberOfTagItems(int type);
 
 void printMemorySavedByTagTracker();
 
+void sortTagTrackerInfo();
+
 #endif
