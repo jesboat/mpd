@@ -20,6 +20,7 @@
 #define CONF_H
 
 #include "../config.h"
+#include "list.h"
 
 #define CONF_PORT			"port"
 #define CONF_MUSIC_DIR			"music_directory"
@@ -33,7 +34,6 @@
 #define CONF_BUFFER_BEFORE_PLAY		"buffer_before_play"
 #define CONF_MAX_COMMAND_LIST_SIZE	"max_command_list_size"
 #define CONF_MAX_OUTPUT_BUFFER_SIZE	"max_output_buffer_size"
-#define CONF_AUDIO_OUTPUT		"audio_output"
 #define CONF_SAVE_ABSOLUTE_PATHS	"save_absolute_paths_in_playlists"
 #define CONF_BIND_TO_ADDRESS		"bind_to_address"
 #define CONF_MIXER_TYPE			"mixer_type"
@@ -56,18 +56,35 @@
 #define CONF_REPLAYGAIN_PREAMP		"replaygain_preamp"
 #define CONF_ID3V1_ENCODING		"id3v1_encoding"
 
-typedef struct _BlockParam {
+/* general audio output options */
+#define CONF_AUDIO_OUTPUT		"audio_output"
+#define CONF_AO_NAME			"name"
+#define CONF_AO_TYPE			"type"
+#define CONF_AO_FORMAT			"format"
+
+/* libao options */
+#define CONF_AO_DRIVER			"driver"
+#define CONF_AO_OPTIONS			"options"
+
+/* shout */
+#define CONF_AO_MOUNT			"mount"
+#define CONF_AO_QUALITY			"quality"
+#define CONF_AO_USER			"user"
+#define CONF_AO_PORT			"port"
+#define CONF_AO_PASSWORD		"password"
+
+typedef struct _ConfigParam {
+	char * name;
+	List * subParamsList;
+} ConfigParam;
+
+typedef struct _ConfigEntry {
 	char * name;
 	char * value;
 	int line;
-} BlockParam;
-
-typedef struct _ConfigParam {
-	char * value;
-	unsigned int line;
-	BlockParam * blockParams;
-	int numberOfBlockParams;
-} ConfigParam;
+	List * subEntriesList;
+	int quieried;
+} ConfigEntry;
 
 void initConf();
 
@@ -75,18 +92,33 @@ void readConf(char * file);
 
 /* don't free the returned value
    set _last_ to NULL to get first entry */
-ConfigParam * getNextConfigParam(char * name, ConfigParam * last);
+ConfigEntry * getNextChildConfigEntry(ConfigEntry * parent, char * name, 
+		ListNode ** last);
 
-#define getConfigParam(name) 	getNextConfigParam(name, NULL)
+#define getNextConfigEntry(name, last) \
+	getNextChildConfigEntry(NULL, name, NULL)
 
-char * getConfigParamValue(char * name);
+#define getChildConfigEntry(parent, name) \
+	getNextChildConfigEntry(parent, name, NULL)
 
-char * forceAndGetConfigParamValue(char * name);
+#define getConfigEntry(name) getNextConfigEntry(name, NULL)
 
-void registerConfigParam(char * name, int repeats, int block);
+char * getChildConfigEntryValue(ConfigEntry * parent, char * name);
 
-BlockParam * getBlockParam(ConfigParam * param, char * name);
+#define getConfigEntryValue(name) getChildConfigEntryValue(NULL, name)
 
-char * parseConfigFilePath(char * name, int force);
+char * forceAndGetChildConfigEntryValue(ConfigEntry * parent, char * name);
+
+#define forceAndGetConfigEntryValue(name) \
+	forceAndGetChildConfigEntryValue(NULL, name)
+
+ConfigParam * registerChildConfigParam(ConfigParam * parent, char * name);
+
+#define registerConfigParam(name) registerChildConfigParam(NULL, name)
+
+char * parseChildConfigFilePath(ConfigEntry * parent, char * name, int force);
+
+#define parseConfigFilePath(name, force) \
+	parseChildConfigFilePath(NULL, name, force)
 
 #endif

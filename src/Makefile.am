@@ -55,6 +55,7 @@ mpd_headers = \
 mpd_SOURCES = \
 	$(mpd_headers) \
 	$(mpd_inputPlugins) \
+	conf.c \
 	audio.c \
 	audioOutput.c \
 	audioOutput_ao.c \
@@ -62,7 +63,6 @@ mpd_SOURCES = \
 	buffer2array.c \
 	charConv.c \
 	command.c \
-	conf.c \
 	decode.c \
 	directory.c \
 	inputPlugin.c \
