@@ -2,6 +2,8 @@
 
 #include "list.h"
 
+#include <assert.h>
+
 static List * tagLists[TAG_NUM_OF_ITEM_TYPES] =
 {
 	NULL,
@@ -37,7 +39,9 @@ void removeTagItemString(int type, char * string) {
 
 	if(tagLists[type] == NULL) return;
 
-	if((node = findNodeInList(tagLists[type], string))) {
+	node = findNodeInList(tagLists[type], string);
+	assert(node);
+	if(node) {
 		int * countPtr = node->data;
 		*countPtr--;
 		if(*countPtr <= 0) deleteNodeFromList(tagLists[type], node);
