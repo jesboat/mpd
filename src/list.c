@@ -212,7 +212,7 @@ ListNode * findNodeInList(List * list, char * key) {
 			tmpNode = tmpNode->nextNode;
 		}
 	
-		if(tmpNode!=NULL) return tmpNode;
+		return tmpNode;
 	}
 
 	return NULL;
