@@ -80,8 +80,6 @@ void printMpdTag(FILE * fp, MpdTag * tag);
 
 MpdTag * mpdTagDup(MpdTag * tag);
 
-void validateUtf8Tag(MpdTag * tag);
-
 int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2);
 
 /* *last shoudl be initialzed to -1 before calling this function */

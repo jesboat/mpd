@@ -25,6 +25,7 @@
 #include "inputStream.h"
 #include "conf.h"
 #include "charConv.h"
+#include "tagTracker.h"
 
 #include <sys/stat.h>
 #include <stdlib.h>
@@ -59,25 +60,6 @@ void printMpdTag(FILE * fp, MpdTag * tag) {
 	for(i = 0; i < tag->numOfItems; i++) {
 		myfprintf(fp, "%s: %s\n", mpdTagItemKeys[tag->items[i].type],
 				tag->items[i].value);
-	}
-}
-
-#define fixUtf8(str) { \
-	if(str && !validUtf8String(str)) { \
-		char * temp; \
-		DEBUG("not valid utf8 in tag: %s\n",str); \
-		temp = latin1StrToUtf8Dup(str); \
-		free(str); \
-		str = temp; \
-	} \
-}
-
-void validateUtf8Tag(MpdTag * tag) {
-	int i;
-
-	for(i = 0; i < tag->numOfItems; i++) {
-		fixUtf8(tag->items[i].value);
-		stripReturnChar(tag->items[i].value);
 	}
 }
 
@@ -172,6 +154,8 @@ MpdTag * newMpdTag() {
 static void deleteItem(MpdTag * tag, int index) {
 	tag->numOfItems--;
 
+	removeTagItemString(tag->items[index].type, tag->items[index].value);
+
 	if(tag->numOfItems-index > 0) {
 		memmove(tag->items+index, tag->items+index+1, 
 				tag->numOfItems-index);
@@ -203,7 +187,7 @@ void clearMpdTag(MpdTag * tag) {
 	int i;
 
 	for(i = 0; i < tag->numOfItems; i++) {
-		free(tag->items[i].value);
+		removeTagItemString(tag->items[i].type, tag->items[i].value);
 	}
 
 	if(tag->items) free(tag->items);
@@ -255,18 +239,35 @@ int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2) {
         return 1;
 }
 
+#define fixUtf8(str) { \
+	if(str && !validUtf8String(str)) { \
+		char * temp; \
+		DEBUG("not valid utf8 in tag: %s\n",str); \
+		temp = latin1StrToUtf8Dup(str); \
+		free(str); \
+		str = temp; \
+	} \
+}
+
 inline static void appendToTagItems(MpdTag * tag, int type, char * value, 
 			int len) 
 {
 	int i = tag->numOfItems;
 	
+	char * temp;
+	temp = malloc(len+1);
+	strncpy(temp, value, len);
+	temp[len] = '\0';
+
+	fixUtf8(temp);
+
 	tag->numOfItems++;
 	tag->items = realloc(tag->items, tag->numOfItems*sizeof(MpdTagItem));
 
 	tag->items[i].type = type;
-	tag->items[i].value = malloc(len+1);
-	strncpy(tag->items[i].value, value, len);
-	tag->items[i].value[len] = '\0';
+	tag->items[i].value = getTagItemString(type, value);
+
+	free(temp);
 }
 
 void addItemToMpdTagWithLen(MpdTag * tag, int itemType, char * value, int len) {

@@ -478,7 +478,6 @@ Song * playerCurrentDecodeSong() {
                 song = newNullSong();
                 song->utf8url = strdup(pc->currentUrl);
 		song->tag = metadataChunkToMpdTagDup(prev);
-                validateUtf8Tag(song->tag);
                 ret =  song;
         	resetPlayerMetadata();
         }

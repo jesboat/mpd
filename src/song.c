@@ -59,7 +59,6 @@ Song * newSong(char * utf8url, SONG_TYPE type) {
 		if((plugin = isMusic(utf8url,&(song->mtime)))) {
 		        song->tag = plugin->tagDupFunc(
                                         rmp2amp(utf8ToFsCharset(utf8url)));
-	                if(song->tag) validateUtf8Tag(song->tag);
                 }
 		if(!song->tag || song->tag->time<0) {
 			freeSong(song);
@@ -267,7 +266,6 @@ int updateSongInfo(Song * song) {
 		if((plugin = isMusic(utf8url,&(song->mtime)))) {
 		        song->tag = plugin->tagDupFunc(
                                         rmp2amp(utf8ToFsCharset(utf8url)));
-	                if(song->tag) validateUtf8Tag(song->tag);
                 }
 		if(!song->tag || song->tag->time<0) return -1;
 	}
