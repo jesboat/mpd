@@ -18,6 +18,8 @@ static List * tagLists[TAG_NUM_OF_ITEM_TYPES] =
 
 char * getTagItemString(int type, char * string) {
 	ListNode * node;
+
+	if(type == TAG_ITEM_TITLE) return strdup(string);
 	
 	if(tagLists[type] == NULL) {
 		tagLists[type] = makeList(free);
@@ -39,8 +41,14 @@ char * getTagItemString(int type, char * string) {
 void removeTagItemString(int type, char * string) {
 	ListNode * node;
 
-	assert(tagLists[type]);
 	assert(string);
+
+	if(type == TAG_ITEM_TITLE) {
+		free(string);
+		return;
+	}
+	
+	assert(tagLists[type]);
 	if(tagLists[type] == NULL) return;
 
 	node = findNodeInList(tagLists[type], string);
