@@ -40,12 +40,25 @@
 #include <FLAC/metadata.h>
 #endif
 
+char * mpdTagItemsKeys[TAG_NUM_OF_ITEM_TYPES] =
+{
+	"Artist",
+	"Album",
+	"Title",
+	"Track",
+	"Name",
+	"Genre",
+	"Date"
+};
+
 void printMpdTag(FILE * fp, MpdTag * tag) {
-	if(tag->artist) myfprintf(fp,"Artist: %s\n",tag->artist);
-	if(tag->album) myfprintf(fp,"Album: %s\n",tag->album);
-	if(tag->track) myfprintf(fp,"Track: %s\n",tag->track);
-	if(tag->title) myfprintf(fp,"Title: %s\n",tag->title);
-	if(tag->name) myfprintf(fp,"Name: %s\n",tag->name);
+	MpdTagItem * item;
+
+	for(item = tag->tagItems; item && item->type!=TAG_ITEM_END; item++) {
+		myfprintf(fp, "%s: %s\n", mpdTagItemKeys[item->type],
+				item->value);
+	}
+
 	if(tag->time>=0) myfprintf(fp,"Time: %i\n",tag->time);
 }
 
@@ -60,25 +73,24 @@ void printMpdTag(FILE * fp, MpdTag * tag) {
 }
 
 void validateUtf8Tag(MpdTag * tag) {
-	fixUtf8(tag->artist);
-	stripReturnChar(tag->artist);
-	fixUtf8(tag->album);
-	stripReturnChar(tag->album);
-	fixUtf8(tag->track);
-	stripReturnChar(tag->track);
-	fixUtf8(tag->title);
-	stripReturnChar(tag->title);
-	fixUtf8(tag->name);
-	stripReturnChar(tag->name);
+	MpdTagItem * item = tag->tagItems;
+
+	while(item && item->type != TAG_ITEM_END) {
+		fixUtf8(item->value);
+		stripReturnChar(item->value);
+		item++;
+	}
 }
 
 #ifdef HAVE_ID3TAG
-char * getID3Info(struct id3_tag * tag, char * id) {
+MpdTag * getID3Info(struct id3_tag * tag, char * id, int type, MpdTag * mpdTag) 
+{
 	struct id3_frame const * frame;
 	id3_ucs4_t const * ucs4;
 	id3_utf8_t * utf8;
 	union id3_field const * field;
 	unsigned int nstrings;
+	int i;
 
 	frame = id3_tag_findframe(tag, id, 0);
 	if(!frame) return NULL;
@@ -87,44 +99,37 @@ char * getID3Info(struct id3_tag * tag, char * id) {
 	nstrings = id3_field_getnstrings(field);
 	if(nstrings<1) return NULL;
 
-	ucs4 = id3_field_getstrings(field,0);
-	assert(ucs4);
+	for(i = 0; i < nstrings; i++) {
+		ucs4 = id3_field_getstrings(field,0);
+		assert(ucs4);
 
-	utf8 = id3_ucs4_utf8duplicate(ucs4);
-	if(!utf8) return NULL;
+		if(type == TAG_ITEM_GENRE) {
+			ucs4 = id3_genre_name(ucs4);
+		}
 
-	return utf8;
+		utf8 = id3_ucs4_utf8duplicate(ucs4);
+		if(!utf8) continue;
+
+		if( NULL == mpdTag ) mpdTag == newMpdTag();
+		addItemToMpdTag(mpdTag, type, utf8);
+
+		free(utf8);
+	}
+
+	return mpdTag;
 }
 #endif
 
 #ifdef HAVE_ID3TAG
 MpdTag * parseId3Tag(struct id3_tag * tag) {
 	MpdTag * ret = NULL;
-	char * str;
 
-	str = getID3Info(tag,ID3_FRAME_ARTIST);
-	if(str) {
-		if(!ret) ret = newMpdTag();
-		ret->artist = str;
-	}
-
-	str = getID3Info(tag,ID3_FRAME_TITLE);
-	if(str) {
-		if(!ret) ret = newMpdTag();
-		ret->title = str;
-	}
-
-	str = getID3Info(tag,ID3_FRAME_ALBUM);
-	if(str) {
-		if(!ret) ret = newMpdTag();
-		ret->album = str;
-	}
-
-	str = getID3Info(tag,ID3_FRAME_TRACK);
-	if(str) {
-		if(!ret) ret = newMpdTag();
-		ret->track = str;
-	}
+	ret = getID3Info(tag, ID3_FRAME_ARTIST, TAG_ITEM_ARTIST, ret);
+	ret = getID3Info(tag, ID3_FRAME_TITLE, TAG_ITEM_TITLE, ret);
+	ret = getID3Info(tag, ID3_FRAME_ALBUM, TAG_ITEM_ALBUM, ret);
+	ret = getID3Info(tag, ID3_FRAME_TRACK, TAG_ITEM_TRACK, ret);
+	ret = getID3Info(tag, ID3_FRAME_YEAR, TAG_ITEM_DATE, ret);
+	ret = getID3Info(tag, ID3_FRAME_GENRE, TAG_ITEM_GENRE, ret);
 
 	return ret;
 }
@@ -158,21 +163,20 @@ MpdTag * id3Dup(char * file) {
 
 MpdTag * newMpdTag() {
 	MpdTag * ret = malloc(sizeof(MpdTag));
-	ret->album = NULL;
-	ret->artist = NULL;
-	ret->title = NULL;
-	ret->track = NULL;
-	ret->name = NULL;
+	ret->tagItems = NULL;
 	ret->time = -1;
 	return ret;
 }
 
 void clearMpdTag(MpdTag * tag) {
-	if(tag->artist) free(tag->artist);
-	if(tag->album) free(tag->album);
-	if(tag->title) free(tag->title);
-	if(tag->name) free(tag->name);
-	if(tag->track) free(tag->track);
+	MpdTagItem * item;
+
+	for(item = tag->tagItems; item && item->type != TAG_ITEM_END; item++) {
+		free(item->value);
+	}
+
+	if(tag->tagItems) free(tag->tagItems);
+	tag->tagItems = NULL;
 }
 
 void freeMpdTag(MpdTag * tag) {
@@ -182,40 +186,40 @@ void freeMpdTag(MpdTag * tag) {
 
 MpdTag * mpdTagDup(MpdTag * tag) {
 	MpdTag * ret = NULL;
+	MpdTagItem * item;
 
-	if(tag) {
-		ret = newMpdTag();
-		if(tag->artist) ret->artist = strdup(tag->artist);
-		if(tag->album) ret->album = strdup(tag->album);
-		if(tag->title) ret->title = strdup(tag->title);
-		if(tag->track) ret->track = strdup(tag->track);
-		if(tag->name) ret->name = strdup(tag->name);
-		ret->time = tag->time;
+	if(!tag)  return NULL;
+
+	ret = newMpdTag();
+	ret->time = tag->time;
+
+	for(item = tag->tagItems; item && item->type != TAG_ITEM_END; item++) {
+		addItemToMpdTag(ret, item->type, item->value);
 	}
 
 	return ret;
 }
 
-int mpdTagStringsAreEqual(char * s1, char * s2) {
-        if(s1 && s2) {
-                if(strcmp(s1, s2)) return 0;
-        }
-        else if(s1 || s2) return 0;
-
-        return 1;
-}
-
 int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2) {
+	MpdTagItem * item1;
+	MpdTagItem * item2;
+
         if(tag1 == NULL && tag2 == NULL) return 1;
         else if(!tag1 || !tag2) return 0;
 
         if(tag1->time != tag2->time) return 0;
 
-        if(!mpdTagStringsAreEqual(tag1->artist, tag2->artist)) return 0;
-        if(!mpdTagStringsAreEqual(tag1->album, tag2->album)) return 0;
-        if(!mpdTagStringsAreEqual(tag1->track, tag2->track)) return 0;
-        if(!mpdTagStringsAreEqual(tag1->title, tag2->title)) return 0;
-        if(!mpdTagStringsAreEqual(tag1->name, tag2->name)) return 0;
+	for(item1 = tag1->tagItems, item2 = tag2->tagItems; 
+			item1 && item1->type != TAG_ITEM_END;
+			item1++, item2++)
+	{
+		if(!item2) return 0;
+		if(item1->type != item2->type) return 0;
+		if(0 == strcmp(item1->value, item2->value)) return 0;
+	}
+
+	if(item2 && !item1) return 0;
+	if(item2->type != item1->type) return 0;
 
         return 1;
 }

@@ -1188,29 +1188,42 @@ int printSongInDirectory(FILE * fp, Song * song, void * data) {
         return 0;
 }
 
-int searchForAlbumInDirectory(FILE * fp, Song * song, void * string) {
-	if(song->tag && song->tag->album) {
-		char * dup = strDupToUpper(song->tag->album);
-		if(strstr(dup,(char *)string)) printSongInfo(fp,song);
+static inline int strstrSearchTag(Song * song, int type, char * str) {
+	MpdTagItem * item;
+	char * dup;
+
+	if(!song->tag) return 0;
+
+	for(item = song->tag->tagItems; item && item->type!=TAG_ITEM_END; 
+			item++) 
+	{
+		if(item->type != type) continue;
+		
+		dup = strDupToUpper(item->value);
+		if(strstr(dup, str)) return 1;
 		free(dup);
+	}
+
+	return 0;
+}
+
+int searchForAlbumInDirectory(FILE * fp, Song * song, void * string) {
+	if(strstrSearchTag(song, TAG_ITEM_ALBUM, (char *)string)) {
+		printSongInfo(fp, song);
 	}
 	return 0;
 }
 
 int searchForArtistInDirectory(FILE * fp, Song * song, void * string) {
-	if(song->tag && song->tag->artist) {
-		char * dup = strDupToUpper(song->tag->artist);
-		if(strstr(dup,(char *)string)) printSongInfo(fp,song);
-		free(dup);
+	if(strstrSearchTag(song, TAG_ITEM_ARTIST, (char *)string)) {
+		printSongInfo(fp, song);
 	}
 	return 0;
 }
 
 int searchForTitleInDirectory(FILE * fp, Song * song, void * string) {
-	if(song->tag && song->tag->title) {
-		char * dup = strDupToUpper(song->tag->title);
-		if(strstr(dup,(char *)string)) printSongInfo(fp,song);
-		free(dup);
+	if(strstrSearchTag(song, TAG_ITEM_TITLE, (char *)string)) {
+		printSongInfo(fp, song);
 	}
 	return 0;
 }
@@ -1249,9 +1262,24 @@ int searchForSongsIn(FILE * fp, char * name, char * item, char * string) {
 	return ret;
 }
 
+static inline int tagItemFoundAndMatches(Song * song, int type, char * str) {
+	MpdTagItem * item;
+
+	if(!song->tag) return 0;
+
+	for(item = song->tag->tagItems; item && item->type != TAG_ITEM_END; 
+			item++) 
+	{
+		if(item->type != type) continue;
+		
+		if( 0 == strcmp(str, item->value)) return 1;
+	}
+
+	return 0;
+}
+
 int findAlbumInDirectory(FILE * fp, Song * song, void * string) {
-	if(song->tag && song->tag->album && 
-			strcmp((char *)string,song->tag->album)==0) 
+	if(tagItemFoundAndMatches(song, TAG_ITEM_ALBUM, (char *)string))
 	{
 		printSongInfo(fp,song);
 	}
@@ -1260,8 +1288,7 @@ int findAlbumInDirectory(FILE * fp, Song * song, void * string) {
 }
 
 int findArtistInDirectory(FILE * fp, Song * song, void * string) {
-	if(song->tag && song->tag->artist && 
-			strcmp((char *)string,song->tag->artist)==0) 
+	if(tagItemFoundAndMatches(song, TAG_ITEM_ARTIST, (char *)string))
 	{
 		printSongInfo(fp,song);
 	}

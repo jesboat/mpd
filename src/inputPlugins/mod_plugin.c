@@ -212,6 +212,7 @@ int mod_decode(OutputBuffer * cb, DecoderControl * dc, char * path) {
 MpdTag * modTagDup(char * file) {
 	MpdTag * ret = NULL;
 	MODULE * moduleHandle;
+	char * title = NULL;
 
 	if(mod_initMikMod() < 0) return NULL;
 
@@ -222,7 +223,8 @@ MpdTag * modTagDup(char * file) {
 	ret = newMpdTag();
 
 	ret->time = 0;
-	ret->title = Player_LoadTitle(file);
+	title = Player_LoadTitle(file);
+	if(title) addItemToMpdTag(ret, TAG_ITEM_TITLE, title);
 
 fail:
 	MikMod_Exit();
