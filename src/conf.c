@@ -35,6 +35,8 @@
 #define MAX_STRING_SIZE	MAXPATHLEN+80
 
 #define CONF_COMMENT		'#'
+#define CONF_BLOCK_BEGIN	"{"
+#define CONF_BLOCK_END		"}"
 
 #define CONF_REPEATABLE_MASK	0x01
 #define CONF_BLOCK_MASK		0x02
@@ -153,23 +155,124 @@ void initConf() {
 	registerConfigParam(CONF_ID3V1_ENCODING,		0,	0);
 }
 
-int readConf(char * file) {
+ConfigParam * readConfigBlock(FILE * fp, int * count, char * string, 
+		char * name, char * value) 
+{
+	char ** array;
+	int i;
+	int numberOfArgs;
+	int argsMinusComment;
+
+	while(myFgets(string,sizeof(MAX_STRING_SIZE),fp)) {
+		(*count)++;
+
+		numberOfArgs = buffer2array(string, &array);
+
+		for(i=0; i<numberOfArgs; i++) {
+			if(array[i][0] == CONF_COMMENT) break;
+		}
+
+		argsMinusComment = i;
+
+		if(0 == argsMinusComment) continue;
+
+		if(2 != argsMinusComment) {
+			ERROR("improperly formated config file at line %i:"
+					" %s\n", count, string);
+			exit(EXIT_FAILURE);
+		}
+
+		if(!findInList(configEntriesList, array[0], &voidPtr)) {
+			ERROR("unrecognized paramater in config file at line "
+					"%i: %s\n", count, string);
+			exit(EXIT_FAILURE);
+		}
+
+		entry = (ConfigEntry *) voidPtr;
+
+		if( !(entry->mask & CONF_REPEATABLE_MASK) &&
+			entry->configParamList->numberOfNodes)
+		{
+			param = entry->configParamList->firstNode->data;
+			ERROR("config paramter \"%s\" is first defined on line "
+					"%i and redefined on line %i\n",
+					array[0], param->line, count);
+			exit(EXIT_FAILURE);
+		}
+
+		if(entry->mask & CONF_BLOCK_MASK) {
+			param = readConfigBlock(fp, &count, string, array[0], array[1]);
+		}
+		else param = newConfigParam(array[1]);
+
+		addConfigParamToEntry(entry, param);
+
+		freeArgArray(&array, numberOfArgs);
+	}
+}
+
+void readConf(char * file) {
 	FILE * fp;
 	char string[MAX_STRING_SIZE+1];
 	char ** array;
 	int i;
 	int numberOfArgs;
+	int argsMinusComment;
 	int count = 0;
+	ConfigEntry * entry;
+	void * voidPtr;
+	ConfigParam * param;
 
 	if(!(fp=fopen(file,"r"))) {
 		ERROR("problems opening file %s for reading\n",file);
 		exit(EXIT_FAILURE);
 	}
 
-	while(myFgets(string,sizeof(string),fp)) {
+	while(myFgets(string,sizeof(MAX_STRING_SIZE),fp)) {
 		count++;
 
 		numberOfArgs = buffer2array(string, &array);
+
+		for(i=0; i<numberOfArgs; i++) {
+			if(array[i][0] == CONF_COMMENT) break;
+		}
+
+		argsMinusComment = i;
+
+		if(0 == argsMinusComment) continue;
+
+		if(2 != argsMinusComment) {
+			ERROR("improperly formated config file at line %i:"
+					" %s\n", count, string);
+			exit(EXIT_FAILURE);
+		}
+
+		if(!findInList(configEntriesList, array[0], &voidPtr)) {
+			ERROR("unrecognized paramater in config file at line "
+					"%i: %s\n", count, string);
+			exit(EXIT_FAILURE);
+		}
+
+		entry = (ConfigEntry *) voidPtr;
+
+		if( !(entry->mask & CONF_REPEATABLE_MASK) &&
+			entry->configParamList->numberOfNodes)
+		{
+			param = entry->configParamList->firstNode->data;
+			ERROR("config paramter \"%s\" is first defined on line "
+					"%i and redefined on line %i\n",
+					array[0], param->line, count);
+			exit(EXIT_FAILURE);
+		}
+
+		if(entry->mask & CONF_BLOCK_MASK) {
+			param = readConfigBlock(fp, &count, string, array[0], array[1]);
+		}
+		else {
+		}
+
+		freeArgArray(&array, numberOfArgs);
+	}
 }
 
 

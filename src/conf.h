@@ -71,7 +71,7 @@ typedef struct _ConfigParam {
 
 void initConf();
 
-int readConf(char * file);
+void readConf(char * file);
 
 /* don't free the returned value
    set _last_ to NULL to get first entry */
