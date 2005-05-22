@@ -51,9 +51,20 @@ AudioOutput * newAudioOutput(ConfigParam * param) {
 	BlockParam * bp = NULL;
 	AudioOutputPlugin * plugin = NULL;
 
+	ret = malloc(sizeof(AudioOutput));
+	ret->convertAudioFormat = 0;
+	ret->sameInAndOutFormats = 0;
+	ret->convBuffer = NULL;
+	ret->convBufferLen = 0;
+	
+	memset(&ret->inAudioFormat, 0, sizeof(AudioFormat));
+	memset(&ret->outAudioFormat, 0, sizeof(AudioFormat));
+	memset(&ret->reqAudioFormat, 0, sizeof(AudioFormat));
+	
 	if(param) {
 		getBlockParam(AUDIO_OUTPUT_NAME, name, 1);
 		getBlockParam(AUDIO_OUTPUT_TYPE, type, 1);
+		getBlockParam(AUDIO_OUTPUT_FORMAT, format, 0);
 
 		if(!findInList(audioOutputPluginList, type, &data)) {
 			ERROR("couldn't find audio output plugin for type "
@@ -66,13 +77,12 @@ AudioOutput * newAudioOutput(ConfigParam * param) {
 	
 		if(format) {
 			ret->convertAudioFormat = 1;
-
 			if(0 != parseAudioConfig(&ret->reqAudioFormat, format))
 			{
-	        		ERROR("error parsing format at line %i\n", 
+				ERROR("error parsing format at line %i\n", 
 						bp->line);
-	        		exit(EXIT_FAILURE);
-	        	}
+				exit(EXIT_FAILURE);
+			}
 		}
 	}
 	else {
@@ -106,7 +116,6 @@ AudioOutput * newAudioOutput(ConfigParam * param) {
 		type = plugin->name;
 	}
 
-	ret = malloc(sizeof(AudioOutput));
 	ret->name = strdup(name);
 	ret->type = strdup(type);
 	ret->finishDriverFunc = plugin->finishDriverFunc;
@@ -117,14 +126,7 @@ AudioOutput * newAudioOutput(ConfigParam * param) {
 	ret->sendMetdataFunc = plugin->sendMetdataFunc;
 	ret->open = 0;
 
-	ret->convertAudioFormat = 0;
-	ret->sameInAndOutFormats = 0;
-	ret->convBuffer = NULL;
-	ret->convBufferLen = 0;
 
-	memset(&ret->inAudioFormat, 0, sizeof(AudioFormat));
-	memset(&ret->outAudioFormat, 0, sizeof(AudioFormat));
-	memset(&ret->reqAudioFormat, 0, sizeof(AudioFormat));
 
 	if(plugin->initDriverFunc(ret, param) != 0) {
 		free(ret);
@@ -151,16 +153,24 @@ int openAudioOutput(AudioOutput * audioOutput, AudioFormat * audioFormat) {
 	if(audioOutput->convertAudioFormat) {
 		copyAudioFormat(&audioOutput->outAudioFormat,
 				&audioOutput->reqAudioFormat);
+		/* if sample rate is not specified - use same rate as input */
+		if(!audioOutput->outAudioFormat.sampleRate) {
+			audioOutput->outAudioFormat.sampleRate = 
+				audioOutput->inAudioFormat.sampleRate;
+		}
 	}
 	else {
 		copyAudioFormat(&audioOutput->outAudioFormat, 
 				&audioOutput->inAudioFormat);
+		/* default to 16 bit integer samples */
+		audioOutput->outAudioFormat.bits = 16;
+		audioOutput->outAudioFormat.floatSamples = 0;
 	}
-
+	
 	ret = audioOutput->openDeviceFunc(audioOutput);
 
 	if(cmpAudioFormat(&audioOutput->inAudioFormat, 
-			  &audioOutput->outAudioFormat) == 0)
+			&audioOutput->outAudioFormat) == 0)
 	{
 		audioOutput->sameInAndOutFormats = 1;
 	}

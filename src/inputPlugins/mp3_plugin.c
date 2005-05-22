@@ -53,8 +53,8 @@
 #define DECODE_CONT		-1
 #define DECODE_OK		0
 
-#define MUTEFRAME_SKIP          1
-#define MUTEFRAME_SEEK          2
+#define MUTEFRAME_SKIP		1
+#define MUTEFRAME_SEEK		2
 
 /* this is stolen from mpg321! */
 struct audio_dither {
@@ -74,7 +74,7 @@ signed long audio_linear_dither(unsigned int bits, mad_fixed_t sample, struct au
 		MIN = -MAD_F_ONE,
 		MAX =  MAD_F_ONE - 1
 	};
-
+	
 	sample += dither->error[0] - dither->error[1] + dither->error[2];
 
 	dither->error[2] = dither->error[1];
@@ -97,7 +97,7 @@ signed long audio_linear_dither(unsigned int bits, mad_fixed_t sample, struct au
 			sample = MAX;
 	}
 	else if (output < MIN) {
-	        output = MIN;
+		output = MIN;
 
 		if (sample < MIN)
 			sample = MIN;
@@ -148,11 +148,11 @@ void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream) {
 	data->times = NULL;
 	data->currentFrame = 0;
 	data->flush = 1;
-        data->inStream = inStream;
+	data->inStream = inStream;
 	memset(&(data->dither), 0, sizeof(struct audio_dither));
 
 	mad_stream_init(&data->stream);
-        data->stream.options |= MAD_OPTION_IGNORECRC;
+	data->stream.options |= MAD_OPTION_IGNORECRC;
 	mad_frame_init(&data->frame);
 	mad_synth_init(&data->synth);
 	mad_timer_reset(&data->timer);
@@ -160,8 +160,8 @@ void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream) {
 
 int seekMp3InputBuffer(mp3DecodeData * data, long offset) {
 	if(seekInputStream(data->inStream,offset,SEEK_SET) < 0) {
-                return -1;
-        }
+		return -1;
+	}
 
 	mad_stream_buffer(&data->stream,data->readBuffer,0);
 	(data->stream).error = 0;
@@ -172,7 +172,7 @@ int seekMp3InputBuffer(mp3DecodeData * data, long offset) {
 int fillMp3InputBuffer(mp3DecodeData * data) {
 	size_t readSize;
 	size_t remaining;
-        size_t readed;
+	size_t readed;
 	unsigned char * readStart;
 
 	if((data->stream).next_frame!=NULL) {
@@ -354,57 +354,57 @@ int decodeNextFrame(mp3DecodeData * data) {
 # define XING_MAGIC	(('X' << 24) | ('i' << 16) | ('n' << 8) | 'g')
 
 struct xing {
-  	long flags;			/* valid fields (see below) */
-  	unsigned long frames;		/* total number of frames */
-  	unsigned long bytes;		/* total number of bytes */
-  	unsigned char toc[100];		/* 100-point seek table */
-  	long scale;			/* ?? */
+	long flags;			/* valid fields (see below) */
+	unsigned long frames;		/* total number of frames */
+	unsigned long bytes;		/* total number of bytes */
+	unsigned char toc[100];		/* 100-point seek table */
+	long scale;			/* ?? */
 };
 
 enum {
-  	XING_FRAMES = 0x00000001L,
-  	XING_BYTES  = 0x00000002L,
-  	XING_TOC    = 0x00000004L,
-  	XING_SCALE  = 0x00000008L
+	XING_FRAMES = 0x00000001L,
+	XING_BYTES  = 0x00000002L,
+	XING_TOC    = 0x00000004L,
+	XING_SCALE  = 0x00000008L
 };
 
 int parse_xing(struct xing *xing, struct mad_bitptr ptr, unsigned int bitlen)
 {
-  	if (bitlen < 64 || mad_bit_read(&ptr, 32) != XING_MAGIC) goto fail;
+	if (bitlen < 64 || mad_bit_read(&ptr, 32) != XING_MAGIC) goto fail;
 
-  	xing->flags = mad_bit_read(&ptr, 32);
-  	bitlen -= 64;
+	xing->flags = mad_bit_read(&ptr, 32);
+	bitlen -= 64;
 
-  	if (xing->flags & XING_FRAMES) {
-    		if (bitlen < 32) goto fail;
-    		xing->frames = mad_bit_read(&ptr, 32);
-    		bitlen -= 32;
-  	}
+	if (xing->flags & XING_FRAMES) {
+		if (bitlen < 32) goto fail;
+		xing->frames = mad_bit_read(&ptr, 32);
+		bitlen -= 32;
+	}
 
-  	if (xing->flags & XING_BYTES) {
-    		if (bitlen < 32) goto fail;
-    		xing->bytes = mad_bit_read(&ptr, 32);
-    		bitlen -= 32;
-  	}
+	if (xing->flags & XING_BYTES) {
+		if (bitlen < 32) goto fail;
+		xing->bytes = mad_bit_read(&ptr, 32);
+		bitlen -= 32;
+	}
 
-  	if (xing->flags & XING_TOC) {
-    		int i;
-    		if (bitlen < 800) goto fail;
-      		for (i = 0; i < 100; ++i) xing->toc[i] = mad_bit_read(&ptr, 8);
-    		bitlen -= 800;
-  	}
+	if (xing->flags & XING_TOC) {
+		int i;
+		if (bitlen < 800) goto fail;
+		for (i = 0; i < 100; ++i) xing->toc[i] = mad_bit_read(&ptr, 8);
+		bitlen -= 800;
+	}
 
-  	if (xing->flags & XING_SCALE) {
-    		if (bitlen < 32) goto fail;
-    		xing->scale = mad_bit_read(&ptr, 32);
-    		bitlen -= 32;
-  	}
+	if (xing->flags & XING_SCALE) {
+		if (bitlen < 32) goto fail;
+		xing->scale = mad_bit_read(&ptr, 32);
+		bitlen -= 32;
+	}
 
  	 return 1;
 
 fail:
-  	xing->flags = 0;
-  	return 0;
+	xing->flags = 0;
+	return 0;
 }
 
 int decodeFirstFrame(mp3DecodeData * data, DecoderControl * dc,
@@ -479,11 +479,11 @@ void mp3DecodeDataFinalize(mp3DecodeData * data) {
 
 /* this is primarily used for getting total time for tags */
 int getMp3TotalTime(char * file) {
-        InputStream inStream;
+	InputStream inStream;
 	mp3DecodeData data;
 	int ret;
 
-        if(openInputStream(&inStream, file) < 0) return -1;
+	if(openInputStream(&inStream, file) < 0) return -1;
 	initMp3DecodeData(&data,&inStream);
 	if(decodeFirstFrame(&data, NULL, NULL)<0) ret = -1;
 	else ret = data.totalTime+0.5;
@@ -536,18 +536,18 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 	data->elapsedTime = ((float)mad_timer_count(data->timer,MAD_UNITS_MILLISECONDS))/1000;
 
 	switch(data->muteFrame) {
-        case MUTEFRAME_SKIP:
+	case MUTEFRAME_SKIP:
 		data->muteFrame = 0;
-                break;
-        case MUTEFRAME_SEEK:
+		break;
+	case MUTEFRAME_SEEK:
 		if(dc->seekWhere<=data->elapsedTime) {
-                        data->outputPtr = data->outputBuffer;
-                        clearOutputBuffer(cb);
+			data->outputPtr = data->outputBuffer;
+			clearOutputBuffer(cb);
 			data->muteFrame = 0;
 			dc->seek = 0;
 		}
-                break;
-        default:
+		break;
+	default:
 		mad_synth_frame(&data->synth,&data->frame);
 
 		if(data->inStream->metaTitle) {
@@ -566,8 +566,8 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 		}
 
 		for(i=0;i<(data->synth).pcm.length;i++) {
+#ifdef MPD_FIXED_POINT
 			mpd_sint16 * sample;
-
 			sample = (mpd_sint16 *)data->outputPtr;	
 			*sample = (mpd_sint16) audio_linear_dither(16,
 					(data->synth).pcm.samples[0][i],
@@ -581,27 +581,41 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 						&(data->dither));
 				data->outputPtr+=2;
 			}
+#else
+			mpd_float32 * sample;
+			sample = (mpd_float32 *)data->outputPtr;
+			*sample = (mpd_float32) mad_f_todouble(
+					(data->synth).pcm.samples[0][i]);
+			data->outputPtr+=4;
+
+			if(MAD_NCHANNELS(&(data->frame).header)==2) {
+				sample = (mpd_sint16 *)data->outputPtr;	
+				*sample = (mpd_float32) mad_f_todouble(
+					(data->synth).pcm.samples[0][i]);
+				data->outputPtr+=4;
+			}
+#endif
 
 			if(data->outputPtr>=data->outputBufferEnd) {
-                                long ret;
-                                ret = sendDataToOutputBuffer(cb,
-                                                data->inStream,
-                                                dc,
-                                                data->inStream->seekable,
-                                                data->outputBuffer,
-                                                data->outputPtr-
+				long ret;
+				ret = sendDataToOutputBuffer(cb,
+						data->inStream,
+						dc,
+						data->inStream->seekable,
 						data->outputBuffer,
-                                                data->elapsedTime,
-                                                data->bitRate/1000,
+						data->outputPtr-
+						data->outputBuffer,
+						data->elapsedTime,
+						data->bitRate/1000,
 						NULL);
-                                if(ret == OUTPUT_BUFFER_DC_STOP) {
+				if(ret == OUTPUT_BUFFER_DC_STOP) {
 					data->flush = 0;
-                                        return DECODE_BREAK;
-                                }
+					return DECODE_BREAK;
+				}
 
-                                data->outputPtr = data->outputBuffer;
+				data->outputPtr = data->outputBuffer;
 
-                                if(ret == OUTPUT_BUFFER_DC_SEEK) break;
+				if(ret == OUTPUT_BUFFER_DC_SEEK) break;
 			}
 		}
 
@@ -617,20 +631,20 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 			if(i<data->highestFrame) {
 				if(seekMp3InputBuffer(data,
 						data->frameOffset[i]) == 0)
-                                {
-                                        data->outputPtr = data->outputBuffer;
-                                        clearOutputBuffer(cb);
-				        data->currentFrame = i;
-                                }
-                                else dc->seekError = 1;
+				{
+					data->outputPtr = data->outputBuffer;
+					clearOutputBuffer(cb);
+					data->currentFrame = i;
+				}
+				else dc->seekError = 1;
 				data->muteFrame = 0;
 				dc->seek = 0;
 			}
 		}
-                else if(dc->seek && !data->inStream->seekable) {
-                        dc->seek = 0;
-                        dc->seekError = 1;
-                }
+		else if(dc->seek && !data->inStream->seekable) {
+			dc->seek = 0;
+			dc->seekError = 1;
+		}
 	}
 
 	while(1) {
@@ -653,7 +667,13 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 }
 
 void initAudioFormatFromMp3DecodeData(mp3DecodeData * data, AudioFormat * af) {
+#ifdef MPD_FIXED_POINT
 	af->bits = 16;
+	af->floatSamples = 0;
+#else
+	af->bits = 32;
+	af->floatSamples = 1;
+#endif
 	af->sampleRate = (data->frame).header.samplerate;
 	af->channels = MAD_NCHANNELS(&(data->frame).header);
 }
@@ -665,19 +685,19 @@ int mp3_decode(OutputBuffer * cb, DecoderControl * dc, InputStream * inStream) {
 	if(openMp3FromInputStream(inStream, &data, dc, &tag) < 0) {
 		closeInputStream(inStream);
 		if(!dc->stop) {
-                        ERROR("Input does not appear to be a mp3 bit stream.\n");
-		        return -1;
-                }
-                else {
-                        dc->state = DECODE_STATE_STOP;
-                        dc->stop = 0;
-                }
-                return 0;
+			ERROR("Input does not appear to be a mp3 bit stream.\n");
+			return -1;
+		}
+		else {
+			dc->state = DECODE_STATE_STOP;
+			dc->stop = 0;
+		}
+		return 0;
 	}
 
 	initAudioFormatFromMp3DecodeData(&data, &(dc->audioFormat));
-        getOutputAudioFormat(&(dc->audioFormat), &(cb->audioFormat));
-        
+	getInternalAudioFormat(&(dc->audioFormat), &(cb->audioFormat));
+
 	dc->totalTime = data.totalTime;
 
 	if(inStream->metaTitle) {
@@ -716,21 +736,21 @@ int mp3_decode(OutputBuffer * cb, DecoderControl * dc, InputStream * inStream) {
 
 	while(mp3Read(&data,cb,dc)!=DECODE_BREAK);
 	/* send last little bit if not dc->stop */
-	if(!dc->stop && data.outputPtr!=data.outputBuffer && data.flush)  {
-        	sendDataToOutputBuffer(cb, NULL, dc, 
-                                data.inStream->seekable,
-                                data.outputBuffer,
-                                data.outputPtr-data.outputBuffer,
-                                data.elapsedTime,data.bitRate/1000,
+	if(!dc->stop && data.outputPtr!=data.outputBuffer && data.flush) {
+		sendDataToOutputBuffer(cb, NULL, dc, 
+				data.inStream->seekable,
+				data.outputBuffer,
+				data.outputPtr-data.outputBuffer,
+				data.elapsedTime,data.bitRate/1000,
 				NULL);
 	}
 
 	closeInputStream(inStream);
 
 	if(dc->seek && data.muteFrame == MUTEFRAME_SEEK) {
-                clearOutputBuffer(cb);
-                dc->seek = 0;
-        }
+		clearOutputBuffer(cb);
+		dc->seek = 0;
+	}
 
 	flushOutputBuffer(cb);
 	mp3DecodeDataFinalize(&data);

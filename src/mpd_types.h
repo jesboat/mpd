@@ -40,4 +40,6 @@ typedef unsigned long 	mpd_uint32;
 typedef signed long	mpd_sint32;
 #endif
 
+typedef float		mpd_float32;
+
 #endif

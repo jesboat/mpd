@@ -129,6 +129,7 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 	int chunkpos = 0;
 	long bitRate = 0;
 	mpd_sint16 * s16 = (mpd_sint16 *) chunk;
+	float * f32 = (float *) chunk;
 	unsigned long samplePos = 0;
 	mpc_uint32_t vbrUpdateAcc;
 	mpc_uint32_t vbrUpdateBits;
@@ -176,12 +177,12 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 	
 	dc->totalTime = mpc_streaminfo_get_length(&info);
 
-	dc->audioFormat.bits = 16;
+	dc->audioFormat.bits = 32;
+	dc->audioFormat.floatSamples = 1;
 	dc->audioFormat.channels = info.channels;
 	dc->audioFormat.sampleRate = info.sample_freq;
 	
-	getOutputAudioFormat(&(dc->audioFormat), &(cb->audioFormat));
-
+	getInternalAudioFormat(&(dc->audioFormat), &(cb->audioFormat));
 	replayGainInfo = newReplayGainInfo();
 	replayGainInfo->albumGain = info.gain_album * 0.01;
 	replayGainInfo->albumPeak = info.peak_album / 32767.0;
@@ -194,15 +195,15 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 		if(dc->seek) {
 			samplePos = dc->seekWhere * dc->audioFormat.sampleRate;
 			if(mpc_decoder_seek_sample(&decoder, samplePos)) {
-                                clearOutputBuffer(cb);
-			        chunkpos = 0;
-                        }
-                        else dc->seekError = 1;
+				clearOutputBuffer(cb);
+				chunkpos = 0;
+			}
+			else dc->seekError = 1;
 			dc->seek = 0;
 		}
 
 		ret = mpc_decoder_decode(&decoder, sample_buffer,
-				         &vbrUpdateAcc, &vbrUpdateBits);
+				&vbrUpdateAcc, &vbrUpdateBits);
 
 		if(ret <= 0 || dc->stop ) {
 			eof = 1;
@@ -215,28 +216,33 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 		ret *= 2;
 
 		for(i = 0; i < ret; i++) {
-			/* 16 bit audio again */
+			/* 16 bit audio again 
 			*s16 = convertSample(sample_buffer[i]);
 			chunkpos += 2;
-			s16++;
-
-		       	if(chunkpos >= MPC_CHUNK_SIZE) {
-                                time = ((float)samplePos) /
-				       dc->audioFormat.sampleRate;
+			s16++; */
+			
+			*f32 = (float)(sample_buffer[i]);
+			chunkpos += 4;
+			f32++;
+			
+			if(chunkpos >= MPC_CHUNK_SIZE) {
+				time = ((float)samplePos) /
+					dc->audioFormat.sampleRate;
 
 				bitRate = vbrUpdateBits * 
-					  dc->audioFormat.sampleRate / 
-					  (MPC_CHUNK_SIZE);
-				
+					dc->audioFormat.sampleRate / 
+					(MPC_CHUNK_SIZE);
+
 				sendDataToOutputBuffer(cb, inStream, dc, 
 						inStream->seekable,  
-                                        	chunk, chunkpos, 
+						chunk, chunkpos, 
 						time,
 						bitRate,
 						replayGainInfo);
 
 				chunkpos = 0;
 				s16 = (mpd_sint16 *)chunk;
+				f32 = (float*)chunk;
 				if(dc->stop) {
 					eof = 1;
 					break;

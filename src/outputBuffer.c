@@ -62,19 +62,21 @@ void flushOutputBuffer(OutputBuffer * cb) {
 	}
 }
 
-int sendDataToOutputBuffer(OutputBuffer * cb, InputStream * inStream,  
-                DecoderControl * dc, int seekable, char * dataIn, 
-                long dataInLen, float time, mpd_uint16 bitRate,
+int sendDataToOutputBuffer(OutputBuffer * cb, InputStream * inStream,
+		DecoderControl * dc, int seekable, char * dataIn, 
+		long dataInLen, float time, mpd_uint16 bitRate,
 		ReplayGainInfo * replayGainInfo)
 {
-        mpd_uint16 dataToSend;
+	mpd_uint16 dataToSend;
 	mpd_uint16 chunkLeft;
 	char * data;
 	size_t datalen;
 	static char * convBuffer = NULL;
 	static long convBufferLen = 0;
 
-	if(memcmp(&(cb->audioFormat),&(dc->audioFormat),sizeof(AudioFormat))==0)
+	/* make sure the data is in the internal format */
+	getInternalAudioFormat(&(dc->audioFormat), &(cb->audioFormat));
+	if(cmpAudioFormat(&(dc->audioFormat), &(cb->audioFormat)) == 0)
 	{
 		data = dataIn;
 		datalen = dataInLen;
@@ -91,34 +93,34 @@ int sendDataToOutputBuffer(OutputBuffer * cb, InputStream * inStream,
 		pcm_convertAudioFormat(&(dc->audioFormat), dataIn, dataInLen,
 				&(cb->audioFormat),data);
 	}
-
+	
 	if(replayGainInfo) {
 		doReplayGain(replayGainInfo, data, datalen, &cb->audioFormat);
 	}
 
-        while(datalen) {
+	while(datalen) {
 		if(currentChunk != cb->end) {
-	        	int next = cb->end+1;
-	        	if(next>=buffered_chunks) {
-		       		next = 0;
-	        	}
-	        	while(cb->begin==next && !dc->stop) {
-                                if(dc->seek) {
-                                        if(seekable) {
-                                                return OUTPUT_BUFFER_DC_SEEK;
-                                        }
-                                        else {
-                                                dc->seekError = 1;
-                                                dc->seek = 0;
-                                        }
-                                }
-                                if(!inStream || 
-                                        bufferInputStream(inStream) <= 0)
-                                {
-		        	        my_usleep(10000);
-                                }
+			int next = cb->end+1;
+			if(next>=buffered_chunks) {
+				next = 0;
 			}
-	        	if(dc->stop) return OUTPUT_BUFFER_DC_STOP;
+			while(cb->begin==next && !dc->stop) {
+				if(dc->seek) {
+					if(seekable) {
+						return OUTPUT_BUFFER_DC_SEEK;
+					}
+					else {
+						dc->seekError = 1;
+						dc->seek = 0;
+					}
+				}
+				if(!inStream || 
+						bufferInputStream(inStream) <= 0)
+				{
+					my_usleep(10000);
+				}
+			}
+			if(dc->stop) return OUTPUT_BUFFER_DC_STOP;
 
 			currentChunk = cb->end;
 			cb->chunkSize[currentChunk] = 0;
@@ -127,24 +129,24 @@ int sendDataToOutputBuffer(OutputBuffer * cb, InputStream * inStream,
 				cb->metaChunk[currentChunk] = currentMetaChunk;
 			}
 			else cb->metaChunk[currentChunk] = -1;
-	        	cb->bitRate[currentChunk] = bitRate;
-	        	cb->times[currentChunk] = time;
+			cb->bitRate[currentChunk] = bitRate;
+			cb->times[currentChunk] = time;
 		}
 
 		chunkLeft = CHUNK_SIZE-cb->chunkSize[currentChunk];
-                dataToSend = datalen > chunkLeft ? chunkLeft : datalen;
+		dataToSend = datalen > chunkLeft ? chunkLeft : datalen;
 
-	        memcpy(cb->chunks+currentChunk*CHUNK_SIZE+
-			cb->chunkSize[currentChunk],
-			data, dataToSend);
-	        cb->chunkSize[currentChunk]+= dataToSend;
-                datalen-= dataToSend;
-                data+= dataToSend;
+		memcpy(cb->chunks+currentChunk*CHUNK_SIZE+
+				cb->chunkSize[currentChunk],
+				data, dataToSend);
+		cb->chunkSize[currentChunk]+= dataToSend;
+		datalen-= dataToSend;
+		data+= dataToSend;
 
 		if(cb->chunkSize[currentChunk] == CHUNK_SIZE) {
 			flushOutputBuffer(cb);
 		}
-        }
+	}
 
 	return 0;
 }

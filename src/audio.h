@@ -34,11 +34,14 @@ typedef struct _AudioFormat {
 	volatile mpd_sint8 channels;
 	volatile mpd_uint32 sampleRate;
 	volatile mpd_sint8 bits;
+	volatile mpd_sint8 floatSamples;
 } AudioFormat;
 
 void copyAudioFormat(AudioFormat * dest, AudioFormat * src);
 
 int cmpAudioFormat(AudioFormat * dest, AudioFormat * src);
+
+void getInternalAudioFormat(AudioFormat * inFormat, AudioFormat * outFormat);
 
 void getOutputAudioFormat(AudioFormat * inFormat, AudioFormat * outFormat);
 

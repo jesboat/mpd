@@ -104,22 +104,44 @@ void initAudioDriver() {
 		}
 	} while((param = getNextConfigParam(CONF_AUDIO_OUTPUT, param)));
 }
+void getInternalAudioFormat(AudioFormat * inAudioFormat, 
+		AudioFormat * outAudioFormat)
+{
+	/*TODO add #define for integer version */
+	
+	/* take the input format... */
+	copyAudioFormat(outAudioFormat,inAudioFormat);
+#ifdef MPD_FIXED_POINT
+	/* .. change to 16 bit integer */
+	outAudioFormat->bits = 16;
+	outAudioFormat->floatSamples = 0;
+#else
+	/* .. change to 32 bit float */
+	outAudioFormat->bits = 32;
+	outAudioFormat->floatSamples = 1;
+#endif
+	/* if forced output sample rate - use that as internal sample rate */
+	if(audio_configFormat && (audio_configFormat->sampleRate != 0))
+		outAudioFormat->sampleRate = audio_configFormat->sampleRate;
+}
 
 void getOutputAudioFormat(AudioFormat * inAudioFormat, 
-                AudioFormat * outAudioFormat)
+		AudioFormat * outAudioFormat)
 {
-        if(audio_configFormat) {
-                copyAudioFormat(outAudioFormat,audio_configFormat);
-        }
-        else copyAudioFormat(outAudioFormat,inAudioFormat);
+	/* this function is deprecated
+	 * for plugins who still use this we copy the format from in to out 
+	 * these plugin don't know about the floatSample flag so we set it 
+	 * for them - in both in and out */ 
+	inAudioFormat->floatSamples = 0;
+	copyAudioFormat(outAudioFormat,inAudioFormat);
 }
 
 void initAudioConfig() {
-        ConfigParam * param = getConfigParam(CONF_AUDIO_OUTPUT_FORMAT);
+	ConfigParam * param = getConfigParam(CONF_AUDIO_OUTPUT_FORMAT);
 
-        if(NULL == param || NULL == param->value) return;
+	if(NULL == param || NULL == param->value) return;
 
-        audio_configFormat = malloc(sizeof(AudioFormat));
+	audio_configFormat = malloc(sizeof(AudioFormat));
 
 	if(0 != parseAudioConfig(audio_configFormat, param->value)) {
 		ERROR("error parsing \"%s\" at line %i\n", 
@@ -129,73 +151,77 @@ void initAudioConfig() {
 }
 
 int parseAudioConfig(AudioFormat * audioFormat, char * conf) {
-        char * test;
+	char * test;
+	memset(audioFormat,0,sizeof(AudioFormat));
+	audioFormat->sampleRate = strtol(conf,&test,10);
 
-        memset(audioFormat,0,sizeof(AudioFormat));
-
-        audioFormat->sampleRate = strtol(conf,&test,10);
-       
-        if(*test!=':') {
-                ERROR("error parsing audio output format: %s\n",conf);
+	if(*test!=':') {
+		ERROR("error parsing audio output format: %s\n",conf);
 		return -1;
-        }
- 
-        /*switch(audioFormat->sampleRate) {
-        case 48000:
-        case 44100:
-        case 32000:
-        case 16000:
-                break;
-        default:
-                ERROR("sample rate %i can not be used for audio output\n",
-                        (int)audioFormat->sampleRate);
-		return -1
-        }*/
+	}
 
-        if(audioFormat->sampleRate <= 0) {
-                ERROR("sample rate %i is not >= 0\n",
-                                (int)audioFormat->sampleRate);
-		return -1;
-        }
+	/*switch(audioFormat->sampleRate) {
+	case 48000:
+	case 44100:
+	case 32000:
+	case 16000:
+	break;
+	default:
+	ERROR("sample rate %i can not be used for audio output\n",
+	(int)audioFormat->sampleRate);
+	return -1
+	}*/
 
-        audioFormat->bits = strtol(test+1,&test,10);
-        
-        if(*test!=':') {
-                ERROR("error parsing audio output format: %s\n",conf);
+	/* a sample rate of 0 == "same as input" */
+	if(audioFormat->sampleRate < 0) {
+		ERROR("sample rate %i is not >= 0\n",
+				(int)audioFormat->sampleRate);
 		return -1;
-        }
+	}
 
-        switch(audioFormat->bits) {
-        case 16:
-                break;
-        default:
-                ERROR("bits %i can not be used for audio output\n",
-                        (int)audioFormat->bits);
-		return -1;
-        }
+	audioFormat->bits = strtol(test+1,&test,10);
 
-        audioFormat->channels = strtol(test+1,&test,10);
-        
-        if(*test!='\0') {
-                ERROR("error parsing audio output format: %s\n",conf);
+	if(*test!=':') {
+		ERROR("error parsing audio output format: %s\n",conf);
 		return -1;
-        }
+	}
 
-        switch(audioFormat->channels) {
-	case 1:
-        case 2:
-                break;
-        default:
-                ERROR("channels %i can not be used for audio output\n",
-                        (int)audioFormat->channels);
+	switch(audioFormat->bits) {
+		case 32:
+		case 16:
+		case  8:
+			break;
+		default:
+			ERROR("bits %i can not be used for audio output\n",
+					(int)audioFormat->bits);
+			return -1;
+	}
+
+	audioFormat->channels = strtol(test+1,&test,10);
+
+	if(*test!='\0') {
+		ERROR("error parsing audio output format: %s\n",conf);
 		return -1;
-        }
+	}
+
+	switch(audioFormat->channels) {
+		case 1:
+		case 2:
+			break;
+		default:
+			ERROR("channels %i can not be used for audio output\n",
+					(int)audioFormat->channels);
+			return -1;
+	}
+	
+	/* audioFormat is never float */
+	audioFormat->floatSamples = 0;
 
 	return 0;
 }
 
 void finishAudioConfig() {
-        if(audio_configFormat) free(audio_configFormat);
+	if(audio_configFormat) free(audio_configFormat);
 }
 
 void finishAudioDriver() {

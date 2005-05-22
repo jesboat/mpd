@@ -107,13 +107,20 @@ void freeReplayGainInfo(ReplayGainInfo * info) {
 void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize, 
 		AudioFormat * format)
 {
-	mpd_sint16 * buffer16;
-	mpd_sint8 * buffer8;
-	mpd_sint32 temp32;
+	float * bufferFloat = (float *)buffer;
+	mpd_sint32 * buffer32 = (mpd_sint32 *)buffer;
+	mpd_sint16 * buffer16 = (mpd_sint16 *)buffer;
+	mpd_sint8 * buffer8 = (mpd_sint8 *)buffer;
 	float scale;
+	mpd_sint32 iScale;
 
 	if(replayGainState == REPLAYGAIN_OFF || !info) return;
 
+/* DEBUG */
+	if(bufferSize % (format->channels * 4))
+			ERROR("doReplayGain: bufferSize=%i not multipel of %i\n",
+				bufferSize, format->channels);
+/* /DEBUG */
 	if(info->scale < 0) {
 		switch(replayGainState) {
 		case REPLAYGAIN_TRACK:
@@ -127,35 +134,78 @@ void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize,
 		}
 	}
 
-	if(info->scale <= 1.01 && info->scale >= 0.99) return;
+#ifdef MPD_FIXED_POINT
+	if(format->bits!=16 || format.channels!=2 || format->floatSamples) {
+		ERROR("Only 16 bit stereo is supported in fixed point mode!\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	/* If the volume change is very small then we hardly here the
+	 * difference anyway, and if the change is positiv then clipping
+	 * may occur. We don't want that. */
+	if(info->scale > 0.99) return;
 
-	buffer16 = (mpd_sint16 *)buffer;
-	buffer8 = (mpd_sint8 *)buffer;
+	iScale = scale * 32768.0; /* << 15 */
+	
+	while(bufferSize) {
+		sample32 = (mpd_sint32)(*buffer16) * iScale;
+		/* no need to check boundaries - we only lower the volume*/
+		/* It would be good to add some kind of dither here... TODO?! */
+		*buffer16 = (sample32 >> 15);
+		bufferSize -= 2;
+	}
+	return;
+#else
 
 	scale = info->scale;
-
-	switch(format->bits) {
-		case 16:
-			while(bufferSize > 0){
-				temp32 = *buffer16;
-				temp32 *= scale;
-				*buffer16 = temp32>32767 ? 32767 : 
-					(temp32<-32768 ? -32768 : temp32);
-				buffer16++;
-				bufferSize-=2;
+	
+	if(format->floatSamples) {
+		if(format->bits==32) {
+			while(bufferSize) {
+				*bufferFloat *= scale;
+				bufferFloat++;
+				bufferSize-=4;
 			}
-			break;
-		case 8:
-			while(bufferSize>0){
-				temp32 = *buffer8;
-				temp32 *= scale;
-				*buffer8 = temp32>127 ? 127 : 
-					(temp32<-128 ? -128 : temp32);
-				buffer8++;
-				bufferSize--;
-			}
-			break;
-		default:
-			ERROR("%i bits not supported by doReplaygain!\n", format->bits);
+			return;
+		}
+		else {
+			ERROR("%i bit float not supported by doReplaygain!\n",
+					format->bits);
+			exit(EXIT_FAILURE);
+		}
 	}
+	
+	switch(format->bits) {
+	case 32:
+		while(bufferSize) {
+			double sample = (double)(*buffer32) * scale;
+			if(sample>2147483647.0)	*buffer32 = 2147483647;
+			else if(sample<-2147483647.0) *buffer32 = -2147483647;
+			else *buffer32 = rintf(sample);
+			*buffer32++;
+			bufferSize-=4;
+		}
+		break;
+	case 16:
+		while(bufferSize){
+			float sample = *buffer16 * scale;
+			*buffer16 = sample>32767.0 ? 32767 : 
+				(sample<-32768.0 ? -32768 : rintf(sample));
+			buffer16++;
+			bufferSize-=2;
+		}
+		break;
+	case 8:
+		while(bufferSize){
+			float sample = *buffer8 * scale;
+			*buffer8 = sample>127.0 ? 127 : 
+				(sample<-128.0 ? -128 : rintf(sample));
+			buffer8++;
+			bufferSize--;
+		}
+		break;
+	default:
+		ERROR("%i bits not supported by doReplaygain!\n", format->bits);
+	}
+#endif
 }

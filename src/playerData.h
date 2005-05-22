@@ -28,7 +28,8 @@
 #include "outputBuffer.h"
 
 /* pick 1020 since its devisible for 8,16,24, and 32-bit audio */
-#define CHUNK_SIZE		1020
+/* changed (by ancl) to 2016 since that is divisible also by all in stereo*/
+#define CHUNK_SIZE		2016
 
 extern int buffered_before_play;
 extern int buffered_chunks;

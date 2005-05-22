@@ -474,7 +474,7 @@ void decodeParent(PlayerControl * pc, DecoderControl * dc, OutputBuffer * cb) {
 	int currentChunkSent = 1;
 	int end;
 	int next = -1;
-
+	
 	memset(silence,0,CHUNK_SIZE);
 
 	if(waitOnDecode(pc,dc,cb,&decodeWaitedOn)<0) return;
