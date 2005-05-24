@@ -77,27 +77,22 @@ void pcm_convertToIntWithDither(int bits,
 	mpd_fixed_t max = (1L << (fracBits)) - 1;
 	mpd_fixed_t min = ~0L << (fracBits);
 	mpd_fixed_t sample;
-ERROR("conv: max=%x, min=%x \n", max, min);
-//buffer += samples - 25;
-//samples = 20;
 	while(samples--) {
-//ERROR("*buffer=%x, mask=%x\n", *buffer, mask);
 		sample = *buffer + (ditherRandom & mask);
 		if(sample > max || sample < min)
 			ERROR("clipping! %x\n", sample);
 		sample = sample>max ? max : (sample<min ? min : sample);
 		*buffer = sample >> (fracBits - bits + 1);
-//ERROR("sample=%x, *buffer=%x, dither=%x\n", sample, *buffer, ditherRandom & mask);
 		buffer++;
 		ditherRandom = prng(ditherRandom);
 	}
-//exit(EXIT_FAILURE);
 }
 
 
 char *pcm_convertSampleRate(AudioFormat *inFormat, char *inBuffer, 
 		size_t inFrames, AudioFormat *outFormat, size_t outFrames) 
 {
+	return NULL;
 	/* Input must be float32, 1 or 2 channels */ 
 	/* Interpolate using a second order polynomial */
 	/* k0 = s0			*
@@ -290,13 +285,11 @@ void pcm_volumeChange(char * buffer, int bufferSize, AudioFormat * format,
 	iScale = (mpd_uint32)(volume * 256) / 1000;
 	shift = 8;
 	
-ERROR("vol1: iScale=%i, shift=%i, volume=%i\n", iScale, shift, volume);
 	/* lower shifting value as much as possible */
 	while(!(iScale & 1) && shift) {
 		iScale >>= 1;
 		shift--;
 	}
-ERROR("vol2: iScale=%i, shift=%i\n", iScale, shift);
 	/* change */
 	if(iScale == 1) {
 		while(samples--)
@@ -372,10 +365,6 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 			inFormat->sampleRate;
 	const int outSamples = outFrames * outFormat->channels;
 	
-ERROR("0 inSamples=%i in:bits=%i, fracBits=%i\n", 
-	inSamples, inFormat->bits, inFormat->fracBits);
-ERROR("                out:bits=%i, fracBits=%i\n", 
-	outFormat->bits, outFormat->fracBits); 	
 	/* make sure convBuffer is big enough for 2 channels of 32 bit samples */
 	dataLen = inFrames << 3;
 	if(dataLen > convBufferLength) {
