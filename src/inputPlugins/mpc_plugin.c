@@ -82,17 +82,14 @@ static mpc_int32_t mpc_getsize_cb(void * vdata) {
 	return data->inStream->size;
 }
 
-inline mpd_sint16 convertSample(MPC_SAMPLE_FORMAT sample) {
+inline mpd_fixed_t convertSample(MPC_SAMPLE_FORMAT sample) {
 	/* only doing 16-bit audio for now */
 	mpd_sint32 val;
 
-        const int clip_min = -1 << (16 - 1);
-        const int clip_max = (1 << (16 - 1)) - 1;
-	
 #ifdef MPC_FIXED_POINT
-	const int shift = 16 - MPC_FIXED_POINT_SCALE_SHIFT;
+	const int shift = 28 - MPC_FIXED_POINT_SCALE_SHIFT;
 
-	if( ssample > 0 ) {
+	if( shift > 0 ) {
 		sample <<= shift;
 	}
 	else if ( shift < 0 ) {
@@ -100,15 +97,12 @@ inline mpd_sint16 convertSample(MPC_SAMPLE_FORMAT sample) {
 	}
 	val = sample;
 #else
-	const int float_scale = 1 << (16 - 1);
+	const mpd_sint32 float_scale = 1L << 28;
 
 	val = sample * float_scale;
 #endif
-
-	if( val < clip_min) val = clip_min;
-	else if ( val > clip_max ) val = clip_max;
-
 	return val;
+
 }
 
 static int mpc_decode(OutputBuffer * cb, DecoderControl * dc, 
@@ -129,7 +123,7 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 	int chunkpos = 0;
 	long bitRate = 0;
 	mpd_sint16 * s16 = (mpd_sint16 *) chunk;
-	float * f32 = (float *) chunk;
+	mpd_fixed_t * s32 = (mpd_fixed_t *) chunk;
 	unsigned long samplePos = 0;
 	mpc_uint32_t vbrUpdateAcc;
 	mpc_uint32_t vbrUpdateBits;
@@ -178,7 +172,7 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 	dc->totalTime = mpc_streaminfo_get_length(&info);
 
 	dc->audioFormat.bits = 32;
-	dc->audioFormat.floatSamples = 1;
+	dc->audioFormat.fracBits = 28;
 	dc->audioFormat.channels = info.channels;
 	dc->audioFormat.sampleRate = info.sample_freq;
 	
@@ -221,9 +215,9 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 			chunkpos += 2;
 			s16++; */
 			
-			*f32 = (float)(sample_buffer[i]);
+			*s32 = convertSample(sample_buffer[i]);
 			chunkpos += 4;
-			f32++;
+			s32++;
 			
 			if(chunkpos >= MPC_CHUNK_SIZE) {
 				time = ((float)samplePos) /
@@ -242,7 +236,7 @@ static int mpc_decode(OutputBuffer * cb, DecoderControl * dc,
 
 				chunkpos = 0;
 				s16 = (mpd_sint16 *)chunk;
-				f32 = (float*)chunk;
+				s32 = (mpd_fixed_t *)chunk;
 				if(dc->stop) {
 					eof = 1;
 					break;

@@ -57,7 +57,8 @@
 #define MUTEFRAME_SEEK		2
 
 /* this is stolen from mpg321! */
-struct audio_dither {
+
+/*struct audio_dither {
 	mad_fixed_t error[3];
 	mad_fixed_t random;
 };
@@ -108,7 +109,7 @@ signed long audio_linear_dither(unsigned int bits, mad_fixed_t sample, struct au
 	dither->error[0] = sample - output;
 
 	return output >> scalebits;
-}
+}*/
 /* end of stolen stuff from mpg321 */
 
 /* decoder stuff is based on madlld */
@@ -135,7 +136,7 @@ typedef struct _mp3DecodeData {
 	int flush;
 	unsigned long bitRate;
 	InputStream * inStream;
-	struct audio_dither dither;
+	/*struct audio_dither dither;*/
 } mp3DecodeData;
 
 void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream) {
@@ -149,7 +150,7 @@ void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream) {
 	data->currentFrame = 0;
 	data->flush = 1;
 	data->inStream = inStream;
-	memset(&(data->dither), 0, sizeof(struct audio_dither));
+/*	memset(&(data->dither), 0, sizeof(struct audio_dither));*/
 
 	mad_stream_init(&data->stream);
 	data->stream.options |= MAD_OPTION_IGNORECRC;
@@ -566,35 +567,18 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 		}
 
 		for(i=0;i<(data->synth).pcm.length;i++) {
-#ifdef MPD_FIXED_POINT
-			mpd_sint16 * sample;
-			sample = (mpd_sint16 *)data->outputPtr;	
-			*sample = (mpd_sint16) audio_linear_dither(16,
-					(data->synth).pcm.samples[0][i],
-					&(data->dither));
-			data->outputPtr+=2;
-
-			if(MAD_NCHANNELS(&(data->frame).header)==2) {
-				sample = (mpd_sint16 *)data->outputPtr;	
-				*sample = (mpd_sint16) audio_linear_dither(16,
-						(data->synth).pcm.samples[1][i],
-						&(data->dither));
-				data->outputPtr+=2;
-			}
-#else
-			mpd_float32 * sample;
-			sample = (mpd_float32 *)data->outputPtr;
-			*sample = (mpd_float32) mad_f_todouble(
-					(data->synth).pcm.samples[0][i]);
+			mpd_fixed_t * sample;
+			sample = (mpd_fixed_t *)data->outputPtr;
+			*sample = (mpd_fixed_t)
+				((data->synth).pcm.samples[0][i]);
 			data->outputPtr+=4;
 
 			if(MAD_NCHANNELS(&(data->frame).header)==2) {
-				sample = (mpd_sint16 *)data->outputPtr;	
-				*sample = (mpd_float32) mad_f_todouble(
-					(data->synth).pcm.samples[0][i]);
+				sample = (mpd_fixed_t *)data->outputPtr;	
+				*sample = (mpd_fixed_t) 
+					((data->synth).pcm.samples[0][i]);
 				data->outputPtr+=4;
 			}
-#endif
 
 			if(data->outputPtr>=data->outputBufferEnd) {
 				long ret;
@@ -667,13 +651,8 @@ int mp3Read(mp3DecodeData * data, OutputBuffer * cb, DecoderControl * dc) {
 }
 
 void initAudioFormatFromMp3DecodeData(mp3DecodeData * data, AudioFormat * af) {
-#ifdef MPD_FIXED_POINT
-	af->bits = 16;
-	af->floatSamples = 0;
-#else
 	af->bits = 32;
-	af->floatSamples = 1;
-#endif
+	af->fracBits = MAD_F_FRACBITS;
 	af->sampleRate = (data->frame).header.samplerate;
 	af->channels = MAD_NCHANNELS(&(data->frame).header);
 }

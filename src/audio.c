@@ -111,15 +111,9 @@ void getInternalAudioFormat(AudioFormat * inAudioFormat,
 	
 	/* take the input format... */
 	copyAudioFormat(outAudioFormat,inAudioFormat);
-#ifdef MPD_FIXED_POINT
-	/* .. change to 16 bit integer */
-	outAudioFormat->bits = 16;
-	outAudioFormat->floatSamples = 0;
-#else
-	/* .. change to 32 bit float */
+	/* .. change to 32 bit integers with 28 bit resolution */
 	outAudioFormat->bits = 32;
-	outAudioFormat->floatSamples = 1;
-#endif
+	outAudioFormat->fracBits = 28;
 	/* if forced output sample rate - use that as internal sample rate */
 	if(audio_configFormat && (audio_configFormat->sampleRate != 0))
 		outAudioFormat->sampleRate = audio_configFormat->sampleRate;
@@ -132,7 +126,7 @@ void getOutputAudioFormat(AudioFormat * inAudioFormat,
 	 * for plugins who still use this we copy the format from in to out 
 	 * these plugin don't know about the floatSample flag so we set it 
 	 * for them - in both in and out */ 
-	inAudioFormat->floatSamples = 0;
+	inAudioFormat->fracBits = 0;
 	copyAudioFormat(outAudioFormat,inAudioFormat);
 }
 
@@ -214,8 +208,8 @@ int parseAudioConfig(AudioFormat * audioFormat, char * conf) {
 			return -1;
 	}
 	
-	/* audioFormat is never float */
-	audioFormat->floatSamples = 0;
+	/* audioFormat is never shifted */
+	audioFormat->fracBits = 0;
 
 	return 0;
 }

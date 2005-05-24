@@ -164,7 +164,7 @@ int openAudioOutput(AudioOutput * audioOutput, AudioFormat * audioFormat) {
 				&audioOutput->inAudioFormat);
 		/* default to 16 bit integer samples */
 		audioOutput->outAudioFormat.bits = 16;
-		audioOutput->outAudioFormat.floatSamples = 0;
+		audioOutput->outAudioFormat.fracBits = 0;
 	}
 	
 	ret = audioOutput->openDeviceFunc(audioOutput);

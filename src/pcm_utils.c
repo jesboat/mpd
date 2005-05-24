@@ -28,278 +28,34 @@
 #include <assert.h>
 #include <time.h>
 
-void pcm_changeBufferEndianness(char * buffer, int bufferSize, int bits) {
-	
-ERROR("pcm_changeBufferEndianess\n");
-	switch(bits) {
-	case 16:
-		while(bufferSize) {
-			char temp = *buffer;
-			*buffer = *(buffer+1);
-			*(buffer+1) = temp;
-			bufferSize-=2;
-		}
-		break;
-	case 32:
-		/* I'm not sure if this code is correct */
-		/* I guess it is OK for 32 bit int, but how about float? */
-		while(bufferSize) {
-			char temp = *buffer;
-			char temp1 = *(buffer+1);
-			*buffer = *(buffer+3);
-			*(buffer+1) = *(buffer+2);
-			*(buffer+2) = temp1;
-			*(buffer+3) = temp;
-			bufferSize-=4;
-		}
-		break;
-	}
-}
-
-void pcm_volumeChange(char * buffer, int bufferSize, AudioFormat * format,
-		int volume)
-{
-#ifdef MPD_FIXED_POINT
-	mpd_sint16 * buffer16 = (mpd_sint16 *)buffer;
-	mpd_sint32 sample32;
-
-	if(volume>=1000) return;
-	
-	if(volume<=0) {
-		memset(buffer,0,bufferSize);
-		return;
-	}
-
-	if(format->bits!=16 || format.channels!=2 || format->floatSamples) {
-		ERROR("Only 16 bit stereo is supported in fixed point mode!\n");
-		exit(EXIT_FAILURE);
-	}
-
-	while(bufferSize) {
-		sample32 = (mpd_sint32)(*buffer16) * volume;
-		/* no need to check boundaries - can't overflow */
-		*buffer16 = sample32 >> 10;
-		bufferSize -= 2;
-	}
-	return;
-#else
-	mpd_sint8 * buffer8 = (mpd_sint8 *)buffer;
-	mpd_sint16 * buffer16 = (mpd_sint16 *)buffer;
-	mpd_sint32 * buffer32 = (mpd_sint32 *)buffer;
-	float * bufferFloat = (float *)buffer;
-	float fvolume = volume * 0.001;
-
-	if(volume>=1000) return;
-	
-	if(volume<=0) {
-		memset(buffer,0,bufferSize);
-		return;
-	}
-
-/* DEBUG */
-	if(bufferSize % (format->channels * 4)) {
-		ERROR("pcm_volumeChange: bufferSize=%i not multipel of %i\n",
-				bufferSize, format->channels * 4);
-	}
-	if(!format->floatSamples)
-		ERROR("pcm_volumeChange: not floatSamples\n");
-/* /DEBUG */
-	
-	if(format->floatSamples) {
-		if(format->bits==32) {
-			while(bufferSize) {
-				*bufferFloat *= fvolume;
-				bufferFloat++;
-				bufferSize-=4;
-			}
-			return;
-		}
-		else {
-			ERROR("%i bit float not supported by pcm_volumeChange!\n",
-					format->bits);
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	switch(format->bits) {
-	case 32: 
-		while(bufferSize) {
-			double sample = (double)(*buffer32) * fvolume;
-			*buffer32++ = rint(sample);
-			bufferSize-=4;
-		}
-		break;
-	case 16:
-		while(bufferSize) {
-			float sample = *buffer16 * fvolume;
-			*buffer16++ = rintf(sample);
-			bufferSize-=2;
-		}
-		break;
-	case 8:
-		while(bufferSize) {
-			float sample = *buffer8 * fvolume;
-			*buffer8++ = rintf(sample);
-			bufferSize--;
-		}
-		break;
-	default:
-		ERROR("%i bits not supported by pcm_volumeChange!\n",
-				format->bits);
-		exit(EXIT_FAILURE);
-	}
-#endif
-}
-
-void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1, 
-		size_t bufferSize2, int vol1, int vol2, AudioFormat * format)
-{
-#ifdef MPD_FIXED_POINT
-	mpd_sint16 * buffer16_1 = (mpd_sint16 *)buffer1;
-	mpd_sint16 * buffer16_2 = (mpd_sint16 *)buffer2;
-	mpd_sint32 sample;
-	
-	if(format->bits!=16 || format.channels!=2 || format->floatSamples) {
-		ERROR("Only 16 bit stereo is supported in fixed point mode!\n");
-		exit(EXIT_FAILURE);
-	}
-
-	while(bufferSize1 && bufferSize2) {
-		sample = ((mpd_sint32)(*buffer16_1) * vol1 +
-			(mpd_sint32)(*buffer16_2) * vol2) >> 10;
-		*buffer16_1 = sample>32767 ? 32767 : 
-			(sample<-32768 ? -32768 : sample); 
-		bufferSize1 -= 2;
-		bufferSize2 -= 2;
-	}
-	if(bufferSize2) memcpy(buffer16_1,buffer16_2,bufferSize2);
-	return;
-#else
-/* DEBUG */
-	if(bufferSize1 % (format->channels * 4)) {
-		ERROR("pcm_add: bufferSize1=%i not multipel of %i\n",
-				bufferSize1, format->channels * 4);
-	}
-	if(bufferSize2 % (format->channels * 4)) {
-		ERROR("pcm_add: bufferSize2=%i not multipel of %i\n",
-				bufferSize2, format->channels * 4);
-	}
-	if(!format->floatSamples)
-		ERROR("pcm_add: not floatSamples\n");
-/* /DEBUG */
-	mpd_sint8 * buffer8_1 = (mpd_sint8 *)buffer1;
-	mpd_sint8 * buffer8_2 = (mpd_sint8 *)buffer2;
-	mpd_sint16 * buffer16_1 = (mpd_sint16 *)buffer1;
-	mpd_sint16 * buffer16_2 = (mpd_sint16 *)buffer2;
-	mpd_sint32 * buffer32_1 = (mpd_sint32 *)buffer1;
-	mpd_sint32 * buffer32_2 = (mpd_sint32 *)buffer2;
-	float * bufferFloat_1 = (float *)buffer1;
-	float * bufferFloat_2 = (float *)buffer2;
-	float fvol1 = vol1 * 0.001;
-	float fvol2 = vol2 * 0.001;
-	float sample;
-	
-	if(format->floatSamples) {
-		/* 32 bit float */
-		while(bufferSize1 && bufferSize2) {
-			*bufferFloat_1 = fvol1*(*bufferFloat_1) + 
-					fvol2*(*bufferFloat_2);
-			bufferFloat_1++;
-			bufferFloat_2++;
-			bufferSize1-=4;
-			bufferSize2-=4;
-		}
-		if(bufferSize2) memcpy(bufferFloat_1,bufferFloat_2,bufferSize2);
-	}
-	
-	switch(format->bits) {
-	case 32:
-		while(bufferSize1 && bufferSize2) {
-			sample = fvol1*(*buffer32_1) + fvol2*(*buffer32_2);
-			if(sample>2147483647.0)	*buffer32_1 = 2147483647;
-			else if(sample<-2147483647.0) *buffer32_1 = -2147483647;
-			else *buffer32_1 = rintf(sample);
-			bufferFloat_1++;
-			bufferFloat_2++;
-			bufferSize1-=4;
-			bufferSize2-=4;
-		}
-		if(bufferSize2) memcpy(bufferFloat_1,bufferFloat_2,bufferSize2);
-		break;
-	case 16:
-		while(bufferSize1 && bufferSize2) {
-			sample = fvol1*(*buffer16_1) + fvol2*(*buffer16_2);
-			*buffer16_1 = sample>32767.0 ? 32767 : 
-					(sample<-32768.0 ? -32768 : 
-					rintf(sample));
-			buffer16_1++;
-			buffer16_2++;
-			bufferSize1-=2;
-			bufferSize2-=2;
-		}
-		if(bufferSize2) memcpy(buffer16_1,buffer16_2,bufferSize2);
-		break;
-	case 8:
-		while(bufferSize1 && bufferSize2) {
-			sample = fvol1*(*buffer8_1) + fvol2*(*buffer8_2);
-			*buffer8_1 = sample>127.0 ? 127 : 
-					(sample<-128.0 ? -128 : 
-					rintf(sample));
-			buffer8_1++;
-			buffer8_2++;
-			bufferSize1--;
-			bufferSize2--;
-		}
-		if(bufferSize2) memcpy(buffer8_1,buffer8_2,bufferSize2);
-		break;
-	default:
-		ERROR("%i bits not supported by pcm_add!\n",format->bits);
-		exit(EXIT_FAILURE);
-	}
-#endif
-}
-
-void pcm_mix(char * buffer1, char * buffer2, size_t bufferSize1, 
-		size_t bufferSize2, AudioFormat * format, float portion1)
-{
-	int vol1;
-	float s = sin(M_PI_2*portion1);
-	s*=s;
-	
-	vol1 = s*1000+0.5;
-	vol1 = vol1>1000 ? 1000 : ( vol1<0 ? 0 : vol1 );
-
-	pcm_add(buffer1,buffer2,bufferSize1,bufferSize2,vol1,1000-vol1,format);
-}
-
-void pcm_convertToFloat(AudioFormat * inFormat, char * inBuffer, size_t 
-		samples, char * outBuffer)
+void pcm_convertToMpdFixed(AudioFormat * inFormat, char * inBuffer, int 
+		samples, char * outBuffer, int fracBits)
 {
 	mpd_sint8 * in8 = (mpd_sint8 *)inBuffer;
 	mpd_sint16 * in16 = (mpd_sint16 *)inBuffer;
 	mpd_sint32 * in32 = (mpd_sint32 *)inBuffer;
-	float * out = (float *)outBuffer;
-	float multiplier;
-	
+	mpd_fixed_t * out = (mpd_fixed_t *)outBuffer;
+	int shift;
+
 	switch(inFormat->bits) {
 	case 8:
-		multiplier = 1.0 / 128.0;
+		shift = fracBits - 8;
 		while(samples--) {
-			*out++ = (*in8++) * multiplier;
+			*out++ = (mpd_fixed_t)(*in8++) << shift;
 		}
 		break;
 	case 16:
-		multiplier = 1.0 / 32768.0;
+		shift = fracBits - 16;
 		while(samples--) {
-			*out++ = (*in16++) * multiplier;
+			*out++ = (mpd_fixed_t)(*in16++) << shift;
 		}
 		break;
-/*	case 32:
-		multiplier = 1.0 / (1L << 31);
+	case 32:
+		shift = 32 - fracBits;
 		while(samples--) {
-			*out++ = (*in32++) * multiplier;
+			*out++ = (mpd_fixed_t)(*in32++) >> shift;
 		}
-		break; */
+		break; 
 	default:
 		ERROR("%i bit samples are not supported for conversion!\n",
 				inFormat->bits);
@@ -307,12 +63,43 @@ void pcm_convertToFloat(AudioFormat * inFormat, char * inBuffer, size_t
 	}
 }
 
+/* this is stolen from mpg321! */
+inline mpd_uint32 prng(mpd_uint32 state) {
+	return (state * 0x0019660dL + 0x3c6ef35fL) & 0xffffffffL;
+}
+/* end of stolen stuff from mpg321 */
 
-char *pcm_convertSampleRate(AudioFormat *inFormat, char *inBuffer, size_t inFrames, 
-		AudioFormat *outFormat, size_t outFrames) 
+void pcm_convertToIntWithDither(int bits, 
+		mpd_fixed_t *buffer, int samples, int fracBits)
+{
+	static mpd_uint32 ditherRandom = 0;
+	mpd_fixed_t mask = ~(~0L << (fracBits - bits));		
+	mpd_fixed_t max = (1L << (fracBits)) - 1;
+	mpd_fixed_t min = ~0L << (fracBits);
+	mpd_fixed_t sample;
+ERROR("conv: max=%x, min=%x \n", max, min);
+//buffer += samples - 25;
+//samples = 20;
+	while(samples--) {
+//ERROR("*buffer=%x, mask=%x\n", *buffer, mask);
+		sample = *buffer + (ditherRandom & mask);
+		if(sample > max || sample < min)
+			ERROR("clipping! %x\n", sample);
+		sample = sample>max ? max : (sample<min ? min : sample);
+		*buffer = sample >> (fracBits - bits + 1);
+//ERROR("sample=%x, *buffer=%x, dither=%x\n", sample, *buffer, ditherRandom & mask);
+		buffer++;
+		ditherRandom = prng(ditherRandom);
+	}
+//exit(EXIT_FAILURE);
+}
+
+
+char *pcm_convertSampleRate(AudioFormat *inFormat, char *inBuffer, 
+		size_t inFrames, AudioFormat *outFormat, size_t outFrames) 
 {
 	/* Input must be float32, 1 or 2 channels */ 
-	/* Interpolate using a second order polynom */
+	/* Interpolate using a second order polynomial */
 	/* k0 = s0			*
 	 * k2 = (s0 - 2*s1 + s2) * 0.5	*
 	 * k1 = s1 - s0 - k2		*
@@ -447,66 +234,149 @@ char *pcm_convertSampleRate(AudioFormat *inFormat, char *inBuffer, size_t inFram
 	return (char *)sampleConvBuffer;
 }
 
+/****** exported procedures ***************************************************/
 
-/* now support conversions between sint8, sint16, sint32 and float32, 
- * 1 or 2 channels and (although badly) all sample rates */
+void pcm_changeBufferEndianness(char * buffer, int bufferSize, int bits) {
+	
+ERROR("pcm_changeBufferEndianess\n");
+	switch(bits) {
+	case 16:
+		while(bufferSize) {
+			mpd_uint8 temp = *buffer;
+			*buffer = *(buffer+1);
+			*(buffer+1) = temp;
+			bufferSize-=2;
+		}
+		break;
+	case 32:
+		/* I'm not sure if this code is correct */
+		/* I guess it is OK for 32 bit int, but how about float? */
+		while(bufferSize) {
+			mpd_uint8 temp = *buffer;
+			mpd_uint8 temp1 = *(buffer+1);
+			*buffer = *(buffer+3);
+			*(buffer+1) = *(buffer+2);
+			*(buffer+2) = temp1;
+			*(buffer+3) = temp;
+			bufferSize-=4;
+		}
+		break;
+	}
+}
+
+void pcm_volumeChange(char * buffer, int bufferSize, AudioFormat * format,
+		int volume)
+{
+	mpd_fixed_t * buffer32 = (mpd_fixed_t *)buffer;
+	int iScale;
+	int samples;
+	int shift; 
+
+	if(format->bits!=32 || format->channels!=2) {
+		ERROR("Only 32 bit stereo is supported for pcm_volumeChange!\n");
+		exit(EXIT_FAILURE);
+	}
+
+	/* take care of full and no volume cases */
+	if(volume>=1000) return;
+	
+	if(volume<=0) {
+		memset(buffer,0,bufferSize);
+		return;
+	}
+
+	/****** change volume ******/
+	samples = bufferSize >> 2;
+	iScale = (mpd_uint32)(volume * 256) / 1000;
+	shift = 8;
+	
+ERROR("vol1: iScale=%i, shift=%i, volume=%i\n", iScale, shift, volume);
+	/* lower shifting value as much as possible */
+	while(!(iScale & 1) && shift) {
+		iScale >>= 1;
+		shift--;
+	}
+ERROR("vol2: iScale=%i, shift=%i\n", iScale, shift);
+	/* change */
+	if(iScale == 1) {
+		while(samples--)
+			*buffer32++ = *buffer32 >> shift;
+	}
+	else {
+		while(samples--)
+			*buffer32++ = (*buffer32 >> shift) * iScale;
+	}	
+
+}
+
+void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1, 
+		size_t bufferSize2, int vol1, int vol2, AudioFormat * format)
+{
+	mpd_fixed_t * buffer32_1 = (mpd_fixed_t *)buffer1;
+	mpd_fixed_t * buffer32_2 = (mpd_fixed_t *)buffer2;
+	mpd_fixed_t temp;
+	int samples1;
+	int samples2;
+	int iScale1;
+	int iScale2;
+	int shift;
+	
+	if(format->bits!=32 || format->channels!=2 ) {
+		ERROR("Only 32 bit stereo is supported for pcm_add!\n");
+		exit(EXIT_FAILURE);
+	}
+
+	samples1 = bufferSize1 >> 2;
+	samples2 = bufferSize1 >> 2;
+	iScale1 = (mpd_uint32)(vol1 * 256) / 1000;
+	iScale2 = (mpd_uint32)(vol2 * 256) / 1000;
+	shift = 8;
+	
+	/* scale and add samples */
+	/* no check for overflow needed - we trust our headroom is enough */ 
+	while(samples1 && samples2) {
+		*buffer32_1++ = (*buffer32_1 >> shift) * iScale1 +
+			(*buffer32_2 >> shift) * iScale2;
+	}
+	/* take care of case where buffer2 > buffer1 */
+	if(samples2) memcpy(buffer32_1,buffer32_2,samples2<<2);
+	return;
+
+}
+
+void pcm_mix(char * buffer1, char * buffer2, size_t bufferSize1, 
+		size_t bufferSize2, AudioFormat * format, float portion1)
+{
+	int vol1;
+	float s = sin(M_PI_2*portion1);
+	s*=s;
+	
+	vol1 = s*1000+0.5;
+	vol1 = vol1>1000 ? 1000 : ( vol1<0 ? 0 : vol1 );
+
+	pcm_add(buffer1,buffer2,bufferSize1,bufferSize2,vol1,1000-vol1,format);
+}
+
+
 void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		inSize, AudioFormat * outFormat, char * outBuffer)
 {
-#ifdef MPD_FIXED_POINT
-	/* In fixed mode the conversion support is limited... */ 
-	if(inFormat->bits != outFormat->bits || inFormat->bits != 16) {
-		ERROR("Only 16 bit samples supported in fixed point mode!\n");
-		exit(EXIT_FAILURE);
-	}
-	if(inFormat->sampleRate || outFormat->sampleRate) {
-		ERROR("Sample rate conversions not supported in fixed point mode!\n");
-		exit(EXIT_FAILURE);
-	}
-	if(inFormat->channels == 2 && outFormat->channels == 1) {
-		size_t frames = inSize >> 2; /* 16 bit stereo == 4 bytes */
-		mpd_sint16 *in = (mpd_sint16 *)inBuffer;
-		mpd_sint16 *out = (mpd_sint16 *)outBuffer;
-		while(frames--) {
-			*out++ = *in++;
-			*in++; /* skip the other channel */
-		}
-	}
-	if(inFormat->channels == 1 && outFormat->channels == 2) {
-		size_t frames = inSize >> 1; /* 16 bit mono == 2 bytes */
-		mpd_sint16 *in = (mpd_sint16 *)inBuffer;
-		mpd_sint16 *out = (mpd_sint16 *)outBuffer;
-		while(frames--) {
-			*out++ = *in;
-			*out++ = *in++; /* duplicate the channel */
-		}
-	}
-	else {
-		ERROR("More then 2 channels are not supported!\n");
-		exit(EXIT_FAILURE);
-	}
-	return;
-	
-#else 
-/* DEBUG */
-	if(inSize % (inFormat->channels * 4)) {
-		ERROR("pcm_convertAudioFormat: inSize=%i not multipel of %i\n",
-				inSize, inFormat->channels * 4);
-	}
-/* /DEBUG */
-
 	static char *convBuffer = NULL;
 	static int convBufferLength = 0;
 	char * dataConv;
 	int dataLen;
-	static float ditherAmount = 2.0 / RAND_MAX;
-	const size_t inSamples = (inSize << 3) / inFormat->bits;
-	const size_t inFrames = inSamples / inFormat->channels;
-	const size_t outFrames = (inFrames * (mpd_uint32)(outFormat->sampleRate)) / 
+	int fracBits;
+	const int inSamples = (inSize << 3) / inFormat->bits;
+	const int inFrames = inSamples / inFormat->channels;
+	const int outFrames = (inFrames * (mpd_uint32)(outFormat->sampleRate)) / 
 			inFormat->sampleRate;
-	const size_t outSamples = outFrames * outFormat->channels;
-		
-	/* make sure convBuffer is big enough for 2 channels of float samples */
+	const int outSamples = outFrames * outFormat->channels;
+	
+ERROR("0 inSamples=%i in:bits=%i, fracBits=%i\n", 
+	inSamples, inFormat->bits, inFormat->fracBits);
+ERROR("                out:bits=%i, fracBits=%i\n", 
+	outFormat->bits, outFormat->fracBits); 	
+	/* make sure convBuffer is big enough for 2 channels of 32 bit samples */
 	dataLen = inFrames << 3;
 	if(dataLen > convBufferLength) {
 		convBuffer = (char *) realloc(convBuffer, dataLen);
@@ -518,28 +388,28 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		convBufferLength = dataLen;
 	}
 
-	/* make sure dataConv points to 32 bit float samples */
-	if(inFormat->floatSamples && inFormat->bits==32) {
+	/* make sure dataConv points to mpd_fixed_t samples */
+	if(inFormat->fracBits && inFormat->bits==32) {
+		fracBits = inFormat->fracBits;
 		dataConv = inBuffer;
 	}
-	else if(!inFormat->floatSamples) {
-		dataConv = convBuffer;
-		pcm_convertToFloat(inFormat, inBuffer, inSamples, dataConv);
-	}
 	else {
-		ERROR("%i bit float are not supported for conversion!\n", 
-				inFormat->bits);
-		exit(EXIT_FAILURE);
+		fracBits = 28; /* use 28 bits as default */
+		dataConv = convBuffer;
+		pcm_convertToMpdFixed(inFormat, inBuffer, inSamples, 
+				dataConv, fracBits);
 	}
 	
-	/* convert between mono and stereo samples*/
+	/****** convert between mono and stereo samples ******/
+	
 	if(inFormat->channels != outFormat->channels) {
-		float *in = ((float *)dataConv)+inFrames;
 		switch(inFormat->channels) {
 		/* convert from 1 -> 2 channels */
 		case 1:
 			{
-			float *out = ((float *)convBuffer)+(inFrames<<1);
+			/* in reverse order to allow for same in and out buffer */
+			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv)+inFrames;
+			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer)+(inFrames<<1);
 			int f = inFrames;
 			while(f--) {
 				*out-- = *in;
@@ -550,11 +420,12 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		/* convert from 2 -> 1 channels */
 		case 2:
 			{
-			float * out = (float *)convBuffer;
+			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv);
+			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer);
 			int f = inFrames;
 			while(f--) {
-				*out = (*in++)*0.5;
-				*out++ += (*in++)*0.5;
+				*out = (*in++)>>1;
+				*out++ += (*in++)>>1;
 			}
 			}
 			break;
@@ -565,89 +436,75 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		dataConv = convBuffer;
 	}
 
-	/* convert sample rate */
+	/****** convert sample rate ******/
+
 	if(inFormat->sampleRate != outFormat->sampleRate) {
 		dataConv = pcm_convertSampleRate(
 				inFormat, dataConv, inFrames, 
 				outFormat, outFrames);
 	}
 
-	/* convert to output format */
-	if(outFormat->floatSamples && outFormat->bits==32) {
-		if(outBuffer != dataConv)
-			memcpy(outBuffer, dataConv, outSamples << 2);
-		return;
-	}
-	else if(outFormat->floatSamples) {
-		ERROR("%i bit float are not supported for conversion!\n", 
+	/****** convert to output format ******/
+
+	/* if outformat is mpd_fixed_t then we are done TODO */
+	if(outFormat->fracBits) {
+		if(outFormat->bits==32) {
+			if(outBuffer != dataConv)
+				memcpy(outBuffer, dataConv, outSamples << 2);
+			return;
+		}
+		else {
+			ERROR("%i bit float are not supported for conversion!\n", 
 				outFormat->bits);
-		exit(EXIT_FAILURE);
+			exit(EXIT_FAILURE);
+		}
 	}
 		
+	/* convert to regular integer while adding dither and checking range */
+	pcm_convertToIntWithDither(outFormat->bits, 
+			(mpd_fixed_t *)dataConv, outSamples, fracBits);
+	
+	/* copy to output buffer*/
 	switch(outFormat->bits) {
 	case 8:
 		{
-		/* add triangular dither and convert to sint8 */
-		float * in = (float *)dataConv;
-		mpd_sint8 * out = (mpd_sint8 *)outBuffer;
-		int s = outSamples;
-		while(s--) {
-			float sample = (*in++) * 128.0 + 
-				ditherAmount*(rand()-rand());
-			*out++ = sample>127.0 ? 127 :
-				(sample<-128.0 ? -128 : 
-				 rintf(sample));
-		}
+			mpd_fixed_t *in = (mpd_fixed_t *)dataConv;
+			mpd_sint8 * out = (mpd_sint8 *)outBuffer;
+			int s = outSamples;
+			while(s--) 
+				*out++ = *in++;
 		}
 		break;
 	case 16:
 		{
-		/* add triangular dither and convert to sint16 */
-		float * in = (float *)dataConv;
-		mpd_sint16 * out = (mpd_sint16 *)outBuffer;
-		int s = outSamples;
-		while(s--) {
-			float sample = (*in++) * 32766.0 + 
-				ditherAmount*(rand()-rand());
-			*out++ = sample>32767.0 ? 32767 :
-				(sample<-32768.0 ? -32768 :
-				 rintf(sample));
-		}
+			mpd_fixed_t *in = (mpd_fixed_t *)dataConv;
+			mpd_sint16 *out = (mpd_sint16 *)outBuffer;
+			int s = outSamples;
+			while(s--)
+				*out++ = *in++;
 		}
 		break;
 	case 32:
 		{
-		/* convert to sint32 */
-		float * in = (float *)dataConv;
-		mpd_sint32 * out = (mpd_sint32 *)outBuffer;
-		int s = outSamples;
-		while(s--) {
-			float sample = (*in++) * 2147483647.0;
-			if(sample>2147483647.0)	*out++ = 2147483647;
-			else if(sample<-2147483647.0) *out++ = -2147483647;
-			else *out++ = rintf(sample);
-		}
+			mpd_fixed_t *in = (mpd_fixed_t *)dataConv;
+			mpd_sint32 *out = (mpd_sint32 *)outBuffer;
+			int s = outSamples;
+			while(s--)
+				*out++ = *in++;
 		}
 		break;
-	case 24: /* how do we store 24 bit? Maybe sint32 is all we need? */ 
+	case 24: /* TODO! how do we store 24 bit? */ 
 	default:
 		ERROR("%i bits are not supported for conversion!\n", outFormat->bits);
 		exit(EXIT_FAILURE);
 	}
 
 	return;
-#endif
 }
 
 size_t pcm_sizeOfOutputBufferForAudioFormatConversion(AudioFormat * inFormat,
 		size_t inSize, AudioFormat * outFormat)
 {
-/* DEBUG */
-	if(inSize % (inFormat->channels * 4)) {
-		ERROR("pcm_sizeOOBFAFC: inSize=%i not multipel of %i\n",
-				inSize, inFormat->channels * 4);
-	}
-/* /DEBUG */
 	const int inShift = (inFormat->bits * inFormat->channels) >> 3;
 	const int outShift = (outFormat->bits * outFormat->channels) >> 3;
 	
@@ -659,3 +516,6 @@ size_t pcm_sizeOfOutputBufferForAudioFormatConversion(AudioFormat * inFormat,
 	
 	return outSize;
 }
+
+
+
