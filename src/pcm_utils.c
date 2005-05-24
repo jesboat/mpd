@@ -72,161 +72,39 @@ inline mpd_uint32 prng(mpd_uint32 state) {
 void pcm_convertToIntWithDither(int bits, 
 		mpd_fixed_t *buffer, int samples, int fracBits)
 {
-	static mpd_uint32 ditherRandom = 0;
-	mpd_fixed_t mask = ~(~0L << (fracBits - bits));		
-	mpd_fixed_t max = (1L << (fracBits)) - 1;
-	mpd_fixed_t min = ~0L << (fracBits);
+	static mpd_uint32 ditherRandom[2] = {0,0};
+	const mpd_fixed_t mask = ~(~0L << (fracBits - bits));
+	const mpd_fixed_t half = 1L << (fracBits - bits - 1);
+	const mpd_fixed_t max = (1L << (fracBits)) - 1;
+	const mpd_fixed_t min = ~0L << (fracBits);
 	mpd_fixed_t sample;
-	while(samples--) {
-		sample = *buffer + (ditherRandom & mask);
-		if(sample > max || sample < min)
-			ERROR("clipping! %x\n", sample);
-		sample = sample>max ? max : (sample<min ? min : sample);
-		*buffer = sample >> (fracBits - bits + 1);
-		buffer++;
-		ditherRandom = prng(ditherRandom);
+	/* need to split in two cases to avoid negative shifting */
+	if(bits>fracBits) {
+		/* left shift - no need to dither */
+		while(samples--) {
+			sample = *buffer;
+			sample = sample>max ? max : (sample<min ? min : sample);
+			*buffer++ = sample << (bits - fracBits - 1);
+		}
+	}
+	else {
+		/* right shift - add 1 bit triangular dither */
+		while(samples--) {
+			sample = *buffer + half + (ditherRandom[0] & mask) -
+				(ditherRandom[1] & mask);
+			sample = sample>max ? max : (sample<min ? min : sample);
+			*buffer++ = sample >> (fracBits - bits + 1);
+			ditherRandom[1] = ditherRandom[0] >> 1;
+			ditherRandom[0] = prng(ditherRandom[0]);
+		}
 	}
 }
 
 
 char *pcm_convertSampleRate(AudioFormat *inFormat, char *inBuffer, 
-		size_t inFrames, AudioFormat *outFormat, size_t outFrames) 
+		int inFrames, AudioFormat *outFormat, int outFrames) 
 {
 	return NULL;
-	/* Input must be float32, 1 or 2 channels */ 
-	/* Interpolate using a second order polynomial */
-	/* k0 = s0			*
-	 * k2 = (s0 - 2*s1 + s2) * 0.5	*
-	 * k1 = s1 - s0 - k2		*
-	 * s[t] = k0 + k1*t +k2*t*t	*/
-
-	static float * sampleConvBuffer = NULL;
-	static int sampleConvBufferLength = 0;
-	size_t dataSampleLen = 0;
-	
-	float *out;
-	float *in = (float *)inBuffer;
-	
-	static float shift;
-	static float offset;
-	static float sample0l;
-	static float sample0r;
-	static float sample1l;
-	static float sample1r;
-
-	static int rateCheck = 0;
-	static time_t timeCheck = 0;
-	size_t c_rate = inFormat->sampleRate + inFormat->channels;
-	time_t c_time = time(NULL);
-	
-	/* reset static data if changed samplerate ...*/
-	if(c_rate != rateCheck || c_time != timeCheck) {
-		ERROR("reset resampling\n",c_rate, rateCheck);
-		rateCheck = c_rate;
-		shift = (float)inFrames / (float)outFrames;
-		offset = 1.5;
-		sample0l = 0.0;
-		sample0r = 0.0;
-		sample1l = 0.0;
-		sample1r = 0.0;
-	}
-	else { 
-		/* ... otherwise check that shift is within bounds */ 
-		float s = offset + (outFrames * shift) - inFrames;
-		if(s > 1.5) {
-			shift = (1.5-offset+(float)inFrames) / (float)outFrames;
-		}
-		else if(s < 0.5) {
-			shift = (0.5-offset+(float)inFrames) / (float)outFrames;
-		}
-	}
-	timeCheck = c_time;
-
-	/* allocate data */
-	dataSampleLen = 8 * outFrames;
-	if(dataSampleLen > sampleConvBufferLength) {
-		sampleConvBuffer = (float *)realloc(sampleConvBuffer,dataSampleLen);
-		sampleConvBufferLength = dataSampleLen;
-	}
-	out = sampleConvBuffer;
-	
-
-	/* convert */
-	switch(outFormat->channels) {
-	case 1:	
-	{
-		float sample2l;
-		float k0l, k1l, k2l;
-		while(inFrames--) {
-			sample2l = *in++;
-			/* set coefficients */
-			k0l = sample0l;
-			k2l = (sample0l - 2.0 * sample1l + sample2l) * 0.5;
-			k1l = sample1l - sample0l - k2l;
-			/* calculate sample(s) */
-			while(offset <= 1.5 && outFrames--) {
-				*out++ = k0l + k1l*offset + k2l*offset*offset;
-				offset += shift;
-			}
-			/* prepare for next frame */
-			sample0l = sample1l;
-			sample1l = sample2l;
-			offset -= 1.0;
-		}
-	
-		/* fill the last frames */
-		while(outFrames--) {
-			*out++ = k0l + k1l*offset + k2l*offset*offset;
-			offset += shift;
-		}
-	}		
-	break;
-	case 2:	
-	{
-		float *out = sampleConvBuffer;
-		float *in = (float *)inBuffer;
-		float sample2l;
-		float sample2r;
-		float k0l, k1l, k2l;
-		float k0r, k1r, k2r;
-		while(inFrames--) {
-			sample2l = *in++;
-			sample2r = *in++;
-			/* set coefficients */
-			k0l = sample0l;
-			k0r = sample0r;
-			k2l = (sample0l - 2.0 * sample1l + sample2l) * 0.5;
-			k2r = (sample0r - 2.0 * sample1r + sample2r) * 0.5;
-			k1l = sample1l - sample0l - k2l;
-			k1r = sample1r - sample0r - k2r;
-			/* calculate sample(s) */
-			while(offset <= 1.5 && outFrames--) {
-			if(offset<0.5)
-				ERROR("offset to small in resampling - %f\n",offset);
-				*out++ = k0l + k1l*offset + k2l*offset*offset;
-				*out++ = k0r + k1r*offset + k2r*offset*offset;
-				offset += shift;
-			}
-			/* prepare for next frame */
-			sample0l = sample1l;
-			sample0r = sample1r;
-			sample1l = sample2l;
-			sample1r = sample2r;
-			offset -= 1.0;
-		}
-	
-		/* fill the last frame(s) */
-		while(outFrames--) {
-			if(offset>2.0)
-				ERROR("offset to big in resampling - %f\n",offset);
-			*out++ = k0l + k1l*offset + k2l*offset*offset;
-			*out++ = k0r+ k1r*offset + k2r*offset*offset;
-			offset += shift;
-		}
-	}		
-	break;
-	}
-	return (char *)sampleConvBuffer;
 }
 
 /****** exported procedures ***************************************************/
