@@ -134,8 +134,9 @@ void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize,
 	}
 	
 	samples = bufferSize >> 2;
-	iScale = info->scale * 256; 
-	shift = 8;
+	/* 64 steps is enough - gives 0.13db resolution at 0dB and 2.5dB at -25dB*/
+	iScale = info->scale * 64;
+	shift = 6;
 
 	
 	/* handle negative or zero scale */

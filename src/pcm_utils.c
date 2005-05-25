@@ -100,12 +100,103 @@ void pcm_convertToIntWithDither(int bits,
 	}
 }
 
+struct {
+	mpd_uint32 delay;
+	mpd_uint32 inRate;
+	mpd_uint32 outRate;
+} convSampleRateData = {0,0,0};
 
-char *pcm_convertSampleRate(AudioFormat *inFormat, char *inBuffer, 
-		int inFrames, AudioFormat *outFormat, int outFrames) 
+void pcm_convertSampleRate(
+		AudioFormat * inFormat, mpd_fixed_t * inBuffer, int inFrames, 
+		AudioFormat *outFormat, mpd_fixed_t *outBuffer, int outFrames) 
 {
-	return NULL;
+	static int inRate; 		/* reduced bitRate */
+	static int outRate;
+	static int shift;
+	static int unshift;
+	static mpd_fixed_t oldSampleL = 0;
+	static mpd_fixed_t oldSampleR = 0;
+	mpd_uint32 curTime;
+	
+	/* recalculate static data if samplerate has changed */
+	if(inFormat->sampleRate != convSampleRateData.inRate || 
+			outFormat->sampleRate != convSampleRateData.outRate) {
+		/* set new sample rate info and reset delay */
+		convSampleRateData.inRate = inFormat->sampleRate;
+		convSampleRateData.outRate = outFormat->sampleRate;
+		convSampleRateData.delay = 0;
+		/* calculate the rates to use in calculations... */
+		inRate = inFormat->sampleRate;
+		outRate = outFormat->sampleRate;
+		unshift=0;
+		shift = 16; /* worst case shift */
+		/* ...reduce them to minimize shifting */
+		while(!(inRate & 1) && !(outRate & 1)) {
+			unshift++;
+			shift--;
+			inRate >>= 1;
+			outRate >>= 1;
+		}
+		oldSampleL = 0;
+		oldSampleR = 0;
+	}
+
+	/* compute */
+	curTime = convSampleRateData.delay >> unshift;
+/*
+ERROR("pcm_convertSampleRate2: inFrames=%i, outFrames=%i, inRate=%i, outRate=%i, curTime=%i\n",
+		inFrames, outFrames, inRate, outRate, curTime);*/
+	switch(inFormat->channels) {
+	case 1:
+		while(inFrames--) {
+			curTime += outRate;
+			/* calculate new samples */
+			while(curTime >= inRate) {
+				curTime -= inRate;
+				*outBuffer++ = oldSampleL + 
+					(((*inBuffer - oldSampleL) * 
+					  ((outRate - curTime) >> shift)) / 
+					 outRate);
+				outFrames--;
+			}
+			oldSampleL = *inBuffer++;
+		}
+	case 2:
+		while(inFrames--) {
+			curTime += outRate;
+			/* calculate new samples */
+			while(curTime >= inRate) {
+				curTime -= inRate;
+				*outBuffer++ = oldSampleL + 
+					(((*inBuffer - oldSampleL) * 
+					  ((outRate - curTime) >> shift)) / 
+					 outRate);
+				*outBuffer++ = oldSampleR + 
+					(((inBuffer[1] - oldSampleR) *
+					  ((outRate - curTime) >> shift)) /
+					 outRate);
+				outFrames--;
+			}
+			oldSampleL = *inBuffer++;
+			oldSampleR = *inBuffer++;
+		}
+	}		
+	convSampleRateData.delay = curTime << unshift;
+/*
+ERROR("pcm_convertSampleRate2: inFrames=%i, outFrames=%i, curTime=%i\n\n",
+		inFrames, outFrames, curTime);*/
+
+	/* some temporary debugging tests */
+	if(inFrames>0) {
+		ERROR("pcm_convertSampleRate produced to few outFrames!\n");
+		exit(EXIT_FAILURE);
+	}
+	if(outFrames>0) {
+		ERROR("pcm_convertSampleRate produced to many outFrames!\n");
+		exit(EXIT_FAILURE);
+	}
 }
+	
 
 /****** exported procedures ***************************************************/
 
@@ -234,21 +325,25 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 {
 	static char *convBuffer = NULL;
 	static int convBufferLength = 0;
+	static char *convSampleBuffer = NULL;
+	static int convSampleBufferLength = 0;
 	char * dataConv;
 	int dataLen;
 	int fracBits;
 	const int inSamples = (inSize << 3) / inFormat->bits;
 	const int inFrames = inSamples / inFormat->channels;
-	const int outFrames = (inFrames * (mpd_uint32)(outFormat->sampleRate)) / 
-			inFormat->sampleRate;
-	const int outSamples = outFrames * outFormat->channels;
-	
+	const size_t outSize = pcm_sizeOfOutputBufferForAudioFormatConversion(
+			inFormat, inSize, outFormat);
+	const int outSamples = (outSize << 3) / outFormat->bits;
+	const int outFrames = outSamples / outFormat->channels;
+/*ERROR("pcm_convertAudioFormat: outSize=%i, outSamples=%i, outFrames=%i," 
+	"outFormat.bits=%i, outFormat.channels=%i\n", 
+	outSize, outSamples, outFrames, outFormat->bits, outFormat->channels);*/
 	/* make sure convBuffer is big enough for 2 channels of 32 bit samples */
 	dataLen = inFrames << 3;
 	if(dataLen > convBufferLength) {
 		convBuffer = (char *) realloc(convBuffer, dataLen);
-		if(!convBuffer)
-		{
+		if(!convBuffer) {
 			ERROR("Could not allocate more memory for convBuffer!\n");
 			exit(EXIT_FAILURE);
 		}
@@ -306,15 +401,28 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 	/****** convert sample rate ******/
 
 	if(inFormat->sampleRate != outFormat->sampleRate) {
-		dataConv = pcm_convertSampleRate(
-				inFormat, dataConv, inFrames, 
-				outFormat, outFrames);
+		/* check size of buffer */
+		dataLen = outFrames << 3;
+		if(dataLen > convSampleBufferLength) {
+			convSampleBuffer = (char *) 
+				realloc(convSampleBuffer, dataLen);
+			if(!convSampleBuffer) {
+				ERROR("Could not allocate memory for " 
+						"convSampleBuffer!\n");
+				exit(EXIT_FAILURE);
+			}
+			convSampleBufferLength = dataLen;
+		}
+		/* convert samples */
+		pcm_convertSampleRate(inFormat, (mpd_fixed_t*)dataConv, inFrames, 
+			outFormat, (mpd_fixed_t*)convSampleBuffer, outFrames);
+		dataConv = convSampleBuffer;
 	}
 
 	/****** convert to output format ******/
 
-	/* if outformat is mpd_fixed_t then we are done TODO */
-	if(outFormat->fracBits) {
+	/* if outformat is mpd_fixed_t then we are done ?! TODO */
+	if(outFormat->fracBits==fracBits) {
 		if(outFormat->bits==32) {
 			if(outBuffer != dataConv)
 				memcpy(outBuffer, dataConv, outSamples << 2);
@@ -374,14 +482,25 @@ size_t pcm_sizeOfOutputBufferForAudioFormatConversion(AudioFormat * inFormat,
 {
 	const int inShift = (inFormat->bits * inFormat->channels) >> 3;
 	const int outShift = (outFormat->bits * outFormat->channels) >> 3;
+	const int inFrames = inSize / inShift;
+	mpd_uint32 outFrames;
 	
-	size_t inFrames = inSize / inShift;
-	size_t outFrames = (inFrames * (mpd_uint32)(outFormat->sampleRate)) / 
-			inFormat->sampleRate;
-	
-	size_t outSize = outFrames * outShift;
-	
-	return outSize;
+	if(inFormat->sampleRate == outFormat->sampleRate)
+		outFrames = inFrames;
+	else {
+		mpd_uint32 delay = convSampleRateData.delay;
+		if(inFormat->sampleRate != convSampleRateData.inRate || 
+			outFormat->sampleRate != convSampleRateData.outRate) 
+		{
+			delay = 0;
+		}
+		outFrames = (inFrames * (mpd_uint32)(outFormat->sampleRate) 
+				+ delay) / inFormat->sampleRate;
+/*
+ERROR("pcm_size... inSize=%i, inShift=%i, outShift=%i, inFrames=%i, outFrames=%i, delay=%i\n", 
+	inSize, inShift, outShift, inFrames, outFrames, delay);	*/
+	}
+	return outFrames * outShift;
 }
 
 

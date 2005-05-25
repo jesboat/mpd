@@ -35,7 +35,6 @@ typedef struct _AudioFormat {
 	volatile mpd_uint32 sampleRate;
 	volatile mpd_sint8 bits;
 	volatile mpd_sint8 fracBits;
-	/*volatile mpd_sint8 floatSamples;*/
 } AudioFormat;
 
 void copyAudioFormat(AudioFormat * dest, AudioFormat * src);
