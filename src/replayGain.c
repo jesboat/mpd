@@ -155,12 +155,16 @@ void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize,
 	/* no check for overflow needed - replaygain peak info prevent
 	 * clipping and we have 3 headroom bits in our 32 bit samples */ 
 	if(iScale == 1) {
-		while(samples--)
-			*buffer32++ = *buffer32 >> shift;
+		while(samples--) {
+			*buffer32 = *buffer32 >> shift;
+			buffer32++;
+		}
 	}
-	else {
-		while(samples--)
-			*buffer32++ = (*buffer32 >> shift) * iScale;
+	else { 
+		while(samples--) {
+			*buffer32 = (*buffer32 >> shift) * iScale;
+			buffer32++;
+		}
 	}	
 
 }

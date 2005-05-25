@@ -236,8 +236,8 @@ void pcm_volumeChange(char * buffer, int bufferSize, AudioFormat * format,
 	int samples;
 	int shift; 
 
-	if(format->bits!=32 || format->channels!=2) {
-		ERROR("Only 32 bit stereo is supported for pcm_volumeChange!\n");
+	if(format->bits!=32 || format->fracBits == 0) {
+		ERROR("Only 32 bit mpd_fixed_t samples are supported in pcm_volumeChange!\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -261,12 +261,16 @@ void pcm_volumeChange(char * buffer, int bufferSize, AudioFormat * format,
 	}
 	/* change */
 	if(iScale == 1) {
-		while(samples--)
-			*buffer32++ = *buffer32 >> shift;
+		while(samples--) {
+			*buffer32 = *buffer32 >> shift;
+			buffer32++;
+		}
 	}
 	else {
-		while(samples--)
-			*buffer32++ = (*buffer32 >> shift) * iScale;
+		while(samples--) {
+			*buffer32 = (*buffer32 >> shift) * iScale;
+			buffer32++;
+		}
 	}	
 
 }
@@ -283,8 +287,8 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 	int iScale2;
 	int shift;
 	
-	if(format->bits!=32 || format->channels!=2 ) {
-		ERROR("Only 32 bit stereo is supported for pcm_add!\n");
+	if(format->bits!=32 || format->fracBits==0 ) {
+		ERROR("Only 32 bit mpd_fixed_t samples are supported in pcm_add!\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -297,8 +301,10 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 	/* scale and add samples */
 	/* no check for overflow needed - we trust our headroom is enough */ 
 	while(samples1 && samples2) {
-		*buffer32_1++ = (*buffer32_1 >> shift) * iScale1 +
+		temp = (*buffer32_1 >> shift) * iScale1 +
 			(*buffer32_2 >> shift) * iScale2;
+		*buffer32_1++ = temp;
+		buffer32_2++;
 	}
 	/* take care of case where buffer2 > buffer1 */
 	if(samples2) memcpy(buffer32_1,buffer32_2,samples2<<2);
