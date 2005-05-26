@@ -34,6 +34,8 @@ typedef struct _ReplayGainInfo {
 
 	/* used internally by mpd, to mess with it*/
 	float scale;
+	int iScale;
+	int shift;
 } ReplayGainInfo;
 
 ReplayGainInfo * newReplayGainInfo();

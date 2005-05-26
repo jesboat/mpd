@@ -78,12 +78,16 @@ void pcm_convertToIntWithDither(int bits,
 	const mpd_fixed_t max = (1L << (fracBits)) - 1;
 	const mpd_fixed_t min = ~0L << (fracBits);
 	mpd_fixed_t sample;
+	
 	/* need to split in two cases to avoid negative shifting */
 	if(bits>fracBits) {
 		/* left shift - no need to dither */
 		while(samples--) {
 			sample = *buffer;
-			sample = sample>max ? max : (sample<min ? min : sample);
+			if(sample>max)
+				sample = max;
+			else if(sample<min) 
+				sample = min;
 			*buffer++ = sample << (bits - fracBits - 1);
 		}
 	}
@@ -92,7 +96,10 @@ void pcm_convertToIntWithDither(int bits,
 		while(samples--) {
 			sample = *buffer + half + (ditherRandom[0] & mask) -
 				(ditherRandom[1] & mask);
-			sample = sample>max ? max : (sample<min ? min : sample);
+			if(sample>max)
+				sample = max;
+			else if(sample<min)
+				sample = min;
 			*buffer++ = sample >> (fracBits - bits + 1);
 			ditherRandom[1] = ditherRandom[0] >> 1;
 			ditherRandom[0] = prng(ditherRandom[0]);
@@ -232,47 +239,52 @@ void pcm_volumeChange(char * buffer, int bufferSize, AudioFormat * format,
 		int volume)
 {
 	mpd_fixed_t * buffer32 = (mpd_fixed_t *)buffer;
-	int iScale;
-	int samples;
-	int shift; 
+	int samples = bufferSize >> 2;
+	static int iScale;
+	static int shift;
+	static int currentVolume = -1;
 
 	if(format->bits!=32 || format->fracBits == 0) {
-		ERROR("Only 32 bit mpd_fixed_t samples are supported in pcm_volumeChange!\n");
+		ERROR("Only 32 bit mpd_fixed_t samples are supported in"
+				" pcm_volumeChange!\n");
 		exit(EXIT_FAILURE);
 	}
 
 	/* take care of full and no volume cases */
-	if(volume>=1000) return;
+	if(volume>=1024) return;
 	
 	if(volume<=0) {
 		memset(buffer,0,bufferSize);
 		return;
 	}
 
-	/****** change volume ******/
-	samples = bufferSize >> 2;
-	iScale = (mpd_uint32)(volume * 256) / 1000;
-	shift = 8;
-	
-	/* lower shifting value as much as possible */
-	while(!(iScale & 1) && shift) {
-		iScale >>= 1;
-		shift--;
+	/* recalculate if volume has changed */
+	if(volume != currentVolume) {
+		currentVolume = volume;
+		iScale = volume;
+		shift = 10;
+		
+		/* Minimize values to get the precision loss as small as 
+		 * possible in the integer calculations. Make iScale less
+		 * then 5 bits. This results in a volume change precision
+		 * of approx. 0.5dB */
+		while((iScale>31 || !(iScale & 1)) && shift) {
+			iScale >>= 1;
+			shift--;
+		}
 	}
-	/* change */
-	if(iScale == 1) {
+
+	/* change the volume */
+	if(iScale == 1)
 		while(samples--) {
 			*buffer32 = *buffer32 >> shift;
 			buffer32++;
 		}
-	}
-	else {
+	else 
 		while(samples--) {
 			*buffer32 = (*buffer32 >> shift) * iScale;
 			buffer32++;
 		}
-	}	
-
 }
 
 void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1, 
@@ -281,29 +293,33 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 	mpd_fixed_t * buffer32_1 = (mpd_fixed_t *)buffer1;
 	mpd_fixed_t * buffer32_2 = (mpd_fixed_t *)buffer2;
 	mpd_fixed_t temp;
-	int samples1;
-	int samples2;
-	int iScale1;
-	int iScale2;
-	int shift;
+	int samples1 = bufferSize1 >> 2;
+	int samples2 = bufferSize2 >> 2;
+	int iScale1 = vol1 >> 2;
+	int iScale2 = vol2 >> 2;
+	int shift = 8;
 	
 	if(format->bits!=32 || format->fracBits==0 ) {
-		ERROR("Only 32 bit mpd_fixed_t samples are supported in pcm_add!\n");
+		ERROR("Only 32 bit mpd_fixed_t samples are supported in"
+				" pcm_add!\n");
 		exit(EXIT_FAILURE);
 	}
 
-	samples1 = bufferSize1 >> 2;
-	samples2 = bufferSize1 >> 2;
-	iScale1 = (mpd_uint32)(vol1 * 256) / 1000;
-	iScale2 = (mpd_uint32)(vol2 * 256) / 1000;
-	shift = 8;
-	
+	/* lower iScale to minimize audio resolution loss */
+	/* as long as it can be done without loss */
+	while(!(iScale1 & 1) && !(iScale2 & 1) && shift) {
+		iScale1 >>= 1;
+		iScale2 >>= 1;
+		shift--;
+	}
+
 	/* scale and add samples */
 	/* no check for overflow needed - we trust our headroom is enough */ 
 	while(samples1 && samples2) {
 		temp = (*buffer32_1 >> shift) * iScale1 +
 			(*buffer32_2 >> shift) * iScale2;
-		*buffer32_1++ = temp;
+		*buffer32_1 = temp;
+		buffer32_1++;
 		buffer32_2++;
 	}
 	/* take care of case where buffer2 > buffer1 */
@@ -319,10 +335,10 @@ void pcm_mix(char * buffer1, char * buffer2, size_t bufferSize1,
 	float s = sin(M_PI_2*portion1);
 	s*=s;
 	
-	vol1 = s*1000+0.5;
-	vol1 = vol1>1000 ? 1000 : ( vol1<0 ? 0 : vol1 );
+	vol1 = s*1024+0.5;
+	vol1 = vol1>1024 ? 1024 : ( vol1<0 ? 0 : vol1 );
 
-	pcm_add(buffer1,buffer2,bufferSize1,bufferSize2,vol1,1000-vol1,format);
+	pcm_add(buffer1,buffer2,bufferSize1,bufferSize2,vol1,1024-vol1,format);
 }
 
 

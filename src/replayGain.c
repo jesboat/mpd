@@ -108,17 +108,18 @@ void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize,
 		AudioFormat * format)
 {
 	mpd_sint32 * buffer32 = (mpd_sint32 *)buffer;
-	int samples;
-	int shift; 
-	int iScale;
+	int samples = bufferSize >> 2;
+	int iScale = info->iScale;
+	int shift = info->shift; 
 
-	if(format->bits!=32 || format->channels!=2 ) {
-		ERROR("Only 32 bit stereo is supported for doReplayGain!\n");
+	if(replayGainState == REPLAYGAIN_OFF || !info) return;
+	
+	if(format->bits!=32 || format->fracBits==0 ) {
+		ERROR("Only 32 bit mpd_fixed_t samples are supported in"
+			" doReplayGain!\n");
 		exit(EXIT_FAILURE);
 		return;
 	}
-	
-	if(replayGainState == REPLAYGAIN_OFF || !info) return;
 
 	if(info->scale < 0) {
 		switch(replayGainState) {
@@ -131,13 +132,26 @@ void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize,
 							info->albumPeak);
 			break;
 		}
-	}
+		
+		/* Calculate integer scale and shift to use in 
+		 * integer calculations. Make iScale as small as
+		 * possible and no more then 5 bits. This gives a
+		 * precision of approx. 0.5 dB */
+		iScale = info->scale * 1024;
+		shift = 10;
 	
-	samples = bufferSize >> 2;
-	/* 64 steps is enough - gives 0.13db resolution at 0dB and 2.5dB at -25dB*/
-	iScale = info->scale * 64;
-	shift = 6;
+		while((iScale>31 || !(iScale & 1)) && shift) {
+		    iScale >>= 1;
+		    shift--;
+		}
 
+		info->iScale = iScale;
+		info->shift = shift;
+
+		/*ERROR("Info: ReplayGain scale %f gives iScale=%i and shift=%i"
+			" resulting in %f\n",
+			info->scale, iScale, shift, (float)iScale / (1<<shift));*/
+	}
 	
 	/* handle negative or zero scale */
 	if(iScale<=0) {
@@ -145,14 +159,9 @@ void doReplayGain(ReplayGainInfo * info, char * buffer, int bufferSize,
 		return;
 	}
 	
-	/* lower shift value as much as possible */
-	while(!(iScale & 1) && shift) {
-		iScale >>= 1;
-		shift--;
-	}
-	
+
 	/* change samples */
-	/* no check for overflow needed - replaygain peak info prevent
+	/* no overflow check needed - replaygain peak info prevent
 	 * clipping and we have 3 headroom bits in our 32 bit samples */ 
 	if(iScale == 1) {
 		while(samples--) {

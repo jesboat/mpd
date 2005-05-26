@@ -107,16 +107,11 @@ void initAudioDriver() {
 void getInternalAudioFormat(AudioFormat * inAudioFormat, 
 		AudioFormat * outAudioFormat)
 {
-	/*TODO add #define for integer version */
-	
 	/* take the input format... */
 	copyAudioFormat(outAudioFormat,inAudioFormat);
-	/* .. change to 32 bit integers with 28 bit resolution */
+	/* .. change to 32 bit integers with 28 bit fractional part */
 	outAudioFormat->bits = 32;
 	outAudioFormat->fracBits = 28;
-	/* if forced output sample rate - use that as internal sample rate */
-	if(audio_configFormat && (audio_configFormat->sampleRate != 0))
-		outAudioFormat->sampleRate = audio_configFormat->sampleRate;
 }
 
 void getOutputAudioFormat(AudioFormat * inAudioFormat, 
@@ -208,7 +203,7 @@ int parseAudioConfig(AudioFormat * audioFormat, char * conf) {
 			return -1;
 	}
 	
-	/* audioFormat is never shifted */
+	/* The output audio format is never shifted */
 	audioFormat->fracBits = 0;
 
 	return 0;

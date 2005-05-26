@@ -129,7 +129,7 @@ void initPlayerData() {
 	memset(playerData_pd->playerControl.erroredUrl, 0, MAXPATHLEN+1);
 	memset(playerData_pd->playerControl.currentUrl, 0, MAXPATHLEN+1);
 	playerData_pd->playerControl.crossFade = crossfade;
-	playerData_pd->playerControl.softwareVolume = 1000;
+	playerData_pd->playerControl.softwareVolume = 1024;
 	playerData_pd->playerControl.totalPlayTime = 0;
 	playerData_pd->playerControl.decode_pid = 0;
 	playerData_pd->playerControl.metadataState = 
