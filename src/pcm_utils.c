@@ -117,13 +117,13 @@ void pcm_convertSampleRate(
 		AudioFormat * inFormat, mpd_fixed_t * inBuffer, int inFrames, 
 		AudioFormat *outFormat, mpd_fixed_t *outBuffer, int outFrames) 
 {
-	static int inRate; 		/* reduced bitRate */
+	static int inRate;
 	static int outRate;
 	static int shift;
-	static int unshift;
+	static int rateShift;
 	static mpd_fixed_t oldSampleL = 0;
 	static mpd_fixed_t oldSampleR = 0;
-	mpd_uint32 curTime;
+	int delay;
 	
 	/* recalculate static data if samplerate has changed */
 	if(inFormat->sampleRate != convSampleRateData.inRate || 
@@ -135,11 +135,11 @@ void pcm_convertSampleRate(
 		/* calculate the rates to use in calculations... */
 		inRate = inFormat->sampleRate;
 		outRate = outFormat->sampleRate;
-		unshift=0;
+		rateShift=0;
 		shift = 16; /* worst case shift */
 		/* ...reduce them to minimize shifting */
 		while(!(inRate & 1) && !(outRate & 1)) {
-			unshift++;
+			rateShift++;
 			shift--;
 			inRate >>= 1;
 			outRate >>= 1;
@@ -149,59 +149,50 @@ void pcm_convertSampleRate(
 	}
 
 	/* compute */
-	curTime = convSampleRateData.delay >> unshift;
-/*
-ERROR("pcm_convertSampleRate2: inFrames=%i, outFrames=%i, inRate=%i, outRate=%i, curTime=%i\n",
-		inFrames, outFrames, inRate, outRate, curTime);*/
+	
+	delay = convSampleRateData.delay >> rateShift;
 	switch(inFormat->channels) {
 	case 1:
 		while(inFrames--) {
-			curTime += outRate;
+			delay += outRate;
 			/* calculate new samples */
-			while(curTime >= inRate) {
-				curTime -= inRate;
+			while(delay >= inRate) {
+				mpd_sint32 raise;
+				delay -= inRate;
+				raise = *inBuffer - oldSampleL;
 				*outBuffer++ = oldSampleL + 
-					(((*inBuffer - oldSampleL) * 
-					  ((outRate - curTime) >> shift)) / 
-					 outRate);
-				outFrames--;
+					((((raise>>shift) * (outRate - delay)) / 
+					 outRate) << shift);
 			}
 			oldSampleL = *inBuffer++;
 		}
+		break;
 	case 2:
 		while(inFrames--) {
-			curTime += outRate;
+			delay += outRate;
 			/* calculate new samples */
-			while(curTime >= inRate) {
-				curTime -= inRate;
+			while(delay >= inRate) {
+				mpd_sint32 raise;
+				delay -= inRate;
+				/* left channel */
+				raise = *inBuffer - oldSampleL;
 				*outBuffer++ = oldSampleL + 
-					(((*inBuffer - oldSampleL) * 
-					  ((outRate - curTime) >> shift)) / 
-					 outRate);
+					((((raise>>shift) * (outRate - delay)) / 
+					 outRate) << shift);
+				/* right channel */
+				raise = inBuffer[1] - oldSampleR;
 				*outBuffer++ = oldSampleR + 
-					(((inBuffer[1] - oldSampleR) *
-					  ((outRate - curTime) >> shift)) /
-					 outRate);
-				outFrames--;
+					((((raise>>shift) * (outRate - delay)) /
+					 outRate) << shift);
 			}
 			oldSampleL = *inBuffer++;
 			oldSampleR = *inBuffer++;
 		}
-	}		
-	convSampleRateData.delay = curTime << unshift;
-/*
-ERROR("pcm_convertSampleRate2: inFrames=%i, outFrames=%i, curTime=%i\n\n",
-		inFrames, outFrames, curTime);*/
+		/* exit(EXIT_FAILURE);*/
+		break;
+	}
 
-	/* some temporary debugging tests */
-	if(inFrames>0) {
-		ERROR("pcm_convertSampleRate produced to few outFrames!\n");
-		exit(EXIT_FAILURE);
-	}
-	if(outFrames>0) {
-		ERROR("pcm_convertSampleRate produced to many outFrames!\n");
-		exit(EXIT_FAILURE);
-	}
+	convSampleRateData.delay = delay << rateShift;
 }
 	
 
@@ -358,9 +349,7 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 			inFormat, inSize, outFormat);
 	const int outSamples = (outSize << 3) / outFormat->bits;
 	const int outFrames = outSamples / outFormat->channels;
-/*ERROR("pcm_convertAudioFormat: outSize=%i, outSamples=%i, outFrames=%i," 
-	"outFormat.bits=%i, outFormat.channels=%i\n", 
-	outSize, outSamples, outFrames, outFormat->bits, outFormat->channels);*/
+	
 	/* make sure convBuffer is big enough for 2 channels of 32 bit samples */
 	dataLen = inFrames << 3;
 	if(dataLen > convBufferLength) {
@@ -384,42 +373,6 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 				dataConv, fracBits);
 	}
 	
-	/****** convert between mono and stereo samples ******/
-	
-	if(inFormat->channels != outFormat->channels) {
-		switch(inFormat->channels) {
-		/* convert from 1 -> 2 channels */
-		case 1:
-			{
-			/* in reverse order to allow for same in and out buffer */
-			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv)+inFrames;
-			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer)+(inFrames<<1);
-			int f = inFrames;
-			while(f--) {
-				*out-- = *in;
-				*out-- = *in--;
-			}
-			}
-			break;
-		/* convert from 2 -> 1 channels */
-		case 2:
-			{
-			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv);
-			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer);
-			int f = inFrames;
-			while(f--) {
-				*out = (*in++)>>1;
-				*out++ += (*in++)>>1;
-			}
-			}
-			break;
-		default:
-			ERROR("only 1 or 2 channels are supported for conversion!\n");
-			exit(EXIT_FAILURE);
-		}
-		dataConv = convBuffer;
-	}
-
 	/****** convert sample rate ******/
 
 	if(inFormat->sampleRate != outFormat->sampleRate) {
@@ -441,9 +394,46 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		dataConv = convSampleBuffer;
 	}
 
+	/****** convert between mono and stereo samples ******/
+	
+	if(inFormat->channels != outFormat->channels) {
+		switch(inFormat->channels) {
+		/* convert from 1 -> 2 channels */
+		case 1:
+			{
+			/* in reverse order to allow for same in and out buffer */
+			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv)+inFrames;
+			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer)+(inFrames<<1);
+			int f = outFrames;
+			while(f--) {
+				*out-- = *in;
+				*out-- = *in--;
+			}
+			}
+			break;
+		/* convert from 2 -> 1 channels */
+		case 2:
+			{
+			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv);
+			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer);
+			int f = outFrames;
+			while(f--) {
+				*out = (*in++)>>1;
+				*out++ += (*in++)>>1;
+			}
+			}
+			break;
+		default:
+			ERROR("only 1 or 2 channels are supported for conversion!\n");
+			exit(EXIT_FAILURE);
+		}
+		dataConv = convBuffer;
+	}
+
 	/****** convert to output format ******/
 
-	/* if outformat is mpd_fixed_t then we are done ?! TODO */
+	/* if outformat is mpd_fixed_t then we are done ?! 
+	 * TODO take care of case when in and out have different fracBits */
 	if(outFormat->fracBits==fracBits) {
 		if(outFormat->bits==32) {
 			if(outBuffer != dataConv)
@@ -510,6 +500,8 @@ size_t pcm_sizeOfOutputBufferForAudioFormatConversion(AudioFormat * inFormat,
 	if(inFormat->sampleRate == outFormat->sampleRate)
 		outFrames = inFrames;
 	else {
+		/* The previous delay from the sample rate conversion affect 
+		 * the size of the output */
 		mpd_uint32 delay = convSampleRateData.delay;
 		if(inFormat->sampleRate != convSampleRateData.inRate || 
 			outFormat->sampleRate != convSampleRateData.outRate) 
@@ -518,9 +510,6 @@ size_t pcm_sizeOfOutputBufferForAudioFormatConversion(AudioFormat * inFormat,
 		}
 		outFrames = (inFrames * (mpd_uint32)(outFormat->sampleRate) 
 				+ delay) / inFormat->sampleRate;
-/*
-ERROR("pcm_size... inSize=%i, inShift=%i, outShift=%i, inFrames=%i, outFrames=%i, delay=%i\n", 
-	inSize, inShift, outShift, inFrames, outFrames, delay);	*/
 	}
 	return outFrames * outShift;
 }
