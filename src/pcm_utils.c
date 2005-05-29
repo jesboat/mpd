@@ -402,8 +402,8 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		case 1:
 			{
 			/* in reverse order to allow for same in and out buffer */
-			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv)+inFrames;
-			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer)+(inFrames<<1);
+			mpd_fixed_t *in = ((mpd_fixed_t *)dataConv) + outFrames - 1;
+			mpd_fixed_t *out = ((mpd_fixed_t *)convBuffer) + outSamples - 1;
 			int f = outFrames;
 			while(f--) {
 				*out-- = *in;
