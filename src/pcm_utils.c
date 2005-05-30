@@ -286,33 +286,46 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 	mpd_fixed_t temp;
 	int samples1 = bufferSize1 >> 2;
 	int samples2 = bufferSize2 >> 2;
-	int iScale1 = vol1 >> 2;
-	int iScale2 = vol2 >> 2;
-	int shift = 8;
+	int shift = 10;
 	
 	if(format->bits!=32 || format->fracBits==0 ) {
 		ERROR("Only 32 bit mpd_fixed_t samples are supported in"
 				" pcm_add!\n");
 		exit(EXIT_FAILURE);
 	}
-
-	/* lower iScale to minimize audio resolution loss */
-	/* as long as it can be done without loss */
-	while(!(iScale1 & 1) && !(iScale2 & 1) && shift) {
-		iScale1 >>= 1;
-		iScale2 >>= 1;
-		shift--;
+	
+	/* take care of zero volume cases */
+	if(vol2<=0) {
+		return;
+	}
+	if(vol1<=0) {
+		if(bufferSize1>bufferSize2) {
+			memcpy(buffer1, buffer2, bufferSize2);
+			memset(buffer1+bufferSize2, 0, bufferSize1-bufferSize2);
+		}
+		else {
+			memcpy(buffer1, buffer2, bufferSize1);
+		}		
+		return;
 	}
 
+	/* lower multiplicator to minimize audio resolution loss */
+	while((vol1>31 || !(vol1 & 1)) && (vol2>31 || !(vol2 & 1)) && shift) {
+		vol1 >>= 1;
+		vol2 >>= 1;
+		shift--;
+	}
+			
 	/* scale and add samples */
 	/* no check for overflow needed - we trust our headroom is enough */ 
-	while(samples1 && samples2) {
-		temp = (*buffer32_1 >> shift) * iScale1 +
-			(*buffer32_2 >> shift) * iScale2;
+	while(samples1-- && samples2--) {
+		temp = (*buffer32_1 >> shift) * vol1 +
+			(*buffer32_2 >> shift) * vol2;
 		*buffer32_1 = temp;
 		buffer32_1++;
 		buffer32_2++;
 	}
+	
 	/* take care of case where buffer2 > buffer1 */
 	if(samples2) memcpy(buffer32_1,buffer32_2,samples2<<2);
 	return;
