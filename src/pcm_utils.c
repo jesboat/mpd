@@ -212,7 +212,6 @@ ERROR("pcm_changeBufferEndianess\n");
 		break;
 	case 32:
 		/* I'm not sure if this code is correct */
-		/* I guess it is OK for 32 bit int, but how about float? */
 		while(bufferSize) {
 			mpd_uint8 temp = *buffer;
 			mpd_uint8 temp1 = *(buffer+1);
@@ -283,7 +282,6 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 {
 	mpd_fixed_t * buffer32_1 = (mpd_fixed_t *)buffer1;
 	mpd_fixed_t * buffer32_2 = (mpd_fixed_t *)buffer2;
-	mpd_fixed_t temp;
 	int samples1 = bufferSize1 >> 2;
 	int samples2 = bufferSize2 >> 2;
 	int shift = 10;
@@ -310,6 +308,7 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 	}
 
 	/* lower multiplicator to minimize audio resolution loss */
+	/* TODO? force a maximum shift size? */
 	while((vol1>31 || !(vol1 & 1)) && (vol2>31 || !(vol2 & 1)) && shift) {
 		vol1 >>= 1;
 		vol2 >>= 1;
@@ -319,8 +318,8 @@ void pcm_add(char * buffer1, char * buffer2, size_t bufferSize1,
 	/* scale and add samples */
 	/* no check for overflow needed - we trust our headroom is enough */ 
 	while(samples1-- && samples2--) {
-		temp = (*buffer32_1 >> shift) * vol1 +
-			(*buffer32_2 >> shift) * vol2;
+		mpd_fixed_t temp = (*buffer32_1 >> shift) * vol1 +
+				(*buffer32_2 >> shift) * vol2;
 		*buffer32_1 = temp;
 		buffer32_1++;
 		buffer32_2++;
@@ -380,7 +379,8 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 		dataConv = inBuffer;
 	}
 	else {
-		fracBits = 28; /* use 28 bits as default */
+		/* convert to same fracBits as output or use 28 as default */
+		fracBits = outFormat->fracBits ? outFormat->fracBits : 28;
 		dataConv = convBuffer;
 		pcm_convertToMpdFixed(inFormat, inBuffer, inSamples, 
 				dataConv, fracBits);
@@ -445,20 +445,24 @@ void pcm_convertAudioFormat(AudioFormat * inFormat, char * inBuffer, size_t
 
 	/****** convert to output format ******/
 
-	/* if outformat is mpd_fixed_t then we are done ?! 
-	 * TODO take care of case when in and out have different fracBits */
+	/* if outformat is mpd_fixed_t */ 
 	if(outFormat->fracBits==fracBits) {
 		if(outFormat->bits==32) {
 			if(outBuffer != dataConv)
-				memcpy(outBuffer, dataConv, outSamples << 2);
+				memcpy(outBuffer, dataConv, outSize);
 			return;
 		}
 		else {
-			ERROR("%i bit float are not supported for conversion!\n", 
+			ERROR("%i bit mpd_fixed_t not supported for conversion!\n", 
 				outFormat->bits);
 			exit(EXIT_FAILURE);
 		}
-	}
+	} 
+	else if(outFormat->fracBits) {
+		/* TODO case when in and out have different fracBits */
+		ERROR("Conversion between different fracBits not supported yet!\n"); 
+		exit(EXIT_FAILURE);
+	}			
 		
 	/* convert to regular integer while adding dither and checking range */
 	pcm_convertToIntWithDither(outFormat->bits, 
