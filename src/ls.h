@@ -45,9 +45,9 @@ int isDir(char * utf8name);
 
 int isPlaylist(char * utf8file);
 
-InputPlugin * hasMusicSuffix(char * utf8file);
+InputPlugin * hasMusicSuffix(char * utf8file, unsigned int next);
 
-InputPlugin * isMusic(char * utf8file, time_t * mtime);
+InputPlugin * isMusic(char * utf8file, time_t * mtime, unsigned int next);
 
 char * dupAndStripPlaylistSuffix(char * file);
 

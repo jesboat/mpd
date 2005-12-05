@@ -771,6 +771,7 @@ InputPlugin mp3Plugin =
 	"mp3",
 	NULL,
 	NULL,
+	NULL,
 	mp3_decode,
 	NULL,
 	mp3_tagDup,
@@ -782,6 +783,7 @@ InputPlugin mp3Plugin =
 
 InputPlugin mp3Plugin = 
 {
+	NULL,
 	NULL,
 	NULL,
 	NULL,
