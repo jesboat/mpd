@@ -358,10 +358,11 @@ void decodeStart(PlayerControl * pc, OutputBuffer * cb, DecoderControl * dc) {
                 /* this is needed for bastard streams that don't have a suffix
                                 or set the mimeType */
                 if(plugin == NULL) {
-                        plugin = getInputPluginFromName("mp3");
 			/* we already know our mp3Plugin supports streams, no
 			 * need to check for stream{Types,DecodeFunc} */
-                        ret = plugin->streamDecodeFunc(cb, dc, &inStream);
+                        if ((plugin = getInputPluginFromName("mp3")))
+				ret = plugin->streamDecodeFunc(cb, dc,
+								&inStream);
                 }
 	}
         else {
