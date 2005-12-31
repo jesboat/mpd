@@ -161,8 +161,10 @@ static FLAC__StreamDecoderWriteStatus oggflacWrite(
 {
 	FlacData * data = (FlacData *)vdata;
 	FLAC__uint32 samples = frame->header.blocksize;
-	int c_samp;
-	int c_chan;
+	FLAC__uint16 u16;
+	unsigned char * uc;
+	int c_samp, c_chan, d_samp;
+	int i;
 	float timeChange;
 	const int bytesPerSample = data->dc->audioFormat.bits/8;
 	
@@ -179,29 +181,24 @@ static FLAC__StreamDecoderWriteStatus oggflacWrite(
 	data->bitRate = ((8.0 * data->bytes_last_read *
 				frame->header.sample_rate)
 			/((float)samples * 1000)) + 0.5;
-	*/	
-	for(c_samp = 0; c_samp < frame->header.blocksize; c_samp++) {
-		for(c_chan = 0; c_chan < frame->header.channels; c_chan++) {
-#ifdef WORDS_BIGENDIAN
-			memcpy(data->chunk+data->chunk_length,
-			       &buf[c_chan][c_samp]+4-bytesPerSample, 
-			       bytesPerSample);
-#else
-			memcpy(data->chunk+data->chunk_length,
-			       &buf[c_chan][c_samp],
-			       bytesPerSample);
-#endif
-			data->chunk_length+=bytesPerSample;
-			if ((FLAC_CHUNK_SIZE - data->chunk_length)
-						< bytesPerSample) 
-			{
-				if(flacSendChunk(data)<0) {
-					return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+	*/
+	
+	for(c_samp = d_samp = 0; c_samp < frame->header.blocksize; c_samp++) {
+		for(c_chan = 0; c_chan < frame->header.channels; 
+				c_chan++, d_samp++) {
+			u16 = buf[c_chan][c_samp];
+			uc = (unsigned char *)&u16;
+			for(i=0;i<(data->dc->audioFormat.bits/8);i++) {
+				if(data->chunk_length>=FLAC_CHUNK_SIZE) {
+					if(flacSendChunk(data)<0) {
+						return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+					}
+					data->chunk_length = 0;
+					if(data->dc->seek) {
+						return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+					}
 				}
-				data->chunk_length = 0;
-				if(data->dc->seek) {
-					return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
-				}
+				data->chunk[data->chunk_length++] = *(uc++);
 			}
 		}
 	}
