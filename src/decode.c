@@ -336,6 +336,7 @@ void decodeStart(PlayerControl * pc, OutputBuffer * cb, DecoderControl * dc) {
 								&inStream))
 				continue;
 			ret = plugin->streamDecodeFunc(cb, dc, &inStream);
+			break;
 		}
 
 		/* if that fails, try suffix matching the URL: */
@@ -355,6 +356,7 @@ void decodeStart(PlayerControl * pc, OutputBuffer * cb, DecoderControl * dc) {
 					continue;
 				ret = plugin->streamDecodeFunc(
 							cb, dc, &inStream);
+				break;
 			}
                 }
 		/* fallback to mp3: */
@@ -382,6 +384,7 @@ void decodeStart(PlayerControl * pc, OutputBuffer * cb, DecoderControl * dc) {
 			if(plugin->streamDecodeFunc) {
 				ret = plugin->streamDecodeFunc(
 						cb, dc, &inStream);
+				break;
 			}
 			else if(plugin->fileDecodeFunc) {
 				closeInputStream(&inStream);
