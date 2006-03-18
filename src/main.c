@@ -220,7 +220,7 @@ void changeToUser() {
                  * (must be done before we change our uid)
                  */
                 if (initgroups(param->value, userpwd->pw_gid) == -1) {
-                        WARNING("cannot init suplementary groups "
+                        WARNING("cannot init supplementary groups "
                                         "of user \"%s\" at line %i: %s\n", 
 					param->value, param->line, 
                                         strerror(errno));
@@ -300,7 +300,6 @@ void startMainProcess() {
         if(pid>0) {
 		initInputStream(); 
 	        initReplayGainState();
-		/* qball crappy code */
 		readAudioDevicesState();
 
 		/* free stuff we don't need */
@@ -316,9 +315,6 @@ void startMainProcess() {
 		
 		finishAudioConfig();
 		finishAudioDriver();
-	
-		/* qball crappy code */
-		saveAudioDevicesState();
 	
 		finishPaths();
 
