@@ -23,7 +23,7 @@
 #include <string.h>
 
 #ifndef CHILDREN_PER_NODE
-#define CHILDREN_PER_NODE 3
+#define CHILDREN_PER_NODE 31
 #endif
 
 #define DATA_PER_NODE (CHILDREN_PER_NODE-1)
@@ -46,7 +46,7 @@ struct _TreeNode
 
 struct _Tree
 {
-	TreeCompareKeyFunction compareData;
+	TreeCompareKeyFunction compareKey;
 	TreeFreeFunction freeKey;
 	TreeFreeFunction freeData;
 	TreeNode * rootNode;
@@ -83,7 +83,7 @@ _FindPosition(Tree * tree, TreeNode * node, void * key, int * pos)
 	while (high > low)
 	{
 		int cur = (high + low) >> 1;
-		cmp = tree->compareKey(data, node->keyData[cur].key);
+		cmp = tree->compareKey(key, node->keyData[cur].key);
 		if (cmp > 0)
 		{
 			low = cur+1;
@@ -106,7 +106,7 @@ _FindPosition(Tree * tree, TreeNode * node, void * key, int * pos)
 	int cmp = -1;
 	for (; 
 	     i < node->count &&
-	     (cmp = tree->compareData(key, node->keyData[i].key)) > 0;
+	     (cmp = tree->compareKey(key, node->keyData[i].key)) > 0;
 	     i++);
 	*pos = i;
 	return (cmp == 0);
@@ -179,9 +179,6 @@ _InsertNodeAndData(Tree * tree,
 		   TreeKeyData keyData)
 {
 	assert(node->count < DATA_PER_NODE);
-#ifdef TREE_DEBUG
-	assert(!newNode || tree->compareData(data, newNode->keyData[0]) < 0);
-#endif
 
 	int j = node->count;
 	for (; j > pos; j--)
@@ -193,11 +190,6 @@ _InsertNodeAndData(Tree * tree,
 			node->children[j+1]->parentPos = j+1;
 		}
 	}
-
-#ifdef TREE_DEBUG
-	assert(!node->children[pos] ||
-	       tree->compareData(data, node->children[pos]->keyData[0]) > 0);
-#endif
 
 	node->keyData[pos] = keyData;
 	node->count++;
@@ -219,10 +211,6 @@ _AddDataToSplitNodes(Tree * tree,
 		     TreeNode * newNode,
 		     TreeKeyData keyData)
 {
-#ifdef TREE_DEBUG
-	assert(newNode == NULL ||
-	       tree->compareData(data, newNode->keyData[0]) < 0);
-#endif
 	assert(moreNode->children[0] == NULL);
 
 	TreeKeyData retKeyData;
@@ -281,11 +269,6 @@ _InsertAt(TreeIterator * iter, TreeKeyData keyData)
 	
 	while (node != NULL)
 	{
-#ifdef TREE_DEBUG
-		assert((pos == node->count ||
-		       iter->tree->compareData(data, node->keyData[pos]) < 0));
-#endif
-
 		// see if there's any NULL data in the current node
 		if (node->count == DATA_PER_NODE)
 		{
@@ -581,12 +564,12 @@ _DeleteAt(TreeIterator * iter)
 /************************* PUBLIC METHODS ***********************************/
 
 Tree *
-MakeTree(TreeCompareKeyFunction compareData,
+MakeTree(TreeCompareKeyFunction compareKey,
 	 TreeFreeFunction freeKey,
 	 TreeFreeFunction freeData)
 {
 	Tree * ret = malloc(sizeof(Tree));
-	ret->compareData = compareData;
+	ret->compareKey = compareKey;
 	ret->freeKey = freeKey;
 	ret->freeData = freeData;
 	ret->rootNode = _MakeNode();

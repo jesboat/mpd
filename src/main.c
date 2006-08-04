@@ -505,9 +505,6 @@ int main(int argc, char *argv[])
 	initVolume();
 	initInterfaces();
 
-	printMemorySavedByTagTracker();
-	printSavedMemoryFromFilenames();
-
 	/* wait for the master process to get ready so we can start 
 	 * playing if readPlaylistState thinks we should*/
 	while (COMMAND_MASTER_READY != handlePendingSignals())
@@ -529,9 +526,7 @@ int main(int argc, char *argv[])
 	freeAllInterfaces();
 	closeAllListenSockets();
 
-	/* This slows shutdown immensely, and doesn't really accomplish
-	 * anything.  Uncomment when we rewrite tagTracker to use a tree. */
-	/*closeMp3Directory(); */
+	closeMp3Directory();
 
 	finishPlaylist();
 	freePlayerData();
