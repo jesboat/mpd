@@ -54,6 +54,7 @@
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
+#include <time.h>
 #include <unistd.h>
 
 #define SYSTEM_CONFIG_FILE_LOCATION	"/etc/mpd.conf"
@@ -526,7 +527,10 @@ int main(int argc, char *argv[])
 	freeAllInterfaces();
 	closeAllListenSockets();
 
+	clock_t start = clock();
 	closeMp3Directory();
+	DEBUG("closeMp3Directory took %f seconds\n", 
+	      ((float)(clock()-start))/CLOCKS_PER_SEC);
 
 	finishPlaylist();
 	freePlayerData();

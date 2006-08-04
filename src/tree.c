@@ -23,7 +23,7 @@
 #include <string.h>
 
 #ifndef CHILDREN_PER_NODE
-#define CHILDREN_PER_NODE 31
+#define CHILDREN_PER_NODE 25
 #endif
 
 #define DATA_PER_NODE (CHILDREN_PER_NODE-1)
@@ -121,6 +121,7 @@ _Find(TreeIterator * iter, void * key)
 	{
 		if (_FindPosition(iter->tree, iter->node, key, &iter->which))
 		{
+			iter->which++;
 			return 1;
 		}
 
@@ -351,7 +352,7 @@ void
 _DeleteAt(TreeIterator * iter)
 {
 	TreeNode * node = iter->node;
-	int pos = iter->which;
+	int pos = iter->which - 1;
 	TreeKeyData * keyData = &(node->keyData[pos]);
 	TreeKeyData keyDataToFree = *keyData;
 
@@ -704,7 +705,6 @@ FindInTree(Tree * tree, void * key, TreeIterator * iter)
 	_SetIteratorToRoot(tree, iter);
 	if (_Find(iter, key))
 	{
-		iter->which++;
 		return 1;
 	}
 
