@@ -22,6 +22,7 @@
 typedef struct _Tree Tree;
 typedef struct _TreeNode TreeNode;
 typedef struct _TreeIterator TreeIterator;
+typedef struct _TreeKeyData TreeKeyData;
 
 struct _TreeIterator
 {
@@ -30,20 +31,32 @@ struct _TreeIterator
 	int which;
 };
 
-typedef int (*TreeCompareDataFunction)(const void * data1, const void * data2);
-typedef void (*TreeFreeDataFunction)(void * data);
+struct _TreeKeyData
+{
+	void * key;
+	void * data;
+};
 
-Tree * MakeTree(TreeCompareDataFunction compareFunc, 
-		TreeFreeDataFunction freeData);
+typedef int (*TreeCompareKeyFunction)(const void * key1, const void * key2);
+typedef void (*TreeFreeFunction)(void * data);
 
-void SetTreeIteratorToBegin(TreeIterator * iter, Tree * tree);
+Tree * MakeTree(TreeCompareKeyFunction compareFunc, 
+		TreeFreeFunction freeKey,
+		TreeFreeFunction freeData);
+void FreeTree(Tree * tree);
+
+int GetTreeSize(Tree * tree);
+
+void SetTreeIteratorToBegin(Tree * tree, TreeIterator * iter);
 int IsTreeIteratorAtEnd(const TreeIterator * iter);
 void IncrementTreeIterator(TreeIterator * iter);
 
-void * GetDataFromTreeIterator(TreeIterator * iter);
+TreeKeyData GetTreeKeyData(TreeIterator * iter);
 
-int InsertIntoTree(Tree * tree, void * data);
+int InsertInTree(Tree * tree, void * key, void * data);
+int RemoveFromTreeByKey(Tree * tree, void * key);
+void RemoveFromTreeByIterator(Tree * tree, TreeIterator * iter);
 
-int DeleteFromTree(Tree * tree, void * data);
+int FindInTree(Tree * tree, void * key, TreeIterator * iter /* can be NULL */);
 
 #endif

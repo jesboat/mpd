@@ -37,18 +37,20 @@
 
 struct _TreeNode
 {
-	void * data[DATA_PER_NODE];
+	TreeKeyData keyData[DATA_PER_NODE];
 	struct _TreeNode * parent;
 	short parentPos;
 	struct _TreeNode * children[CHILDREN_PER_NODE];
-	short dataCount;
+	short count;
 };
 
 struct _Tree
 {
-	TreeCompareDataFunction compareData;
-	TreeFreeDataFunction freeData;
+	TreeCompareKeyFunction compareData;
+	TreeFreeFunction freeKey;
+	TreeFreeFunction freeData;
 	TreeNode * rootNode;
+	int size;
 };
 
 /************************* STATIC METHODS ***********************************/
@@ -63,18 +65,25 @@ _MakeNode()
 }
 
 static
+void
+_ClearKeyData(TreeKeyData * keyData)
+{
+	memset(keyData, 0, sizeof(TreeKeyData));
+}
+
+static
 int
-_FindPosition(Tree * tree, TreeNode * node, void * data, int * pos)
+_FindPosition(Tree * tree, TreeNode * node, void * key, int * pos)
 {
 #ifdef USE_BINARY_SEARCH
 	int low = 0;
-	int high = node->dataCount;
+	int high = node->count;
 	int cmp = -1;
 
 	while (high > low)
 	{
 		int cur = (high + low) >> 1;
-		cmp = tree->compareData(data, node->data[cur]);
+		cmp = tree->compareKey(data, node->keyData[cur].key);
 		if (cmp > 0)
 		{
 			low = cur+1;
@@ -96,8 +105,8 @@ _FindPosition(Tree * tree, TreeNode * node, void * data, int * pos)
 	int i = 0;
 	int cmp = -1;
 	for (; 
-	     i < node->dataCount &&
-	     (cmp = tree->compareData(data, node->data[i])) > 0;
+	     i < node->count &&
+	     (cmp = tree->compareData(key, node->keyData[i].key)) > 0;
 	     i++);
 	*pos = i;
 	return (cmp == 0);
@@ -106,11 +115,11 @@ _FindPosition(Tree * tree, TreeNode * node, void * data, int * pos)
 
 static
 int
-_Find(TreeIterator * iter, void * data)
+_Find(TreeIterator * iter, void * key)
 {
 	while (1)
 	{
-		if (_FindPosition(iter->tree, iter->node, data, &iter->which))
+		if (_FindPosition(iter->tree, iter->node, key, &iter->which))
 		{
 			return 1;
 		}
@@ -126,7 +135,7 @@ _Find(TreeIterator * iter, void * data)
 	}
 }
 
-static void _SetTreeIteratorToRoot(TreeIterator * iter, Tree * tree)
+static void _SetIteratorToRoot(Tree * tree, TreeIterator * iter)
 {
 	iter->tree = tree;
 	iter->node = tree->rootNode;
@@ -137,7 +146,7 @@ static
 TreeNode *
 _SplitNode(TreeNode * node)
 {
-	assert(node->dataCount == DATA_PER_NODE);
+	assert(node->count == DATA_PER_NODE);
 
 	TreeNode * newNode = _MakeNode();
 
@@ -145,18 +154,18 @@ _SplitNode(TreeNode * node)
 	int j = 0;
 	for (; i < DATA_PER_NODE; i++, j++)
 	{
-		newNode->data[j] = node->data[i];
+		newNode->keyData[j] = node->keyData[i];
 		newNode->children[j+1] = node->children[i+1];
 		if (newNode->children[j+1])
 		{
 			newNode->children[j+1]->parent = newNode;
 			newNode->children[j+1]->parentPos = j+1;
 		}
-		node->data[i] = NULL;
+		_ClearKeyData(&(node->keyData[i]));
 		node->children[i+1] = NULL;
 	}
-	newNode->dataCount = (DATA_PER_NODE-DATA_PER_NODE/2);
-	node->dataCount -= (DATA_PER_NODE-DATA_PER_NODE/2);
+	newNode->count = (DATA_PER_NODE-DATA_PER_NODE/2);
+	node->count -= (DATA_PER_NODE-DATA_PER_NODE/2);
 
 	return newNode;
 }
@@ -167,17 +176,17 @@ _InsertNodeAndData(Tree * tree,
 		   TreeNode * node,
 		   int pos,
 		   TreeNode * newNode,
-		   void * data)
+		   TreeKeyData keyData)
 {
-	assert(node->dataCount < DATA_PER_NODE);
+	assert(node->count < DATA_PER_NODE);
 #ifdef TREE_DEBUG
-	assert(!newNode || tree->compareData(data, newNode->data[0]) < 0);
+	assert(!newNode || tree->compareData(data, newNode->keyData[0]) < 0);
 #endif
 
-	int j = node->dataCount;
+	int j = node->count;
 	for (; j > pos; j--)
 	{
-		node->data[j] = node->data[j-1];
+		node->keyData[j] = node->keyData[j-1];
 		node->children[j+1] = node->children[j];
 		if (node->children[j+1])
 		{
@@ -187,11 +196,11 @@ _InsertNodeAndData(Tree * tree,
 
 #ifdef TREE_DEBUG
 	assert(!node->children[pos] ||
-	       tree->compareData(data, node->children[pos]->data[0]) > 0);
+	       tree->compareData(data, node->children[pos]->keyData[0]) > 0);
 #endif
 
-	node->data[pos] = data;
-	node->dataCount++;
+	node->keyData[pos] = keyData;
+	node->count++;
 
 	node->children[pos+1] = newNode;
 	if (newNode)
@@ -202,48 +211,47 @@ _InsertNodeAndData(Tree * tree,
 }
 
 static
-void *
+TreeKeyData
 _AddDataToSplitNodes(Tree * tree,
 		     TreeNode * lessNode, 
 		     TreeNode * moreNode,
 		     int pos,
 		     TreeNode * newNode,
-		     void * data)
+		     TreeKeyData keyData)
 {
 #ifdef TREE_DEBUG
 	assert(newNode == NULL ||
-	       tree->compareData(data, newNode->data[0]) < 0);
+	       tree->compareData(data, newNode->keyData[0]) < 0);
 #endif
 	assert(moreNode->children[0] == NULL);
 
-	void * retData;
+	TreeKeyData retKeyData;
 
-	if (pos <= lessNode->dataCount)
+	if (pos <= lessNode->count)
 	{
-		_InsertNodeAndData(tree, lessNode, pos, newNode, data);
-		lessNode->dataCount--;
-		retData = lessNode->data[lessNode->dataCount];
-		lessNode->data[lessNode->dataCount] = NULL;
+		_InsertNodeAndData(tree, lessNode, pos, newNode, keyData);
+		lessNode->count--;
+		retKeyData = lessNode->keyData[lessNode->count];
+		_ClearKeyData(&(lessNode->keyData[lessNode->count]));
 		moreNode->children[0] = 
-			lessNode->children[lessNode->dataCount+1];
+			lessNode->children[lessNode->count+1];
 		if (moreNode->children[0])
 		{
 			moreNode->children[0]->parent = moreNode;
 			moreNode->children[0]->parentPos = 0;
 		}
-		lessNode->children[lessNode->dataCount+1] = NULL;
+		lessNode->children[lessNode->count+1] = NULL;
 	}
 	else
 	{
-		pos -= lessNode->dataCount;
-		retData = moreNode->data[0];
+		pos -= lessNode->count;
+		retKeyData = moreNode->keyData[0];
 		assert(!moreNode->children[0]);
-		assert(!moreNode->data[moreNode->dataCount]);
 
 		int j = 0;
 		for (; j < pos; j++)
 		{
-			moreNode->data[j] = moreNode->data[j+1];
+			moreNode->keyData[j] = moreNode->keyData[j+1];
 			moreNode->children[j] = moreNode->children[j+1];
 			if (moreNode->children[j])
 			{
@@ -251,11 +259,7 @@ _AddDataToSplitNodes(Tree * tree,
 			}
 		}
 
-		assert(!moreNode->children[pos-1] ||
-		       tree->compareData(data,
-			       		 moreNode->children[pos-1]->data[0]) > 0);
-
-		moreNode->data[pos-1] = data;
+		moreNode->keyData[pos-1] = keyData;
 		moreNode->children[pos] = newNode;
 		if (newNode)
 		{
@@ -264,12 +268,12 @@ _AddDataToSplitNodes(Tree * tree,
 		}
 	}
 
-	return retData;
+	return retKeyData;
 }
 
 static
 void
-_InsertAt(TreeIterator * iter, void * data)
+_InsertAt(TreeIterator * iter, TreeKeyData keyData)
 {
 	TreeNode * node = iter->node;
 	TreeNode * insertNode = NULL;
@@ -278,23 +282,23 @@ _InsertAt(TreeIterator * iter, void * data)
 	while (node != NULL)
 	{
 #ifdef TREE_DEBUG
-		assert((pos == node->dataCount ||
-		       iter->tree->compareData(data, node->data[pos]) < 0));
+		assert((pos == node->count ||
+		       iter->tree->compareData(data, node->keyData[pos]) < 0));
 #endif
 
 		// see if there's any NULL data in the current node
-		if (node->dataCount == DATA_PER_NODE)
+		if (node->count == DATA_PER_NODE)
 		{
 			// no open data slots, split this node!
 			TreeNode * newNode = _SplitNode(node);
 
 			// insert data in split nodes
-			data = _AddDataToSplitNodes(iter->tree,
-						    node, 
-						    newNode,
-						    pos,
-						    insertNode,
-						    data);
+			keyData = _AddDataToSplitNodes(iter->tree,
+						       node, 
+						       newNode,
+						       pos,
+						       insertNode,
+						       keyData);
 
 			if (node->parent == NULL)
 			{
@@ -306,8 +310,8 @@ _InsertAt(TreeIterator * iter, void * data)
 				iter->tree->rootNode->children[1] = newNode;
 				newNode->parent = iter->tree->rootNode;
 				newNode->parentPos = 1;
-				iter->tree->rootNode->data[0] = data;
-				iter->tree->rootNode->dataCount = 1;
+				iter->tree->rootNode->keyData[0] = keyData;
+				iter->tree->rootNode->count = 1;
 				return;
 			}
 
@@ -322,7 +326,7 @@ _InsertAt(TreeIterator * iter, void * data)
 					   node,
 					   pos,
 					   insertNode,
-					   data);
+					   keyData);
 			return;
 		}
 	}
@@ -333,16 +337,15 @@ void
 _MergeNodes(TreeNode * lessNode, TreeNode * moreNode)
 {
 	int i = 0;
-	int j = lessNode->dataCount;
+	int j = lessNode->count;
 
-	assert((lessNode->dataCount + moreNode->dataCount) <= DATA_PER_NODE);
+	assert((lessNode->count + moreNode->count) <= DATA_PER_NODE);
 	assert(lessNode->children[j] == NULL);
 
-	for(; i < moreNode->dataCount; i++,j++)
+	for(; i < moreNode->count; i++,j++)
 	{
 		assert(!lessNode->children[j]);
-		assert(!lessNode->data[j]);
-		lessNode->data[j] = moreNode->data[i];
+		lessNode->keyData[j] = moreNode->keyData[i];
 		lessNode->children[j] = moreNode->children[i];
 		if (lessNode->children[j])
 		{
@@ -356,7 +359,7 @@ _MergeNodes(TreeNode * lessNode, TreeNode * moreNode)
 		lessNode->children[j]->parent = lessNode;
 		lessNode->children[j]->parentPos = j;
 	}
-	lessNode->dataCount += i;
+	lessNode->count += i;
 
 	free(moreNode);
 }
@@ -366,8 +369,8 @@ _DeleteAt(TreeIterator * iter)
 {
 	TreeNode * node = iter->node;
 	int pos = iter->which;
-	void ** data = &(node->data[pos]);
-	void * dataToFree = *data;
+	TreeKeyData * keyData = &(node->keyData[pos]);
+	TreeKeyData keyDataToFree = *keyData;
 
 	{
 		// find the least greater than data to fill the whole!
@@ -380,22 +383,22 @@ _DeleteAt(TreeIterator * iter)
 				child = child->children[0];
 			}
 
-			*data = child->data[0];
-			data = &(child->data[0]);
+			*keyData = child->keyData[0];
+			keyData = &(child->keyData[0]);
 			node = child;
 		}
 		// or the greatest lesser than data to fill the whole!
 		else if (node->children[pos])
 		{
 			TreeNode * child = node->children[pos];
-			while (child->children[child->dataCount])
+			while (child->children[child->count])
 			{
-				pos = child->dataCount;
-				child = child->children[child->dataCount];
+				pos = child->count;
+				child = child->children[child->count];
 			}
 
-			*data = child->data[child->dataCount-1];
-			data = &(child->data[child->dataCount-1]);
+			*keyData = child->keyData[child->count-1];
+			keyData = &(child->keyData[child->count-1]);
 			node = child;
 		}
 		else
@@ -406,15 +409,15 @@ _DeleteAt(TreeIterator * iter)
 
 	// move data nodes over, we're at a leaf node, so we can ignore
 	// children
-	int i = data - node->data;;
-	for (; i < node->dataCount-1; i++)
+	int i = keyData - node->keyData;;
+	for (; i < node->count-1; i++)
 	{
-		node->data[i] = node->data[i+1];
+		node->keyData[i] = node->keyData[i+1];
 	}
-	node->data[--node->dataCount] = NULL;
+	_ClearKeyData(&(node->keyData[--node->count]));
 
 	// merge the nodes from the bottom up which have too few data
-	while (node->dataCount < (DATA_PER_NODE/2))
+	while (node->count < (DATA_PER_NODE/2))
 	{
 		// if we're not the root
 		if (node->parent)
@@ -423,27 +426,28 @@ _DeleteAt(TreeIterator * iter)
 			assert(node->parent->children[pos] == node);
 
 			// check siblings for extra data
-			if (pos < node->parent->dataCount &&
-			    (*(child+1))->dataCount > (DATA_PER_NODE/2))
+			if (pos < node->parent->count &&
+			    (*(child+1))->count > (DATA_PER_NODE/2))
 			{
 				child++;
-				node->data[node->dataCount++] = 
-					node->parent->data[pos];
-				node->children[node->dataCount] =
+				node->keyData[node->count++] = 
+					node->parent->keyData[pos];
+				node->children[node->count] =
 					(*child)->children[0];
-				if (node->children[node->dataCount])
+				if (node->children[node->count])
 				{
-					node->children[node->dataCount]->
+					node->children[node->count]->
 						parent = node;
-					node->children[node->dataCount]->
-						parentPos = node->dataCount;
+					node->children[node->count]->
+						parentPos = node->count;
 				}
-				node->parent->data[pos] =
-					(*child)->data[0];
+				node->parent->keyData[pos] =
+					(*child)->keyData[0];
 				int i = 0;
-				for(; i < (*child)->dataCount-1; i++)
+				for(; i < (*child)->count-1; i++)
 				{
-					(*child)->data[i] = (*child)->data[i+1];
+					(*child)->keyData[i] = 
+						(*child)->keyData[i+1];
 					(*child)->children[i] =
 						(*child)->children[i+1];
 					if ((*child)->children[i])
@@ -458,17 +462,17 @@ _DeleteAt(TreeIterator * iter)
 					(*child)->children[i]->parentPos = i;
 				}
 				(*child)->children[i+1] =NULL;
-				(*child)->data[i] = NULL;
-				(*child)->dataCount--;
+				_ClearKeyData(&((*child)->keyData[i]));
+				(*child)->count--;
 			}
 			else if (pos > 0 &&
-				 (*(child-1))->dataCount>(DATA_PER_NODE/2))
+				 (*(child-1))->count>(DATA_PER_NODE/2))
 			{
 				child--;
-				int i = node->dataCount++;
+				int i = node->count++;
 				for(; i > 0; i--)
 				{
-					node->data[i] = node->data[i-1];
+					node->keyData[i] = node->keyData[i-1];
 					node->children[i+1] = node->children[i];
 					if (node->children[i+1])
 					{
@@ -481,30 +485,31 @@ _DeleteAt(TreeIterator * iter)
 				{
 					node->children[1]->parentPos = 1;
 				}
-				node->data[0] = node->parent->data[pos-1];
+				node->keyData[0] = node->parent->keyData[pos-1];
 				node->children[0] = 
-					(*child)->children[(*child)->dataCount];
+					(*child)->children[(*child)->count];
 				if (node->children[0])
 				{
 					node->children[0]->parent = node;
 					node->children[0]->parentPos = 0;
 				}
-				node->parent->data[pos-1] = 
-					(*child)->data[(*child)->dataCount-1];
-				(*child)->children[(*child)->dataCount--] =
+				node->parent->keyData[pos-1] = 
+					(*child)->keyData[(*child)->count-1];
+				(*child)->children[(*child)->count--] =
 					NULL;
-				(*child)->data[(*child)->dataCount] = NULL;
+				_ClearKeyData(
+					&((*child)->keyData[(*child)->count]));
 			}
 			// merge with one of our siblings
 			else
 			{
-				if (pos < node->parent->dataCount)
+				if (pos < node->parent->count)
 				{
 					child++;
 					assert(*child);
 
-					node->data[node->dataCount++] =
-						node->parent->data[pos];
+					node->keyData[node->count++] =
+						node->parent->keyData[pos];
 
 					_MergeNodes(node, *child);
 				}
@@ -515,18 +520,18 @@ _DeleteAt(TreeIterator * iter)
 					assert(*child);
 					pos--;
 
-					(*child)->data[(*child)->dataCount++] = 
-						node->parent->data[pos];
+					(*child)->keyData[(*child)->count++] = 
+						node->parent->keyData[pos];
 
 					_MergeNodes(*child, node);
 					node = *child;
 				}
 
 				int i = pos;
-				for(; i < node->parent->dataCount-1; i++)
+				for(; i < node->parent->count-1; i++)
 				{
-					node->parent->data[i] =
-						node->parent->data[i+1];
+					node->parent->keyData[i] =
+						node->parent->keyData[i+1];
 					node->parent->children[i+1] =
 						node->parent->children[i+2];
 					if (node->parent->children[i+1])
@@ -535,9 +540,9 @@ _DeleteAt(TreeIterator * iter)
 							parentPos = i+1;
 					}
 				}
-				node->parent->data[i] = NULL;
+				_ClearKeyData(&(node->parent->keyData[i]));
 				node->parent->children[i+1] = NULL;
-				node->parent->dataCount--;
+				node->parent->count--;
 
 				node = node->parent;
 				pos = node->parentPos;
@@ -546,7 +551,7 @@ _DeleteAt(TreeIterator * iter)
 		// this is a root node
 		else 
 		{
-			if (node->dataCount == 0)
+			if (node->count == 0)
 			{
 				if (node->children[0])
 				{
@@ -563,27 +568,48 @@ _DeleteAt(TreeIterator * iter)
 		}
 	}
 
+	if (iter->tree->freeKey)
+	{
+		iter->tree->freeData(keyDataToFree.key);
+	}
 	if (iter->tree->freeData)
 	{
-		iter->tree->freeData(dataToFree);
+		iter->tree->freeData(keyDataToFree.data);
 	}
 }
 
 /************************* PUBLIC METHODS ***********************************/
 
 Tree *
-MakeTree(TreeCompareDataFunction compareData, TreeFreeDataFunction freeData)
+MakeTree(TreeCompareKeyFunction compareData,
+	 TreeFreeFunction freeKey,
+	 TreeFreeFunction freeData)
 {
 	Tree * ret = malloc(sizeof(Tree));
 	ret->compareData = compareData;
+	ret->freeKey = freeKey;
 	ret->freeData = freeData;
 	ret->rootNode = _MakeNode();
+	ret->size = 0;
 	return ret;
 }
 
-void SetTreeIteratorToBegin(TreeIterator * iter, Tree * tree)
+void
+FreeTree(Tree * tree)
 {
-	_SetTreeIteratorToRoot(iter, tree);
+	assert(tree->rootNode == NULL);
+	free(tree);
+}
+
+int
+GetTreeSize(Tree * tree)
+{
+	return tree->size;
+}
+
+void SetTreeIteratorToBegin(Tree * tree, TreeIterator * iter)
+{
+	_SetIteratorToRoot(tree, iter);
 	IncrementTreeIterator(iter);
 }
 
@@ -606,7 +632,7 @@ void IncrementTreeIterator(TreeIterator * iter)
 			iter->which++;
 		}
 
-		while (iter->node && iter->which > iter->node->dataCount)
+		while (iter->node && iter->which > iter->node->count)
 		{
 			TreeNode * childNode = iter->node;
 			iter->node = childNode->parent;
@@ -618,54 +644,84 @@ void IncrementTreeIterator(TreeIterator * iter)
 				     iter->which++)
 				{
 					assert(iter->which <= 
-					       iter->node->dataCount);
+					       iter->node->count);
 				}
 				iter->which++;
 			}
 		}
 
 		if (iter->node &&
-		    iter->which > 0 && iter->which <= iter->node->dataCount)
+		    iter->which > 0 && iter->which <= iter->node->count)
 		{
 			return;
 		}
 	}
 }
 
-void *
-GetDataFromTreeIterator(TreeIterator * iter)
+TreeKeyData
+GetTreeKeyData(TreeIterator * iter)
 {
 	assert(iter->node && 
 	       iter->which > 0 && 
-	       iter->which <= iter->node->dataCount);
-	return iter->node->data[iter->which-1];
+	       iter->which <= iter->node->count);
+	return iter->node->keyData[iter->which-1];
 }
 
 int
-InsertIntoTree(Tree * tree, void * data)
+InsertInTree(Tree * tree, void * key, void * data)
 {
+	TreeKeyData keyData = {key, data};
 	TreeIterator iter;
-	_SetTreeIteratorToRoot(&iter, tree);
+	_SetIteratorToRoot(tree, &iter);
 
-	if (_Find(&iter, data))
+	if (_Find(&iter, key))
 	{
 		return 0;
 	}
 
-	_InsertAt(&iter, data);
+	_InsertAt(&iter, keyData);
+	tree->size++;
 
 	return 1;
 }
 
 int
-DeleteFromTree(Tree * tree, void * data)
+RemoveFromTreeByKey(Tree * tree, void * key)
 {
 	TreeIterator iter;
-	_SetTreeIteratorToRoot(&iter, tree);
+	_SetIteratorToRoot(tree, &iter);
 
-	if (_Find(&iter, data))
+	if (_Find(&iter, key))
 	{
 		_DeleteAt(&iter);
+		tree->size--;
+		return 1;
+	}
+
+	return 0;
+}
+
+void
+RemoveFromTreeByIterator(Tree * tree, TreeIterator * iter)
+{
+	_DeleteAt(iter);
+	tree->size--;
+}
+
+int
+FindInTree(Tree * tree, void * key, TreeIterator * iter)
+{
+	TreeIterator i;
+	
+	if (iter == NULL)
+	{
+		iter = &i;
+	}
+
+	_SetIteratorToRoot(tree, iter);
+	if (_Find(iter, key))
+	{
+		iter->which++;
 		return 1;
 	}
 
