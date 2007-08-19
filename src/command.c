@@ -110,7 +110,8 @@
 #define COMMAND_STATUS_REPEAT           "repeat"
 #define COMMAND_STATUS_RANDOM           "random"
 #define COMMAND_STATUS_PLAYLIST         "playlist"
-#define COMMAND_STATUS_PLAYLIST_QUEUE  "playlistqueue"
+#define COMMAND_STATUS_PLAYLIST_QUEUE  	"playlistqueue"
+#define COMMAND_STATUS_STORED_PLAYLIST	"storedplaylist"
 #define COMMAND_STATUS_PLAYLIST_LENGTH  "playlistlength"
 #define COMMAND_STATUS_SONG             "song"
 #define COMMAND_STATUS_SONGID           "songid"
@@ -284,6 +285,8 @@ static int commandStatus(int fd, int *permission, int argc, char *argv[])
 		 getPlaylistVersion());
 	fdprintf(fd, "%s: %li\n", COMMAND_STATUS_PLAYLIST_QUEUE,
 		 getPlaylistQueueVersion());
+	fdprintf(fd, "%s: %li\n", COMMAND_STATUS_STORED_PLAYLIST,
+		 getStoredPlaylistVersion());
 	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_PLAYLIST_LENGTH,
 		 getPlaylistLength());
 	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_CROSSFADE,
