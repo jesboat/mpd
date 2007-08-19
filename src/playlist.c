@@ -1587,6 +1587,11 @@ void findSongsInPlaylist(int fd, int numItems, LocateTagItem * items)
 	}
 }
 
+/**
+ * Playlist Queue Functions
+ */
+
+/* Clear the queue */
 void clearPlaylistQueue(void)
 {
 	freeList(playlistQueue);
@@ -1594,6 +1599,7 @@ void clearPlaylistQueue(void)
         incrPlaylistQueueVersion();
 }
 
+/* Add a song to playlist queue by playlist id */
 int addToPlaylistQueueById(int fd, int song, int toPosition)
 {
 	int pos, *data;
@@ -1628,6 +1634,7 @@ int addToPlaylistQueueById(int fd, int song, int toPosition)
 	return 0;
 }
 
+/* delete a song from the playlist queue based on position */
 int deleteFromPlaylistQueue(int fd, int song)
 {
 	if (song < 0 || song >= playlistQueue->numberOfNodes) {
@@ -1655,6 +1662,7 @@ int deleteFromPlaylistQueueInternal(int song)
 	return 0;
 }
 
+/* list the playlist queue comment */
 int playlistQueueInfo(int fd)
 {
 	ListNode *cur = playlistQueue->firstNode;
