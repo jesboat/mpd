@@ -40,7 +40,13 @@ static const char *err_filename;
 /* redirect stdin to /dev/null to work around a libao bug */
 static void redirect_stdin(void)
 {
-	int fd;
+	int fd, st;
+	struct stat ss;
+
+	if ((st = fstat(STDIN_FILENO, &ss)) < 0 ||	/* If STDIN is already closed (e.g. mpd launched in a non-interactive shell) */
+			! isatty(STDIN_FILENO)) {	/* ... or FD 0 does not correspond to a tty device */
+		return;					/* ... do nothing and return. */
+	}
 	if ((fd = open("/dev/null", O_RDONLY)) < 0)
 		FATAL("failed to open /dev/null %s\n", strerror(errno));
 	if (dup2(fd, STDIN_FILENO) < 0)
