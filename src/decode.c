@@ -301,13 +301,13 @@ static void decodeStart(PlayerControl * pc, OutputBuffer * cb,
 
 	dc->state = DECODE_STATE_START;
 	dc->start = 0;
-
+#if 0 /* this code is moved to the http stuff */
 	while (!inputStreamAtEOF(&inStream) && bufferInputStream(&inStream) < 0
 	       && !dc->stop) {
 		/* sleep so we don't consume 100% of the cpu */
 		my_usleep(1000);
 	}
-
+#endif
 	/* for http streams, seekable is determined in bufferInputStream */
 	dc->seekable = inStream.seekable;
         

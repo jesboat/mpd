@@ -698,7 +698,16 @@ int inputStream_httpOpen(InputStream * inStream, char *url)
 	inStream->atEOFFunc = inputStream_httpAtEOF;
 	inStream->bufferFunc = inputStream_httpBuffer;
 
-	return 0;
+	while (!inputStream_httpAtEOF(inStream)) {
+		if (inputStream_httpBuffer(inStream) >= 0) {
+			return 0;
+		}
+		/* sleep so we don't consume 100% of the cpu */
+		my_usleep(1000);
+	}
+
+	freeInputStreamHTTPData(data);
+	return -1;
 }
 
 int inputStream_httpSeek(InputStream * inStream, long offset, int whence)
@@ -721,15 +730,20 @@ int inputStream_httpSeek(InputStream * inStream, long offset, int whence)
 	default:
 		return -1;
 	}
-
 	data = (InputStreamHTTPData *)inStream->data;
 	close(data->sock);
 	data->connState = HTTP_CONN_STATE_REOPEN;
 	data->buflen = 0;
 
-	inputStream_httpBuffer(inStream);
+	while (!inputStream_httpAtEOF(inStream)) {
+		if (inputStream_httpBuffer(inStream) >= 0) {
+			return 0;
+		}
+		/* sleep so we don't consume 100% of the cpu */
+		my_usleep(1000);
+	}
 
-	return 0;
+	return -1;
 }
 
 static void parseIcyMetadata(InputStream * inStream, char *metadata, int size)
@@ -759,8 +773,12 @@ static void parseIcyMetadata(InputStream * inStream, char *metadata, int size)
 	free(temp);
 }
 
-size_t inputStream_httpRead(InputStream * inStream, void *ptr, size_t size,
-			    size_t nmemb)
+/* 
+ * This stuff can only handle max bufsize sized blocks in the good case.
+ * Good case means the buffer is full.
+ */
+static size_t inputStream_httpRead_(InputStream * inStream, void *ptr,
+				    size_t size, size_t nmemb)
 {
 	InputStreamHTTPData *data = (InputStreamHTTPData *) inStream->data;
 	long tosend = 0;
@@ -824,6 +842,24 @@ size_t inputStream_httpRead(InputStream * inStream, void *ptr, size_t size,
 	}
 
 	return tosend / size;
+}
+
+/* wrapper for the previous function */
+size_t inputStream_httpRead(InputStream *inStream, void *ptr, size_t size,
+			    size_t nmemb)
+{
+	size_t req = nmemb * size;
+	size_t got = 0;
+
+	while (req) {
+		size_t r = inputStream_httpRead_(inStream, ptr + got, 1, req);
+		got += r;
+		req -= r;
+		if (inputStream_httpAtEOF(inStream))
+			break;
+	}
+
+	return got / size;
 }
 
 int inputStream_httpClose(InputStream * inStream)
