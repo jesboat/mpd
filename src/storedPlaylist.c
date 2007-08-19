@@ -144,7 +144,11 @@ StoredPlaylist *newStoredPlaylist(const char *utf8name, int fd, int ignoreExisti
 		sp->fspath = xstrdup(filename);
 
 	/* Increase stored playlist version id*/
-	incrStoredPlaylistVersion();
+	if(!ignoreExisting)
+	{
+		DEBUG("new stored playlist\n");
+		incrStoredPlaylistVersion();
+	}
 
 	return sp;
 }
@@ -308,6 +312,7 @@ static int moveSongInStoredPlaylist(int fd, StoredPlaylist *sp, int src, int des
 		}
 	}
 	/* Increase stored playlist version id*/
+	DEBUG("move stored playlist\n");
 	incrStoredPlaylistVersion();
 
 	return 0;
@@ -335,6 +340,7 @@ int moveSongInStoredPlaylistByPath(int fd, const char *utf8path, int src, int de
 	freeStoredPlaylist(sp);
 
 	/* Increase stored playlist version id*/
+	DEBUG("Move stored playlist\n");
 	incrStoredPlaylistVersion();
 
 	return 0;
@@ -367,6 +373,7 @@ int removeAllFromStoredPlaylistByPath(int fd, const char *utf8path)
 	while (fclose(file) != 0 && errno == EINTR);
 
 	/* Increase stored playlist version id*/
+	DEBUG("Remove all stored playlist\n");
 	incrStoredPlaylistVersion();
 	return 0;
 }
@@ -382,8 +389,6 @@ static int removeOneSongFromStoredPlaylist(int fd, StoredPlaylist *sp, int pos)
 
 	deleteNodeFromList(sp->list, node);
 
-	/* Increase stored playlist version id*/
-	incrStoredPlaylistVersion();
 	return 0;
 }
 
@@ -484,8 +489,6 @@ void appendPlaylistToStoredPlaylist(StoredPlaylist *sp, Playlist *playlist)
 	int i;
 	for (i = 0; i < playlist->length; i++)
 		appendSongToStoredPlaylist(sp, playlist->songs[i]);
-	/* Increase stored playlist version id*/
-	incrStoredPlaylistVersion();
 }
 
 int renameStoredPlaylist(int fd, const char *utf8from, const char *utf8to)
