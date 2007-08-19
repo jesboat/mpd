@@ -76,8 +76,14 @@ static void format_samples_int(int Bps, void *buffer, uint32_t samcnt)
 			break;
 		case 2:
 			while (samcnt--) {
-				*dst++ = (uchar)(temp = *src++);
+				temp = *src++;
+#ifdef WORDS_BIGENDIAN
 				*dst++ = (uchar)(temp >> 8);
+				*dst++ = (uchar)(temp); 
+#else
+				*dst++ = (uchar)(temp); 
+				*dst++ = (uchar)(temp >> 8);
+#endif
 			}
 			break;
 		case 3:
@@ -86,14 +92,28 @@ static void format_samples_int(int Bps, void *buffer, uint32_t samcnt)
 				temp = *src++;
 				*dst++ = (uchar)(temp >> 8);
 				*dst++ = (uchar)(temp >> 16);
+#ifdef WORDS_BIGENDIAN
+				*dst++ = (uchar)(temp >> 16);
+				*dst++ = (uchar)(temp >> 8);
+
+#else
+				*dst++ = (uchar)(temp >> 8);
+				*dst++ = (uchar)(temp >> 16);
+#endif
 			}
 			break;
 		case 4:
 			/* downscale to 16 bits */
 			while (samcnt--) {
 				temp = *src++;
+#ifdef WORDS_BIGENDIAN
+				*dst++ = (uchar)(temp >> 24);
+				*dst++ = (uchar)(temp >> 16);
+
+#else
 				*dst++ = (uchar)(temp >> 16);
 				*dst++ = (uchar)(temp >> 24);
+#endif
 			}
 			break;
 	}
