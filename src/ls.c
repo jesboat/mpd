@@ -167,9 +167,17 @@ int lsPlaylists(int fd, char *utf8path)
 		node = list->firstNode;
 		while (node != NULL) {
 			if (!strchr(node->key, '\n')) {
-				myStat(node->key, &data);
+				s[MAXPATHLEN] = '\0';
+				/* this is safe, notice actlen > MAXPATHLEN-1 above */
+				strcpy(s, actualPath);
+				strcat(s, "/");
+				strcat(s, node->key);
+
 				fdprintf(fd, "playlist: %s%s\n", dup, node->key);
-				fdprintf(fd, "mtime:	%li\n", data.st_mtime);
+				if(myStat(s, &data))
+				{
+					fdprintf(fd, "mtime: %li\n", data.st_mtime);
+				}
 			}
 			node = node->nextNode;
 		}
