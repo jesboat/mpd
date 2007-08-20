@@ -153,6 +153,7 @@ int lsPlaylists(int fd, char *utf8path)
 
 	if (list) {
 		int i;
+		struct stat data;
 		sortList(list);
 
 		dup = xmalloc(strlen(utf8path) + 2);
@@ -166,8 +167,9 @@ int lsPlaylists(int fd, char *utf8path)
 		node = list->firstNode;
 		while (node != NULL) {
 			if (!strchr(node->key, '\n')) {
-				fdprintf(fd, "playlist: %s%s\n", dup,
-					  node->key);
+				myStat(node->key, &data);
+				fdprintf(fd, "playlist: %s%s\n", dup, node->key);
+				fdprintf(fd, "mtime:	%li\n", data.st_mtime);
 			}
 			node = node->nextNode;
 		}
