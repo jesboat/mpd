@@ -167,12 +167,13 @@ int lsPlaylists(int fd, char *utf8path)
 		node = list->firstNode;
 		while (node != NULL) {
 			if (!strchr(node->key, '\n')) {
-				char *filename = utf8pathToFsPathInStoredPlaylist(utf8path, fd);
+				char *filename = utf8pathToFsPathInStoredPlaylist(node->key, fd);
 
 				fdprintf(fd, "playlist: %s%s\n", dup, node->key);
-				if(myStat(filename, &data) == 0)
-				{
-					fdprintf(fd, "mtime: %li\n", data.st_mtime);
+				if(filename) {
+					if(myStat(filename, &data) == 0) {
+						fdprintf(fd, "mtime: %li\n", data.st_mtime);
+					}
 				}
 			}
 			node = node->nextNode;
