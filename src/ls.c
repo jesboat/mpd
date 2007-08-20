@@ -174,6 +174,7 @@ int lsPlaylists(int fd, char *utf8path)
 				strcat(s, node->key);
 
 				fdprintf(fd, "playlist: %s%s\n", dup, node->key);
+				fprintf(fd, "full path: %s\n", s);
 				if(myStat(s, &data))
 				{
 					fdprintf(fd, "mtime: %li\n", data.st_mtime);
