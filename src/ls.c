@@ -167,17 +167,10 @@ int lsPlaylists(int fd, char *utf8path)
 		node = list->firstNode;
 		while (node != NULL) {
 			if (!strchr(node->key, '\n')) {
-				s[MAXPATHLEN] = '\0';
-				/* this is safe, notice actlen > MAXPATHLEN-1 above */
-				strcpy(s, actualPath);
-				strcat(s, "/");
-				strcat(s, node->key);
-				strcat(s,".");
-				strcat(s, PLAYLIST_FILE_SUFFIX); 
+				char *filename = utf8pathToFsPathInStoredPlaylist(utf8path, fd);
 
 				fdprintf(fd, "playlist: %s%s\n", dup, node->key);
-				fdprintf(fd, "full path: %s\n", s);
-				if(myStat(s, &data))
+				if(myStat(filename, &data) == 0)
 				{
 					fdprintf(fd, "mtime: %li\n", data.st_mtime);
 				}

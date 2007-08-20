@@ -46,5 +46,5 @@ void appendPlaylistToStoredPlaylist(StoredPlaylist *sp, Playlist *playlist);
 int renameStoredPlaylist(int fd, const char *utf8from, const char *utf8to);
 
 unsigned long getStoredPlaylistVersion(void);
-
+char *utf8pathToFsPathInStoredPlaylist(const char *utf8path, int fd);
 #endif

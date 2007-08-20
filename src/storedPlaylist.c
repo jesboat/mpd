@@ -42,7 +42,7 @@ unsigned long getStoredPlaylistVersion(void)
 	return storedplaylistversion;
 }
 
-static char *utf8pathToFsPathInStoredPlaylist(const char *utf8path, int fd)
+char *utf8pathToFsPathInStoredPlaylist(const char *utf8path, int fd)
 {
 	char *file;
 	char *rfile;
