@@ -25,16 +25,13 @@
 #include "command.h"
 #include "ls.h"
 #include "directory.h"
-
+#include <time.h>
 #include <string.h>
 #include <errno.h>
 static mpd_uint32 storedplaylistversion =0;
 static void incrStoredPlaylistVersion(void)
 {
-	static unsigned long max = ((mpd_uint32) 1 << 31) - 1;
-	storedplaylistversion++;
-	if (storedplaylistversion >= max)                     	
-		storedplaylistversion = 1;
+	storedplaylistversion= time(NULL);
 }
 
 unsigned long getStoredPlaylistVersion(void)
@@ -311,9 +308,6 @@ static int moveSongInStoredPlaylist(int fd, StoredPlaylist *sp, int src, int des
 			destNode->nextNode = srcNode;
 		}
 	}
-	/* Increase stored playlist version id*/
-	DEBUG("move stored playlist\n");
-	incrStoredPlaylistVersion();
 
 	return 0;
 }
@@ -338,10 +332,6 @@ int moveSongInStoredPlaylistByPath(int fd, const char *utf8path, int src, int de
 	}
 
 	freeStoredPlaylist(sp);
-
-	/* Increase stored playlist version id*/
-	DEBUG("Move stored playlist\n");
-	incrStoredPlaylistVersion();
 
 	return 0;
 }
@@ -413,8 +403,6 @@ int removeOneSongFromStoredPlaylistByPath(int fd, const char *utf8path, int pos)
 
 	freeStoredPlaylist(sp);
 
-	/* Increase stored playlist version id*/
-	incrStoredPlaylistVersion();
 	return 0;
 }
 
@@ -446,6 +434,7 @@ static int writeStoredPlaylistToPath(StoredPlaylist *sp, const char *fspath)
 	}
 
 	while (fclose(file) != 0 && errno == EINTR);
+	incrStoredPlaylistVersion();
 	return 0;
 }
 
