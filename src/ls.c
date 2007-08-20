@@ -172,6 +172,7 @@ int lsPlaylists(int fd, char *utf8path)
 				strcpy(s, actualPath);
 				strcat(s, "/");
 				strcat(s, node->key);
+				strcat(s,".");
 				strcat(s, PLAYLIST_FILE_SUFFIX); 
 
 				fdprintf(fd, "playlist: %s%s\n", dup, node->key);
