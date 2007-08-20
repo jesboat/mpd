@@ -92,6 +92,8 @@
 #define COMMAND_DEVICES		"outputs"
 #define COMMAND_COMMANDS	"commands"
 #define COMMAND_NOTCOMMANDS	"notcommands"
+
+#define COMMAND_LS_PLAYLISTS		"lsplaylists"
 #define COMMAND_PLAYLISTCLEAR   "playlistclear"
 #define COMMAND_PLAYLISTADD	"playlistadd"
 #define COMMAND_PLAYLISTFIND	"playlistfind"
@@ -419,11 +421,16 @@ static int handleLsInfo(int fd, int *permission, int argc, char *argv[])
 
 	if (printDirectoryInfo(fd, path) < 0)
 		return -1;
-
+/*	Disable listing of playlists
 	if (isRootDirectory(path))
 		return lsPlaylists(fd, path);
-
+*/
 	return 0;
+}
+
+static int handleLsPlaylists(int fd, int *permission, int argc, char *argv[])
+{
+	return lsPlaylists(fd, "/");
 }
 
 static int handleRm(int fd, int *permission, int argc, char *argv[])
@@ -1132,6 +1139,7 @@ void initCommands(void)
 	addCommand(COMMAND_LISTPLAYLIST,     PERMISSION_READ,    1,   1,   handleListPlaylist,         NULL);
 	addCommand(COMMAND_LISTPLAYLISTINFO, PERMISSION_READ,    1,   1,   handleListPlaylistInfo,     NULL);
 	addCommand(COMMAND_LSINFO,           PERMISSION_READ,    0,   1,   handleLsInfo,               NULL);
+	addCommand(COMMAND_LS_PLAYLISTS,     PERMISSION_READ,    0,   0,   handleLsPlaylists,          NULL);
 	addCommand(COMMAND_RM,               PERMISSION_CONTROL, 1,   1,   handleRm,                   NULL);
 	addCommand(COMMAND_PLAYLISTINFO,     PERMISSION_READ,    0,   1,   handlePlaylistInfo,         NULL);
 	addCommand(COMMAND_FIND,             PERMISSION_READ,    2,   -1,  handleFind,                 NULL);
