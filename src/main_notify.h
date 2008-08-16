@@ -25,10 +25,4 @@ void init_main_notify(void);
 
 void wakeup_main_task(void);
 
-void wait_main_task(void);
-
-void main_notify_lock(void);
-
-void main_notify_unlock(void);
-
 #endif /* MAIN_NOTIFY_H */

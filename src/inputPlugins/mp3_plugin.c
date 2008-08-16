@@ -314,10 +314,8 @@ static void mp3_parseId3Tag(mp3DecodeData * data, size_t tagsize,
 			len = readFromInputStream(data->inStream,
 						  allocated + count, (size_t) 1,
 						  tagsize - count);
-			if (len <= 0 && inputStreamAtEOF(data->inStream)) {
+			if (len <= 0 && inputStreamAtEOF(data->inStream))
 				break;
-			} else if (len <= 0)
-				my_usleep(10000);
 			else
 				count += len;
 		}
@@ -689,13 +687,13 @@ static int decodeFirstFrame(mp3DecodeData * data,
 
 	while (1) {
 		while ((ret = decodeNextFrameHeader(data, tag, replayGainInfo)) == DECODE_CONT &&
-		       !dc.stop);
-		if (ret == DECODE_BREAK || dc.stop) return -1;
+		       !dc_intr());
+		if (ret == DECODE_BREAK || dc_intr()) return -1;
 		if (ret == DECODE_SKIP) continue;
 
 		while ((ret = decodeNextFrame(data)) == DECODE_CONT &&
-		       !dc.stop);
-		if (ret == DECODE_BREAK || dc.stop) return -1;
+		       !dc_intr());
+		if (ret == DECODE_BREAK || dc_intr()) return -1;
 		if (ret == DECODE_OK) break;
 	}
 
@@ -813,6 +811,35 @@ static int openMp3FromInputStream(InputStream * inStream, mp3DecodeData * data,
 	return 0;
 }
 
+static float frame_time(mp3DecodeData * data, long j)
+{
+	return (((float)mad_timer_count(data->times[j],
+	                                MAD_UNITS_MILLISECONDS)) / 1000);
+}
+
+static void mp3Read_seek(mp3DecodeData * data)
+{
+	long j = 0;
+	data->muteFrame = MUTEFRAME_SEEK;
+
+	assert(pthread_equal(pthread_self(), dc.thread));
+	assert(dc.action == DC_ACTION_SEEK);
+
+	while (j < data->highestFrame && dc.seek_where > frame_time(data, j))
+		j++;
+	if (j < data->highestFrame) {
+		dc_action_begin();
+		if (seekMp3InputBuffer(data, data->frameOffset[j]) < 0) {
+			dc.seek_where = DC_SEEK_ERROR;
+		} else {
+			data->outputPtr = data->outputBuffer;
+			data->currentFrame = j;
+		}
+		data->muteFrame = 0;
+		dc_action_end();
+	}
+}
+
 static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 {
 	int samplesPerFrame;
@@ -820,6 +847,8 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 	int i;
 	int ret;
 	int skip;
+
+	assert(pthread_equal(pthread_self(), dc.thread));
 
 	if (data->currentFrame >= data->highestFrame) {
 		mad_timer_add(&data->timer, (data->frame).header.duration);
@@ -851,13 +880,13 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		data->muteFrame = 0;
 		break;
 	case MUTEFRAME_SEEK:
-		if (dc.seekWhere <= data->elapsedTime) {
+		dc_action_begin();
+		assert(dc.action == DC_ACTION_SEEK);
+		if (dc.seek_where <= data->elapsedTime) {
 			data->outputPtr = data->outputBuffer;
-			ob_clear();
 			data->muteFrame = 0;
-			dc.seek = 0;
-			decoder_wakeup_player();
 		}
+		dc_action_end();
 		break;
 	default:
 		mad_synth_frame(&data->synth, &data->frame);
@@ -928,53 +957,33 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 			}
 
 			if (data->outputPtr >= data->outputBufferEnd) {
-				ret = ob_send(data->inStream,
-							     data->inStream->seekable,
-							     data->outputBuffer,
-							     data->outputPtr - data->outputBuffer,
-							     data->elapsedTime,
-							     data->bitRate / 1000,
-							     (replayGainInfo != NULL) ? *replayGainInfo : NULL);
-				if (ret == OUTPUT_BUFFER_DC_STOP) {
+				enum dc_action action = ob_send(
+				              data->outputBuffer,
+				              data->outputPtr -
+				                 data->outputBuffer,
+				              data->elapsedTime,
+				              data->bitRate / 1000,
+				              replayGainInfo ? *replayGainInfo
+				                             : NULL);
+
+				if (action == DC_ACTION_STOP) {
 					data->flush = 0;
 					return DECODE_BREAK;
 				}
-
 				data->outputPtr = data->outputBuffer;
 
-				if (ret == OUTPUT_BUFFER_DC_SEEK)
+				if (action == DC_ACTION_SEEK)
 					break;
 			}
 		}
 
 		data->decodedFirstFrame = 1;
 
-		if (dc.seek && data->inStream->seekable) {
-			long j = 0;
-			data->muteFrame = MUTEFRAME_SEEK;
-			while (j < data->highestFrame && dc.seekWhere >
-			       ((float)mad_timer_count(data->times[j],
-						       MAD_UNITS_MILLISECONDS))
-			       / 1000) {
-				j++;
-			}
-			if (j < data->highestFrame) {
-				if (seekMp3InputBuffer(data,
-						       data->frameOffset[j]) ==
-				    0) {
-					data->outputPtr = data->outputBuffer;
-					ob_clear();
-					data->currentFrame = j;
-				} else
-					dc.seekError = 1;
-				data->muteFrame = 0;
-				dc.seek = 0;
-				decoder_wakeup_player();
-			}
-		} else if (dc.seek && !data->inStream->seekable) {
-			dc.seek = 0;
-			dc.seekError = 1;
-			decoder_wakeup_player();
+		if (dc_seek()) {
+			if (data->inStream->seekable)
+				mp3Read_seek(data);
+			else
+				dc_action_seek_fail(DC_SEEK_ERROR);
 		}
 	}
 
@@ -983,22 +992,22 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		while ((ret =
 			decodeNextFrameHeader(data, NULL,
 					      replayGainInfo)) == DECODE_CONT
-		       && !dc.stop) ;
-		if (ret == DECODE_BREAK || dc.stop || dc.seek)
+		       && dc_intr()) ;
+		if (ret == DECODE_BREAK || dc_intr() || dc_seek())
 			break;
 		else if (ret == DECODE_SKIP)
 			skip = 1;
 		if (!data->muteFrame) {
 			while ((ret = decodeNextFrame(data)) == DECODE_CONT &&
-			       !dc.stop && !dc.seek) ;
-			if (ret == DECODE_BREAK || dc.stop || dc.seek)
+			       !dc_intr() && dc_seek()) ;
+			if (ret == DECODE_BREAK || dc_intr() || dc_seek())
 				break;
 		}
 		if (!skip && ret == DECODE_OK)
 			break;
 	}
 
-	if (dc.stop)
+	if (dc_intr())
 		return DECODE_BREAK;
 
 	return ret;
@@ -1018,9 +1027,8 @@ static int mp3_decode(InputStream * inStream)
 	MpdTag *tag = NULL;
 	ReplayGainInfo *replayGainInfo = NULL;
 
-	if (openMp3FromInputStream(inStream, &data, &tag, &replayGainInfo) <
-	    0) {
-		if (!dc.stop) {
+	if (openMp3FromInputStream(inStream, &data, &tag, &replayGainInfo) < 0) {
+		if (!dc_intr()) {
 			ERROR
 			    ("Input does not appear to be a mp3 bit stream.\n");
 			return -1;
@@ -1028,10 +1036,9 @@ static int mp3_decode(InputStream * inStream)
 		return 0;
 	}
 
-	initAudioFormatFromMp3DecodeData(&data, &(dc.audioFormat));
-	getOutputAudioFormat(&(dc.audioFormat), &(ob.audioFormat));
+	initAudioFormatFromMp3DecodeData(&data, &(dc.audio_format));
 
-	dc.totalTime = data.totalTime;
+	dc.total_time = data.totalTime;
 
 	if (inStream->metaTitle) {
 		if (tag)
@@ -1058,31 +1065,16 @@ static int mp3_decode(InputStream * inStream)
 		freeMpdTag(tag);
 	}
 
-	dc.state = DECODE_STATE_DECODE;
-
 	while (mp3Read(&data, &replayGainInfo) != DECODE_BREAK) ;
-	/* send last little bit if not dc.stop */
-	if (!dc.stop && data.outputPtr != data.outputBuffer && data.flush) {
-		ob_send(NULL,
-				       data.inStream->seekable,
-				       data.outputBuffer,
-				       data.outputPtr - data.outputBuffer,
-				       data.elapsedTime, data.bitRate / 1000,
-				       replayGainInfo);
+	/* send last little bit if not dc_intr() */
+	if (!dc_intr() && data.outputPtr != data.outputBuffer && data.flush) {
+		ob_send(data.outputBuffer, data.outputPtr - data.outputBuffer,
+		        data.elapsedTime, data.bitRate / 1000, replayGainInfo);
 	}
 
 	if (replayGainInfo)
 		freeReplayGainInfo(replayGainInfo);
-
-	if (dc.seek && data.muteFrame == MUTEFRAME_SEEK) {
-		ob_clear();
-		dc.seek = 0;
-		decoder_wakeup_player();
-	}
-
-	ob_flush();
 	mp3DecodeDataFinalize(&data);
-
 	return 0;
 }
 

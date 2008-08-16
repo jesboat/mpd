@@ -27,46 +27,76 @@ struct condition {
 	pthread_cond_t cond;
 };
 
+#define STATIC_COND_INITIALIZER \
+  { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER }
+
 void cond_init(struct condition *cond);
 
 /**
  * The thread which shall be notified by this object must call this
  * function before any cond_wait() invocation.  It locks the mutex.
  */
-void cond_enter(struct condition *cond);
+static inline void cond_enter(struct condition *cond)
+{
+	pthread_mutex_lock(&cond->mutex);
+}
+
+/**
+ * Will try to enter a condition where it can eventually wait.
+ *
+ * Returns immediately, 0 if successful, EBUSY if failed
+ */
+static inline int cond_tryenter(struct condition *cond)
+{
+	return pthread_mutex_trylock(&cond->mutex);
+}
 
 /**
  * Neutralize cond_leave().
  */
-void cond_leave(struct condition *cond);
+static inline void cond_leave(struct condition *cond)
+{
+	pthread_mutex_unlock(&cond->mutex);
+}
 
 /**
  * Wait for a conditio.  Return immediately if we have already
  * been notified since we last returned from cond_wait().
  */
-void cond_wait(struct condition *cond);
+static inline void cond_wait(struct condition *cond)
+{
+	pthread_cond_wait(&cond->cond, &cond->mutex);
+}
 
 /**
  * Wait for a condition with timeout
  *
- * @param sec number of seconds to wait for (subject to change)
+ * @param sec number of milliseconds to wait for
  *
  * @return ETIMEDOUT if timed out, 0 if notification was received
  */
-int cond_timedwait(struct condition *cond, const long sec);
+int cond_timedwait(struct condition *cond, const long msec);
 
 /**
  * Notify the thread there is a waiter.  This function never blocks.
  *
  * @return EBUSY if it was unable to lock the mutex, 0 on success
  */
-int cond_signal_async(struct condition *cond);
+int cond_signal_trysync(struct condition *cond);
 
 /**
  * Notify the thread synchronously, i.e. wait until it can deliver
  * the notification.
  */
 void cond_signal_sync(struct condition *cond);
+
+/**
+ * Signal the thread without caring about delivery success/failure
+ */
+static inline void cond_signal(struct condition *cond)
+{
+	pthread_cond_signal(&cond->cond);
+}
 
 /**
  * cond_destroy - destroy the cond and internal structures

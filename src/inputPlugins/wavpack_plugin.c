@@ -139,12 +139,12 @@ static void wavpack_decode(WavpackContext *wpc, int canseek,
 	int position, outsamplesize;
 	int Bps;
 
-	dc.audioFormat.sampleRate = WavpackGetSampleRate(wpc);
-	dc.audioFormat.channels = WavpackGetReducedChannels(wpc);
-	dc.audioFormat.bits = WavpackGetBitsPerSample(wpc);
+	dc.audio_format.sampleRate = WavpackGetSampleRate(wpc);
+	dc.audio_format.channels = WavpackGetReducedChannels(wpc);
+	dc.audio_format.bits = WavpackGetBitsPerSample(wpc);
 
-	if (dc.audioFormat.bits > 16)
-		dc.audioFormat.bits = 16;
+	if (dc.audio_format.bits > 16)
+		dc.audio_format.bits = 16;
 
 	if ((WavpackGetMode(wpc) & MODE_FLOAT) == MODE_FLOAT)
 		format_samples = format_samples_float;
@@ -162,40 +162,33 @@ static void wavpack_decode(WavpackContext *wpc, int canseek,
 	outsamplesize = Bps;
 	if (outsamplesize > 2)
 		outsamplesize = 2;
-	outsamplesize *= dc.audioFormat.channels;
+	outsamplesize *= dc.audio_format.channels;
 
-	samplesreq = sizeof(chunk) / (4 * dc.audioFormat.channels);
+	samplesreq = sizeof(chunk) / (4 * dc.audio_format.channels);
 
-	getOutputAudioFormat(&(dc.audioFormat), &(ob.audioFormat));
-
-	dc.totalTime = (float)allsamples / dc.audioFormat.sampleRate;
-	dc.state = DECODE_STATE_DECODE;
-	dc.seekable = canseek;
+	dc.total_time = (float)allsamples / dc.audio_format.sampleRate;
 
 	position = 0;
 
 	do {
-		if (dc.seek) {
+		if (dc_seek()) {
+			dc_action_begin();
+			assert(dc.action == DC_ACTION_SEEK);
 			if (canseek) {
 				int where;
-
-				ob_clear();
-
-				where = dc.seekWhere *
-				        dc.audioFormat.sampleRate;
+				where = dc.seek_where *
+				        dc.audio_format.sampleRate;
 				if (WavpackSeekSample(wpc, where))
 					position = where;
 				else
-					dc.seekError = 1;
+					dc.seek_where = DC_SEEK_ERROR;
 			} else {
-				dc.seekError = 1;
+				dc.seek_where = DC_SEEK_ERROR;
 			}
-
-			dc.seek = 0;
-			decoder_wakeup_player();
+			dc_action_end();
 		}
 
-		if (dc.stop)
+		if (dc_intr())
 			break;
 
 		samplesgot = WavpackUnpackSamples(wpc,
@@ -205,19 +198,15 @@ static void wavpack_decode(WavpackContext *wpc, int canseek,
 			              1000 + 0.5);
 			position += samplesgot;
 			file_time = (float)position /
-			            dc.audioFormat.sampleRate;
+			            dc.audio_format.sampleRate;
 
 			format_samples(Bps, chunk,
-			               samplesgot * dc.audioFormat.channels);
+			               samplesgot * dc.audio_format.channels);
 
-			ob_send(NULL, 0, chunk,
-			                       samplesgot * outsamplesize,
-			                       file_time, bitrate,
-					       replayGainInfo);
+			ob_send(chunk, samplesgot * outsamplesize,
+			        file_time, bitrate, replayGainInfo);
 		}
 	} while (samplesgot == samplesreq);
-
-	ob_flush();
 }
 
 static char *wavpack_tag(WavpackContext *wpc, char *key)
@@ -398,6 +387,7 @@ static int can_seek(void *id)
 	return ((InputStreamPlus *)id)->is->seekable;
 }
 
+/* FIXME: remove C99 initializers */
 static WavpackStreamReader mpd_is_reader = {
 	.read_bytes = read_bytes,
 	.get_pos = get_pos,
@@ -453,38 +443,27 @@ static int wavpack_streamdecode(InputStream *is)
 	int canseek;
 
 	/* Try to find wvc */
+	/* wvc being the "correction" file to supplement the original .wv */
 	do {
 		char tmp[MPD_PATH_MAX];
 		const char *utf8url;
 		size_t len;
 		err = 1;
 
-		/*
-		 * As we use dc.utf8url, this function will be bad for
-		 * single files. utf8url is not absolute file path :/
-		 */
-		utf8url = get_song_url(tmp, dc.current_song);
-		if (utf8url == NULL) {
+		/* This is the only reader of dc.current_song */
+		if (!(utf8url = get_song_url(tmp, dc.current_song)))
 			break;
-		}
 
-		len = strlen(utf8url);
-		if (!len) {
+		if (!(len = strlen(utf8url)))
 			break;
-		}
 
-		wvc_url = (char *)xmalloc(len + 2); /* +2: 'c' and EOS */
-		if (wvc_url == NULL) {
-			break;
-		}
-
+		wvc_url = (char *)xmalloc(len + sizeof("c"));
 		memcpy(wvc_url, utf8url, len);
 		wvc_url[len] = 'c';
 		wvc_url[len + 1] = '\0';
 
-		if (openInputStream(&is_wvc, wvc_url)) {
+		if (openInputStream(&is_wvc, wvc_url))
 			break;
-		}
 
 		/*
 		 * And we try to buffer in order to get know
@@ -500,17 +479,17 @@ static int wavpack_streamdecode(InputStream *is)
 				break;
 			}
 
+			/* FIXME: replace with future "peek" function */
 			if (bufferInputStream(&is_wvc) >= 0) {
 				err = 0;
 				break;
 			}
 
-			if (dc.stop) {
+			if (dc_intr())
 				break;
-			}
 
 			/* Save some CPU */
-			my_usleep(1000);
+			my_usleep(1000); /* FIXME: remove */
 		}
 		if (err) {
 			closeInputStream(&is_wvc);

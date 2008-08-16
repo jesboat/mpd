@@ -66,8 +66,8 @@ static size_t ogg_read_cb(void *ptr, size_t size, size_t nmemb, void *vdata)
 	while (1) {
 		ret = readFromInputStream(data->inStream, ptr, size, nmemb);
 		if (ret == 0 && !inputStreamAtEOF(data->inStream) &&
-		    !dc.stop) {
-			my_usleep(10000);
+		    !dc_intr()) {
+			my_usleep(10000); /* FIXME */
 		} else
 			break;
 	}
@@ -80,7 +80,7 @@ static size_t ogg_read_cb(void *ptr, size_t size, size_t nmemb, void *vdata)
 static int ogg_seek_cb(void *vdata, ogg_int64_t offset, int whence)
 {
 	const OggCallbackData *data = (const OggCallbackData *) vdata;
-	if (dc.stop)
+	if (dc_intr())
 		return -1;
 	return seekInputStream(data->inStream, offset, whence);
 }
@@ -240,7 +240,7 @@ static int oggvorbis_decode(InputStream * inStream)
 	callbacks.close_func = ogg_close_cb;
 	callbacks.tell_func = ogg_tell_cb;
 	if ((ret = ov_open_callbacks(&data, &vf, NULL, 0, callbacks)) < 0) {
-		if (!dc.stop) {
+		if (!dc_intr()) {
 			switch (ret) {
 			case OV_EREAD:
 				errorStr = "read error";
@@ -267,20 +267,19 @@ static int oggvorbis_decode(InputStream * inStream)
 		}
 		return 0;
 	}
-	dc.totalTime = ov_time_total(&vf, -1);
-	if (dc.totalTime < 0)
-		dc.totalTime = 0;
-	dc.audioFormat.bits = 16;
+	dc.total_time = ov_time_total(&vf, -1);
+	if (dc.total_time < 0)
+		dc.total_time = 0;
+	dc.audio_format.bits = 16;
 
 	while (1) {
-		if (dc.seek) {
-			if (0 == ov_time_seek_page(&vf, dc.seekWhere)) {
-				ob_clear();
+		if (dc_seek()) {
+			dc_action_begin();
+			if (0 == ov_time_seek_page(&vf, dc.seek_where))
 				chunkpos = 0;
-			} else
-				dc.seekError = 1;
-			dc.seek = 0;
-			decoder_wakeup_player();
+			else
+				dc.seek_where = DC_SEEK_ERROR;
+			dc_action_end();
 		}
 		ret = ov_read(&vf, chunk + chunkpos,
 			      OGG_CHUNK_SIZE - chunkpos,
@@ -288,13 +287,8 @@ static int oggvorbis_decode(InputStream * inStream)
 		if (current_section != prev_section) {
 			/*printf("new song!\n"); */
 			vorbis_info *vi = ov_info(&vf, -1);
-			dc.audioFormat.channels = vi->channels;
-			dc.audioFormat.sampleRate = vi->rate;
-			if (dc.state == DECODE_STATE_START) {
-				getOutputAudioFormat(&(dc.audioFormat),
-						     &(ob.audioFormat));
-				dc.state = DECODE_STATE_DECODE;
-			}
+			dc.audio_format.channels = vi->channels;
+			dc.audio_format.sampleRate = vi->rate;
 			comments = ov_comment(&vf, -1)->user_comments;
 			putOggCommentsIntoOutputBuffer(inStream->metaName,
 						       comments);
@@ -316,31 +310,24 @@ static int oggvorbis_decode(InputStream * inStream)
 			if ((test = ov_bitrate_instant(&vf)) > 0) {
 				bitRate = test / 1000;
 			}
-			ob_send(inStream,
-					       inStream->seekable,
-					       chunk, chunkpos,
-					       ov_pcm_tell(&vf) /
-					       dc.audioFormat.sampleRate,
-					       bitRate, replayGainInfo);
+			ob_send(chunk, chunkpos,
+			        ov_pcm_tell(&vf) / dc.audio_format.sampleRate,
+			        bitRate, replayGainInfo);
 			chunkpos = 0;
-			if (dc.stop)
+			if (dc_intr())
 				break;
 		}
 	}
 
-	if (!dc.stop && chunkpos > 0) {
-		ob_send(NULL, inStream->seekable,
-				       chunk, chunkpos,
-				       ov_time_tell(&vf), bitRate,
-				       replayGainInfo);
+	if (!dc_intr() && chunkpos > 0) {
+		ob_send(chunk, chunkpos, ov_time_tell(&vf), bitRate,
+		        replayGainInfo);
 	}
 
 	if (replayGainInfo)
 		freeReplayGainInfo(replayGainInfo);
 
 	ov_clear(&vf);
-
-	ob_flush();
 
 	return 0;
 }

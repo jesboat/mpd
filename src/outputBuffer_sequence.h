@@ -16,31 +16,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "stats.h"
+#ifndef OUTPUT_BUFFER_SEQUENCE_H
+#define OUTPUT_BUFFER_SEQUENCE_H
 
-#include "directory.h"
-#include "myfprintf.h"
-#include "outputBuffer.h"
-#include "tagTracker.h"
-#include "os_compat.h"
+/*
+ * prevent the decoder thread from being more than one song
+ * ahead of the output buffer
+ */
+void ob_seq_enter(void);
+void ob_seq_leave(void);
+void ob_seq_wait(void);
 
-Stats stats;
-
-void initStats(void)
-{
-	stats.daemonStart = time(NULL);
-	stats.numberOfSongs = 0;
-}
-
-int printStats(int fd)
-{
-	fdprintf(fd, "artists: %i\n", getNumberOfTagItems(TAG_ITEM_ARTIST));
-	fdprintf(fd, "albums: %i\n", getNumberOfTagItems(TAG_ITEM_ALBUM));
-	fdprintf(fd, "songs: %i\n", stats.numberOfSongs);
-	fdprintf(fd, "uptime: %li\n", time(NULL) - stats.daemonStart);
-	fdprintf(fd, "playtime: %li\n",
-		  (long)(ob_get_total_time() + 0.5));
-	fdprintf(fd, "db_playtime: %li\n", stats.dbPlayTime);
-	fdprintf(fd, "db_update: %li\n", getDbModTime());
-	return 0;
-}
+#endif /* OUTPUT_BUFFER_SEQUENCE_H */

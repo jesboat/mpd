@@ -24,19 +24,14 @@
 #define DEFAULT_BUFFER_SIZE         2048
 #define DEFAULT_BUFFER_BEFORE_PLAY  10
 
-unsigned int buffered_before_play;
-PlayerControl pc;
-DecoderControl dc;
-OutputBuffer ob;
-
 void initPlayerData(void)
 {
 	float perc = DEFAULT_BUFFER_BEFORE_PLAY;
 	char *test;
-	int crossfade = 0;
 	size_t bufferSize = DEFAULT_BUFFER_SIZE;
 	unsigned int buffered_chunks;
 	ConfigParam *param;
+	unsigned int buffered_before_play;
 
 	param = getConfigParam(CONF_AUDIO_BUFFER_SIZE);
 
@@ -73,18 +68,6 @@ void initPlayerData(void)
 	}
 
 	ob_init(buffered_chunks);
-
-	notify_init(&pc.notify);
-	pc.error = PLAYER_ERROR_NOERROR;
-	pc.state = PLAYER_STATE_STOP;
-	pc.queueState = PLAYER_QUEUE_BLANK;
-	pc.queueLockState = PLAYER_QUEUE_UNLOCKED;
-	pc.crossFade = crossfade;
-	pc.softwareVolume = 1000;
-
-	notify_init(&dc.notify);
-	dc.state = DECODE_STATE_STOP;
-	dc.error = DECODE_ERROR_NOERROR;
 }
 
 

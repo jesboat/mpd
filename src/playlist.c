@@ -17,7 +17,7 @@
  */
 
 #include "playlist.h"
-#include "player.h"
+#include "player_error.h"
 #include "command.h"
 #include "ls.h"
 #include "tag.h"
@@ -31,9 +31,28 @@
 #include "ack.h"
 #include "myfprintf.h"
 #include "os_compat.h"
+#include "main_notify.h"
 
-#define PLAYLIST_STATE_STOP		0
-#define PLAYLIST_STATE_PLAY		1
+enum _playlist_state {
+	PLAYLIST_STATE_STOP = 0,
+	PLAYLIST_STATE_PLAY = 1
+};
+static enum _playlist_state playlist_state;
+
+struct _playlist {
+	Song **songs;
+	/* holds version a song was modified on */
+	mpd_uint32 *songMod;
+	int *order;
+	int *positionToId;
+	int *idToPosition;
+	int length;
+	int current;
+	int queued; /* to be decoded */
+	int repeat;
+	int random;
+	mpd_uint32 version;
+};
 
 #define PLAYLIST_PREV_UNLESS_ELAPSED    10
 
@@ -57,13 +76,19 @@
 #define DEFAULT_PLAYLIST_MAX_LENGTH		(1024*16)
 #define DEFAULT_PLAYLIST_SAVE_ABSOLUTE_PATHS	0
 
-static Playlist playlist;
-static int playlist_state = PLAYLIST_STATE_STOP;
+static struct _playlist playlist;
 int playlist_max_length = DEFAULT_PLAYLIST_MAX_LENGTH;
 static int playlist_stopOnError;
 static int playlist_errorCount;
-static int playlist_queueError;
-static int playlist_noGoToNext;
+
+/*
+ * queue_lock is to prevent ourselves from modifying playlist.queued
+ * while the decoder is decoding the song.  The main_thread in mpd is
+ * the only modifier of playlist.queued.  However, we may modify
+ * playlist.queued "in-place" without locking if it points to the same
+ * song (during move or shuffle).
+ */
+static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int playlist_saveAbsolutePaths = DEFAULT_PLAYLIST_SAVE_ABSOLUTE_PATHS;
 
@@ -238,8 +263,8 @@ void savePlaylistState(FILE *fp)
 	fprintf(fp, "%s", PLAYLIST_STATE_FILE_STATE);
 	switch (playlist_state) {
 	case PLAYLIST_STATE_PLAY:
-		switch (getPlayerState()) {
-		case PLAYER_STATE_PAUSE:
+		switch (ob_get_state()) {
+		case OB_STATE_PAUSE:
 			fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_STATE_PAUSE);
 			break;
 		default:
@@ -247,8 +272,8 @@ void savePlaylistState(FILE *fp)
 		}
 		fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_CURRENT,
 		        playlist.order[playlist.current]);
-		fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_TIME,
-		        getPlayerElapsedTime());
+		fprintf(fp, "%s%lu\n", PLAYLIST_STATE_FILE_TIME,
+		        ob_get_elapsed_time());
 		break;
 	default:
 		fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_STATE_STOP);
@@ -257,7 +282,7 @@ void savePlaylistState(FILE *fp)
 	fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_RANDOM, playlist.random);
 	fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_REPEAT, playlist.repeat);
 	fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_CROSSFADE,
-	        (int)(getPlayerCrossFade()));
+	        (int)(ob_get_xfade()));
 	fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_PLAYLIST_BEGIN);
 	fflush(fp);
 	showPlaylist(fileno(fp));
@@ -265,7 +290,8 @@ void savePlaylistState(FILE *fp)
 }
 
 static void loadPlaylistFromStateFile(FILE *fp, char *buffer,
-				      int state, int current, int seek_time)
+				      enum ob_state state,
+				      int current, int seek_time)
 {
 	char *temp;
 	int song;
@@ -281,14 +307,9 @@ static void loadPlaylistFromStateFile(FILE *fp, char *buffer,
 			state_file_fatal();
 		if (!addToPlaylist(STDERR_FILENO, temp, NULL)
 		    && current == song) {
-			if (state != PLAYER_STATE_STOP) {
-				playPlaylist(STDERR_FILENO,
-					     playlist.length - 1, 0);
-			}
-			if (state == PLAYER_STATE_PAUSE) {
-				playerPause(STDERR_FILENO);
-			}
-			if (state != PLAYER_STATE_STOP) {
+			if (state == OB_STATE_PAUSE)
+				ob_trigger_action(OB_ACTION_PAUSE_SET);
+			if (state != OB_STATE_STOP) {
 				seekSongInPlaylist(STDERR_FILENO,
 						   playlist.length - 1,
 						   seek_time);
@@ -303,7 +324,7 @@ void readPlaylistState(FILE *fp)
 {
 	int current = -1;
 	int seek_time = 0;
-	int state = PLAYER_STATE_STOP;
+	enum ob_state state = OB_STATE_STOP;
 	char buffer[PLAYLIST_BUFFER_SIZE];
 
 	while (myFgets(buffer, PLAYLIST_BUFFER_SIZE, fp)) {
@@ -311,13 +332,13 @@ void readPlaylistState(FILE *fp)
 			    strlen(PLAYLIST_STATE_FILE_STATE)) == 0) {
 			if (strcmp(&(buffer[strlen(PLAYLIST_STATE_FILE_STATE)]),
 				   PLAYLIST_STATE_FILE_STATE_PLAY) == 0) {
-				state = PLAYER_STATE_PLAY;
+				state = OB_STATE_PLAY;
 			} else
 			    if (strcmp
 				(&(buffer[strlen(PLAYLIST_STATE_FILE_STATE)]),
 				 PLAYLIST_STATE_FILE_STATE_PAUSE)
 				== 0) {
-				state = PLAYER_STATE_PAUSE;
+				state = OB_STATE_PAUSE;
 			}
 		} else if (strncmp(buffer, PLAYLIST_STATE_FILE_TIME,
 				   strlen(PLAYLIST_STATE_FILE_TIME)) == 0) {
@@ -337,9 +358,7 @@ void readPlaylistState(FILE *fp)
 		    if (strncmp
 			(buffer, PLAYLIST_STATE_FILE_CROSSFADE,
 			 strlen(PLAYLIST_STATE_FILE_CROSSFADE)) == 0) {
-			setPlayerCrossFade(atoi
-					   (&
-					    (buffer
+			ob_set_xfade(atoi(&(buffer
 					     [strlen
 					      (PLAYLIST_STATE_FILE_CROSSFADE)])));
 		} else
@@ -368,7 +387,7 @@ void readPlaylistState(FILE *fp)
 			(buffer, PLAYLIST_STATE_FILE_PLAYLIST_BEGIN,
 			 strlen(PLAYLIST_STATE_FILE_PLAYLIST_BEGIN)
 			) == 0) {
-			if (state == PLAYER_STATE_STOP)
+			if (state == OB_STATE_STOP)
 				current = -1;
 			loadPlaylistFromStateFile(fp, buffer, state,
 						  current, seek_time);
@@ -483,95 +502,95 @@ static void swapSongs(int song1, int song2)
 	playlist.positionToId[song2] = iTemp;
 }
 
+static Song *song_at(int order_num)
+{
+	if (order_num >= 0 && order_num < playlist.length) {
+		assert(playlist.songs[playlist.order[order_num]]);
+		return playlist.songs[playlist.order[order_num]];
+	}
+	return NULL;
+}
+
+static int next_order_num(void)
+{
+	if (playlist.current < playlist.length - 1) {
+		return playlist.current + 1;
+	} else if (playlist.length && playlist.repeat) {
+		if (playlist.length > 1 && playlist.random)
+			randomizeOrder(0, playlist.length - 1);
+		return 0;
+	}
+	return -1;
+}
+
 static void queueNextSongInPlaylist(void)
 {
-	char path_max_tmp[MPD_PATH_MAX];
-
-	if (playlist.current < playlist.length - 1) {
-		playlist.queued = playlist.current + 1;
-		DEBUG("playlist: queue song %i:\"%s\"\n",
-		      playlist.queued,
-		      get_song_url(path_max_tmp,
-		                   playlist.
-				   songs[playlist.order[playlist.queued]]));
-		if (queueSong(playlist.songs[playlist.order[playlist.queued]]) <
-		    0) {
-			playlist.queued = -1;
-			playlist_queueError = 1;
-		}
-	} else if (playlist.length && playlist.repeat) {
-		if (playlist.length > 1 && playlist.random) {
-			randomizeOrder(0, playlist.length - 1);
-		}
-		playlist.queued = 0;
-		DEBUG("playlist: queue song %i:\"%s\"\n",
-		      playlist.queued,
-		      get_song_url(path_max_tmp,
-		                   playlist.
-		                   songs[playlist.order[playlist.queued]]));
-		if (queueSong(playlist.songs[playlist.order[playlist.queued]]) <
-		    0) {
-			playlist.queued = -1;
-			playlist_queueError = 1;
-		}
+	assert(playlist_state == PLAYLIST_STATE_PLAY);
+	/* DEBUG("%s:%d\n", __func__, __LINE__); */
+	if (pthread_mutex_trylock(&queue_lock) == EBUSY)
+		return; /* still decoding */
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	playlist.queued = next_order_num();
+	pthread_mutex_unlock(&queue_lock);
+	if (playlist.queued < 0) {
+		playlist_state = PLAYLIST_STATE_STOP;
+	} else if (dc.state == DC_STATE_STOP) {
+		/* DEBUG("%s:%d (%d)\n", __func__, __LINE__, playlist.queued);*/
+		dc_trigger_action(DC_ACTION_START, 0);
 	}
 }
 
-static void syncPlaylistWithQueue(int queue)
+static void syncPlaylistWithQueue(void)
 {
-	if (queue && getPlayerQueueState() == PLAYER_QUEUE_BLANK) {
-		queueNextSongInPlaylist();
-	} else if (getPlayerQueueState() == PLAYER_QUEUE_DECODE) {
-		if (playlist.queued != -1)
-			setQueueState(PLAYER_QUEUE_PLAY);
-		else
-			setQueueState(PLAYER_QUEUE_STOP);
-	} else if (getPlayerQueueState() == PLAYER_QUEUE_EMPTY) {
-		setQueueState(PLAYER_QUEUE_BLANK);
-		if (playlist.queued >= 0) {
-			DEBUG("playlist: now playing queued song\n");
-			playlist.current = playlist.queued;
-		}
-		playlist.queued = -1;
-		if (queue)
-			queueNextSongInPlaylist();
+	assert(playlist_state == PLAYLIST_STATE_PLAY);
+
+	if (!ob_synced())
+		return;
+
+	if (playlist.queued >= 0 &&
+	    playlist.current != playlist.queued) {
+		DEBUG("playlist: now playing queued song\n");
+		DEBUG("%s:%d queued: %d\n",__func__,__LINE__,playlist.queued);
+		playlist.current = playlist.queued;
 	}
+	queueNextSongInPlaylist();
 }
 
-static void lockPlaylistInteraction(void)
+void playlist_queue_next(void)
 {
-	if (getPlayerQueueState() == PLAYER_QUEUE_PLAY ||
-	    getPlayerQueueState() == PLAYER_QUEUE_FULL) {
-		playerQueueLock();
-		syncPlaylistWithQueue(0);
+	assert(pthread_equal(pthread_self(), dc.thread));
+	pthread_mutex_unlock(&queue_lock);
+	wakeup_main_task();
+}
+
+Song *playlist_queued_song(void)
+{
+	assert(pthread_equal(pthread_self(), dc.thread));
+	pthread_mutex_lock(&queue_lock);
+	return song_at(playlist.queued);
+}
+
+static void queue_song_locked(int order_num)
+{
+	pthread_mutex_lock(&queue_lock);
+	playlist.queued = order_num;
+	pthread_mutex_unlock(&queue_lock);
+}
+
+/*
+ * stops decoder iff we're decoding a song we haven't played yet
+ * Returns the currently queued song, -1 if we cleared the queue
+ * This will not affect the currently playing song
+ */
+static int clear_queue(void)
+{
+	if (playlist.queued >= 0 && playlist.current != playlist.queued) {
+		dc_trigger_action(DC_ACTION_STOP, 0);
+		assert(dc.state == DC_STATE_STOP);
+		ob_drop_audio(OB_DROP_DECODED);
+		queue_song_locked(-1);
 	}
-}
-
-static void unlockPlaylistInteraction(void)
-{
-	playerQueueUnlock();
-}
-
-static void clearPlayerQueue(void)
-{
-	playlist.queued = -1;
-	switch (getPlayerQueueState()) {
-	case PLAYER_QUEUE_FULL:
-		DEBUG("playlist: dequeue song\n");
-		setQueueState(PLAYER_QUEUE_BLANK);
-		break;
-	case PLAYER_QUEUE_PLAY:
-		DEBUG("playlist: stop decoding queued song\n");
-		setQueueState(PLAYER_QUEUE_STOP);
-		break;
-	}
-}
-
-static void clearPlayerQueueLocked(void)
-{
-	lockPlaylistInteraction();
-	clearPlayerQueue();
-	unlockPlaylistInteraction();
+	return playlist.queued;
 }
 
 int addToPlaylist(int fd, char *url, int *added_id)
@@ -633,7 +652,7 @@ int addSongToPlaylist(int fd, Song * song, int *added_id)
 	if (playlist_state == PLAYLIST_STATE_PLAY) {
 		if (playlist.queued >= 0
 		    && playlist.current == playlist.length - 1)
-			clearPlayerQueueLocked();
+			clear_queue();
 	}
 
 	id = getNextId();
@@ -649,8 +668,7 @@ int addSongToPlaylist(int fd, Song * song, int *added_id)
 	if (playlist.random) {
 		int swap;
 		int start;
-		/*if(playlist_state==PLAYLIST_STATE_STOP) start = 0;
-		   else */ if (playlist.queued >= 0)
+		if (playlist.queued >= 0)
 			start = playlist.queued + 1;
 		else
 			start = playlist.current + 1;
@@ -689,11 +707,13 @@ int swapSongsInPlaylist(int fd, int song1, int song2)
 		if (playlist.queued >= 0) {
 			queuedSong = playlist.order[playlist.queued];
 		}
+		assert(playlist.current >= 0 &&
+		       playlist.current < playlist.length);
 		currentSong = playlist.order[playlist.current];
 
 		if (queuedSong == song1 || queuedSong == song2
 		    || currentSong == song1 || currentSong == song2)
-			clearPlayerQueueLocked();
+			clear_queue();
 	}
 
 	swapSongs(song1, song2);
@@ -742,6 +762,8 @@ int deleteFromPlaylist(int fd, int song)
 {
 	int i;
 	int songOrder;
+	int stopped_current = 0;
+	int prev_queued = playlist.queued;
 
 	if (song < 0 || song >= playlist.length) {
 		commandError(fd, ACK_ERROR_NO_EXIST,
@@ -750,10 +772,12 @@ int deleteFromPlaylist(int fd, int song)
 	}
 
 	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.queued >= 0
-		    && (playlist.order[playlist.queued] == song
-			|| playlist.order[playlist.current] == song))
-			clearPlayerQueueLocked();
+		if (prev_queued >= 0
+		    && (playlist.order[prev_queued] == song
+			|| playlist.order[playlist.current] == song)) {
+			/* DEBUG(__FILE__": %d (clearing)\n", __LINE__); */
+			clear_queue();
+		}
 	}
 
 	if (playlist.songs[song]->type == SONG_TYPE_URL) {
@@ -786,12 +810,15 @@ int deleteFromPlaylist(int fd, int song)
 
 	incrPlaylistVersion();
 
+	/* DEBUG("current: %d, songOrder: %d\n", playlist.current, songOrder); */
+	/* DEBUG("playlist_state: %d\n", playlist_state); */
 	if (playlist_state != PLAYLIST_STATE_STOP
 	    && playlist.current == songOrder) {
-		/*if(playlist.current>=playlist.length) return playerStop(fd);
-		   else return playPlaylistOrderNumber(fd,playlist.current); */
-		playerWait(STDERR_FILENO);
-		playlist_noGoToNext = 1;
+		dc_trigger_action(DC_ACTION_STOP, 0);
+		/* drop all audio, but don't actually close the device */
+		ob_drop_audio(OB_DROP_DECODED);
+		ob_drop_audio(OB_DROP_PLAYING);
+		stopped_current = 1;
 	}
 
 	if (playlist.current > songOrder) {
@@ -799,9 +826,15 @@ int deleteFromPlaylist(int fd, int song)
 	} else if (playlist.current >= playlist.length) {
 		incrPlaylistCurrent();
 	}
-
-	if (playlist.queued > songOrder) {
-		playlist.queued--;
+	if (stopped_current) {
+		/* DEBUG(__FILE__": %d\n", __LINE__); */
+		if (playlist.current >= 0)
+			playPlaylistOrderNumber(STDERR_FILENO,playlist.current);
+		else
+			playlist_state = PLAYLIST_STATE_STOP;
+	} else {
+		/* DEBUG(__FILE__": %d\n", __LINE__); */
+		queueNextSongInPlaylist();
 	}
 
 	return 0;
@@ -831,11 +864,18 @@ void deleteASongFromPlaylist(Song * song)
 int stopPlaylist(int fd)
 {
 	DEBUG("playlist: stop\n");
-	if (playerWait(fd) < 0)
-		return -1;
-	playlist.queued = -1;
+
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	dc_trigger_action(DC_ACTION_STOP, 0);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	assert(dc.state == DC_STATE_STOP);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	ob_trigger_action(OB_ACTION_STOP);
+	assert(ob_get_state() == OB_STATE_STOP);
+
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	queue_song_locked(-1);
 	playlist_state = PLAYLIST_STATE_STOP;
-	playlist_noGoToNext = 0;
 	if (playlist.random)
 		randomizeOrder(0, playlist.length - 1);
 	return 0;
@@ -843,27 +883,21 @@ int stopPlaylist(int fd)
 
 static int playPlaylistOrderNumber(int fd, int orderNum)
 {
-	char path_max_tmp[MPD_PATH_MAX];
-
-	if (playerStop(fd) < 0)
-		return -1;
+	char path[MPD_PATH_MAX];
 
 	playlist_state = PLAYLIST_STATE_PLAY;
-	playlist_noGoToNext = 0;
-	playlist.queued = -1;
-	playlist_queueError = 0;
+	assert(orderNum >= 0);
 
 	DEBUG("playlist: play %i:\"%s\"\n", orderNum,
-	      get_song_url(path_max_tmp,
-	                   playlist.songs[playlist.order[orderNum]]));
-
-	if (playerPlay(fd, (playlist.songs[playlist.order[orderNum]])) < 0) {
-		stopPlaylist(fd);
-		return -1;
-	} 
-
+	      get_song_url(path, song_at(orderNum)));
+	dc_trigger_action(DC_ACTION_STOP, 0);
+	ob_drop_audio(OB_DROP_DECODED);
+	queue_song_locked(orderNum);
+	ob_drop_audio(OB_DROP_PLAYING);
+	ob_trigger_action(OB_ACTION_PAUSE_UNSET);
+	dc_trigger_action(DC_ACTION_START, 0);
+	ob_wait_sync(); /* HACK: REMOVE */
 	playlist.current = orderNum;
-
 	return 0;
 }
 
@@ -871,14 +905,17 @@ int playPlaylist(int fd, int song, int stopOnError)
 {
 	int i = song;
 
-	clearPlayerError();
+	DEBUG("%s %d song(%d)\n", __func__, __LINE__, song);
+
+	player_clearerror();
 
 	if (song == -1) {
 		if (playlist.length == 0)
 			return 0;
 
 		if (playlist_state == PLAYLIST_STATE_PLAY) {
-			return playerSetPause(fd, 0);
+			ob_trigger_action(OB_ACTION_PAUSE_UNSET);
+			return 0;
 		}
 		if (playlist.current >= 0 && playlist.current < playlist.length) {
 			i = playlist.current;
@@ -892,14 +929,12 @@ int playPlaylist(int fd, int song, int stopOnError)
 	}
 
 	if (playlist.random) {
-		if (song == -1 && playlist_state == PLAYLIST_STATE_PLAY) {
+		if (song == -1) {
 			randomizeOrder(0, playlist.length - 1);
 		} else {
 			if (song >= 0)
 				for (i = 0; song != playlist.order[i]; i++) ;
-			if (playlist_state == PLAYLIST_STATE_STOP) {
-				playlist.current = 0;
-			}
+			playlist.current = 0;
 			swapOrder(i, playlist.current);
 			i = playlist.current;
 		}
@@ -908,6 +943,7 @@ int playPlaylist(int fd, int song, int stopOnError)
 	playlist_stopOnError = stopOnError;
 	playlist_errorCount = 0;
 
+	ERROR(__FILE__ ": %d current:%d\n", __LINE__, playlist.current);
 	return playPlaylistOrderNumber(fd, i);
 }
 
@@ -924,7 +960,7 @@ int playPlaylistById(int fd, int id, int stopOnError)
 
 static void syncCurrentPlayerDecodeMetadata(void)
 {
-	Song *songPlayer = playerCurrentDecodeSong();
+	Song *songPlayer = song_at(playlist.current);
 	Song *song;
 	int songNum;
 	char path_max_tmp[MPD_PATH_MAX];
@@ -953,72 +989,31 @@ void syncPlayerAndPlaylist(void)
 {
 	if (playlist_state != PLAYLIST_STATE_PLAY)
 		return;
-
-	if (getPlayerState() == PLAYER_STATE_STOP)
-		playPlaylistIfPlayerStopped();
-	else
-		syncPlaylistWithQueue(!playlist_queueError);
-
-	syncCurrentPlayerDecodeMetadata();
-}
-
-static int currentSongInPlaylist(int fd)
-{
-	if (playlist_state != PLAYLIST_STATE_PLAY)
-		return 0;
-
-	playlist_stopOnError = 0;
-
-	syncPlaylistWithQueue(0);
-
-	if (playlist.current >= 0 && playlist.current < playlist.length) {
-		return playPlaylistOrderNumber(fd, playlist.current);
-	} else
-		return stopPlaylist(fd);
+	syncPlaylistWithQueue();
+	/* DEBUG("queued:%d current:%d\n", playlist.queued, playlist.current); */
+	if (playlist_state == PLAYLIST_STATE_PLAY &&
+	    playlist.queued >= 0 &&
+	    playlist.queued != playlist.current &&
+	    ob_synced() &&
+	    dc.state == DC_STATE_STOP &&
+	    ob_get_state() != OB_STATE_PAUSE) {
+		dc_trigger_action(DC_ACTION_START, 0);
+	}
 }
 
 int nextSongInPlaylist(int fd)
 {
+	int next;
 	if (playlist_state != PLAYLIST_STATE_PLAY)
 		return 0;
-
-	syncPlaylistWithQueue(0);
-
 	playlist_stopOnError = 0;
-
-	if (playlist.current < playlist.length - 1) {
-		return playPlaylistOrderNumber(fd, playlist.current + 1);
-	} else if (playlist.length && playlist.repeat) {
-		if (playlist.random)
-			randomizeOrder(0, playlist.length - 1);
-		return playPlaylistOrderNumber(fd, 0);
-	} else {
+	next = next_order_num();
+	if (next < 0) {
+		/* we were already at last song w/o repeat: */
 		incrPlaylistCurrent();
 		return stopPlaylist(fd);
 	}
-}
-
-void playPlaylistIfPlayerStopped(void)
-{
-	if (getPlayerState() == PLAYER_STATE_STOP) {
-		int error = getPlayerError();
-
-		if (error == PLAYER_ERROR_NOERROR)
-			playlist_errorCount = 0;
-		else
-			playlist_errorCount++;
-
-		if (playlist_state == PLAYLIST_STATE_PLAY
-		    && ((playlist_stopOnError && error != PLAYER_ERROR_NOERROR)
-			|| error == PLAYER_ERROR_AUDIO
-			|| error == PLAYER_ERROR_SYSTEM
-			|| playlist_errorCount >= playlist.length)) {
-			stopPlaylist(STDERR_FILENO);
-		} else if (playlist_noGoToNext)
-			currentSongInPlaylist(STDERR_FILENO);
-		else
-			nextSongInPlaylist(STDERR_FILENO);
-	}
+	return playPlaylistOrderNumber(fd, next);
 }
 
 int getPlaylistRepeatStatus(void)
@@ -1040,7 +1035,7 @@ int setPlaylistRepeatStatus(int fd, int status)
 
 	if (playlist_state == PLAYLIST_STATE_PLAY) {
 		if (playlist.repeat && !status && playlist.queued == 0)
-			clearPlayerQueueLocked();
+			clear_queue();
 	}
 
 	playlist.repeat = status;
@@ -1090,7 +1085,7 @@ int moveSongInPlaylist(int fd, int from, int to)
 			queuedSong = playlist.order[playlist.queued];
 		if (queuedSong == from || queuedSong == to
 		    || currentSong == from || currentSong == to)
-			clearPlayerQueueLocked();
+			clear_queue();
 	}
 
 	tmpSong = playlist.songs[from];
@@ -1120,28 +1115,16 @@ int moveSongInPlaylist(int fd, int from, int to)
 				playlist.order[i] = to;
 			}
 		}
-	}
-	else
-	{
-		if (playlist.current == from)
+	} else {
+		if (playlist.current == from) {
 			playlist.current = to;
-		else if (playlist.current > from && playlist.current <= to) {
+		} else if (playlist.current > from && playlist.current <= to) {
 			playlist.current--;
 		} else if (playlist.current >= to && playlist.current < from) {
 			playlist.current++;
 		}
-
-		/* this first if statement isn't necessary since the queue
-		 * would have been cleared out if queued == from */
-		if (playlist.queued == from)
-			playlist.queued = to;
-		else if (playlist.queued > from && playlist.queued <= to) {
-			playlist.queued--;
-		} else if (playlist.queued>= to && playlist.queued < from) {
-			playlist.queued++;
-		}
 	}
-
+	queueNextSongInPlaylist();
 	incrPlaylistVersion();
 
 	return 0;
@@ -1157,20 +1140,19 @@ int moveSongInPlaylistById(int fd, int id1, int to)
 static void orderPlaylist(void)
 {
 	int i;
+	int queued_is_current = (playlist.queued == playlist.current);
 
+	if (!queued_is_current &&
+	    playlist_state == PLAYLIST_STATE_PLAY &&
+	    playlist.queued >= 0)
+		clear_queue();
 	if (playlist.current >= 0 && playlist.current < playlist.length) {
 		playlist.current = playlist.order[playlist.current];
+		if (queued_is_current)
+			playlist.queued = playlist.current;
 	}
-
-	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.queued >= 0)
-			clearPlayerQueueLocked();
-	}
-
-	for (i = 0; i < playlist.length; i++) {
+	for (i = 0; i < playlist.length; i++)
 		playlist.order[i] = i;
-	}
-
 }
 
 static void swapOrder(int a, int b)
@@ -1184,13 +1166,16 @@ static void randomizeOrder(int start, int end)
 {
 	int i;
 	int ri;
+	int queued_is_current = (playlist.queued == playlist.current);
 
 	DEBUG("playlist: randomize from %i to %i\n", start, end);
+	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
 
-	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.queued >= start && playlist.queued <= end)
-			clearPlayerQueueLocked();
-	}
+	if (!queued_is_current &&
+	    playlist_state == PLAYLIST_STATE_PLAY &&
+	    playlist.queued >= start &&
+	    playlist.queued <= end)
+		clear_queue();
 
 	for (i = start; i <= end; i++) {
 		ri = random() % (end - start + 1) + start;
@@ -1200,6 +1185,9 @@ static void randomizeOrder(int start, int end)
 			playlist.current = ri;
 		swapOrder(i, ri);
 	}
+	if (queued_is_current)
+		playlist.queued = playlist.current;
+	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
 }
 
 int setPlaylistRandomStatus(int fd, int status)
@@ -1214,19 +1202,15 @@ int setPlaylistRandomStatus(int fd, int status)
 	playlist.random = status;
 
 	if (status != statusWas) {
-		if (playlist.random) {
-			/*if(playlist_state==PLAYLIST_STATE_PLAY) {
-			   randomizeOrder(playlist.current+1,
-			   playlist.length-1);
-			   }
-			   else */ randomizeOrder(0, playlist.length - 1);
-			if (playlist.current >= 0 &&
-			    playlist.current < playlist.length) {
-				swapOrder(playlist.current, 0);
-				playlist.current = 0;
-			}
-		} else
+		if (playlist.random)
+			randomizeOrder(0, playlist.length - 1);
+		else
 			orderPlaylist();
+		if (playlist_state == PLAYLIST_STATE_PLAY) {
+			queueNextSongInPlaylist();
+			DEBUG("%s:%d queued: %d\n",
+			      __func__,__LINE__,playlist.queued);
+		}
 	}
 
 	return 0;
@@ -1236,36 +1220,40 @@ int previousSongInPlaylist(int fd)
 {
 	static time_t lastTime;
 	time_t diff = time(NULL) - lastTime;
+	int prev_order_num;
 
 	lastTime += diff;
 
 	if (playlist_state != PLAYLIST_STATE_PLAY)
 		return 0;
 
-	syncPlaylistWithQueue(0);
+	syncPlaylistWithQueue();
 
-	if (diff && getPlayerElapsedTime() > PLAYLIST_PREV_UNLESS_ELAPSED) {
-		return playPlaylistOrderNumber(fd, playlist.current);
+	if (diff && ob_get_elapsed_time() > PLAYLIST_PREV_UNLESS_ELAPSED) {
+		prev_order_num = playlist.current;
 	} else {
-		if (playlist.current > 0) {
-			return playPlaylistOrderNumber(fd,
-						       playlist.current - 1);
-		} else if (playlist.repeat) {
-			return playPlaylistOrderNumber(fd, playlist.length - 1);
-		} else {
-			return playPlaylistOrderNumber(fd, playlist.current);
-		}
+		if (playlist.current > 0)
+			prev_order_num = playlist.current - 1;
+		else if (playlist.repeat)
+			prev_order_num = playlist.length - 1;
+		else
+			prev_order_num = playlist.current;
 	}
+	return playPlaylistOrderNumber(fd, prev_order_num);
 }
 
 int shufflePlaylist(int fd)
 {
 	int i;
 	int ri;
+	int playing_queued = 0;
 
 	if (playlist.length > 1) {
 		if (playlist_state == PLAYLIST_STATE_PLAY) {
-			clearPlayerQueueLocked();
+			if (playlist.queued == playlist.current)
+				playing_queued = 1;
+			else
+				clear_queue();
 			/* put current playing song first */
 			swapSongs(0, playlist.order[playlist.current]);
 			if (playlist.random) {
@@ -1274,6 +1262,8 @@ int shufflePlaylist(int fd)
 				playlist.current = j;
 			} else
 				playlist.current = 0;
+			if (playing_queued)
+				playlist.queued = playlist.current;
 			i = 1;
 		} else {
 			i = 0;
@@ -1284,8 +1274,9 @@ int shufflePlaylist(int fd)
 			ri = random() % (playlist.length - 1) + 1;
 			swapSongs(i, ri);
 		}
-
 		incrPlaylistVersion();
+		if (playlist_state == PLAYLIST_STATE_PLAY)
+			queueNextSongInPlaylist();
 	}
 
 	return 0;
@@ -1356,6 +1347,7 @@ int savePlaylist(int fd, char *utf8file)
 
 int getPlaylistCurrentSong(void)
 {
+	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
 	if (playlist.current >= 0 && playlist.current < playlist.length) {
 		return playlist.order[playlist.current];
 	}
@@ -1373,9 +1365,14 @@ int getPlaylistLength(void)
 	return playlist.length;
 }
 
+/*
+ * This command will always return 0 regardless of whether or
+ * not the seek succeeded (it's always been the case, apparently)
+ */
 int seekSongInPlaylist(int fd, int song, float seek_time)
 {
 	int i = song;
+	char path[MPD_PATH_MAX];
 
 	if (song < 0 || song >= playlist.length) {
 		commandError(fd, ACK_ERROR_NO_EXIST,
@@ -1386,22 +1383,42 @@ int seekSongInPlaylist(int fd, int song, float seek_time)
 	if (playlist.random)
 		for (i = 0; song != playlist.order[i]; i++) ;
 
-	clearPlayerError();
+	player_clearerror();
 	playlist_stopOnError = 1;
 	playlist_errorCount = 0;
 
-	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.queued >= 0)
-			clearPlayerQueueLocked();
-	} else if (playPlaylistOrderNumber(fd, i) < 0)
-		return -1;
-
-	if (playlist.current != i) {
-		if (playPlaylistOrderNumber(fd, i) < 0)
-			return -1;
+	if (playlist_state == PLAYLIST_STATE_PLAY &&
+	    (playlist.current == i && playlist.queued == i)) {
+		dc_trigger_action(DC_ACTION_SEEK, seek_time);
+		if (dc.seek_where != DC_SEEK_MISMATCH)
+			return 0;
+		/*
+		 * if near end of decoding can cause seek to fail (since we're
+		 * already on another song) (leading to DC_SEEK_MISMATCH),
+		 * so fall through to restarting the decoder below.
+		 */
 	}
 
-	return playerSeek(fd, playlist.songs[playlist.order[i]], seek_time);
+	DEBUG("playlist: seek %i:\"%s\"\n", i, get_song_url(path, song_at(i)));
+	playlist_state = PLAYLIST_STATE_PLAY;
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	dc_trigger_action(DC_ACTION_STOP, 0);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	ob_drop_audio(OB_DROP_DECODED);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	queue_song_locked(i);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	ob_drop_audio(OB_DROP_PLAYING);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	DEBUG("seek_time: %f\n", seek_time);
+	dc_trigger_action(DC_ACTION_SEEK, seek_time);
+	DEBUG("%s:%d\n", __func__, __LINE__);
+	if (dc.seek_where >= 0) {
+		playlist.current = i;
+		DEBUG("%s:%d\n", __func__, __LINE__);
+		ob_wait_sync();
+	}
+	return 0;
 }
 
 int seekSongInPlaylistById(int fd, int id, float seek_time)
@@ -1538,4 +1555,7 @@ int valid_playlist_name(int err_fd, const char *utf8path)
 	return 1;
 }
 
-
+int playlist_playing(void)
+{
+	return (playlist_state == PLAYLIST_STATE_PLAY);
+}

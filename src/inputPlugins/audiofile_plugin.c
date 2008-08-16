@@ -67,42 +67,39 @@ static int audiofile_decode(char *path)
 	afSetVirtualSampleFormat(af_fp, AF_DEFAULT_TRACK,
 	                         AF_SAMPFMT_TWOSCOMP, 16);
 	afGetVirtualSampleFormat(af_fp, AF_DEFAULT_TRACK, &fs, &bits);
-	dc.audioFormat.bits = (mpd_uint8)bits;
-	dc.audioFormat.sampleRate =
+	dc.audio_format.bits = (mpd_uint8)bits;
+	dc.audio_format.sampleRate =
 	                      (unsigned int)afGetRate(af_fp, AF_DEFAULT_TRACK);
-	dc.audioFormat.channels =
+	dc.audio_format.channels =
 	              (mpd_uint8)afGetVirtualChannels(af_fp, AF_DEFAULT_TRACK);
-	getOutputAudioFormat(&(dc.audioFormat), &(ob.audioFormat));
 
 	frame_count = afGetFrameCount(af_fp, AF_DEFAULT_TRACK);
 
-	dc.totalTime =
-	    ((float)frame_count / (float)dc.audioFormat.sampleRate);
+	dc.total_time = ((float)frame_count /
+	                 (float)dc.audio_format.sampleRate);
 
-	bitRate = (mpd_uint16)(st.st_size * 8.0 / dc.totalTime / 1000.0 + 0.5);
+	bitRate = (mpd_uint16)(st.st_size * 8.0 / dc.total_time / 1000.0 + 0.5);
 
-	if (dc.audioFormat.bits != 8 && dc.audioFormat.bits != 16) {
+	if (dc.audio_format.bits != 8 && dc.audio_format.bits != 16) {
 		ERROR("Only 8 and 16-bit files are supported. %s is %i-bit\n",
-		      path, dc.audioFormat.bits);
+		      path, dc.audio_format.bits);
 		afCloseFile(af_fp);
 		return -1;
 	}
 
 	fs = (int)afGetVirtualFrameSize(af_fp, AF_DEFAULT_TRACK, 1);
 
-	dc.state = DECODE_STATE_DECODE;
 	{
 		int ret, eof = 0, current = 0;
 		char chunk[CHUNK_SIZE];
 
 		while (!eof) {
-			if (dc.seek) {
-				ob_clear();
-				current = dc.seekWhere *
-				    dc.audioFormat.sampleRate;
+			if (dc_seek()) {
+				dc_action_begin();
+				current = dc.seek_where *
+				    dc.audio_format.sampleRate;
 				afSeekFrame(af_fp, AF_DEFAULT_TRACK, current);
-				dc.seek = 0;
-				decoder_wakeup_player();
+				dc_action_end();
 			}
 
 			ret =
@@ -112,20 +109,15 @@ static int audiofile_decode(char *path)
 				eof = 1;
 			else {
 				current += ret;
-				ob_send(NULL,
-						       1,
-						       chunk,
-						       ret * fs,
-						       (float)current /
-						       (float)dc.audioFormat.
-						       sampleRate, bitRate,
-						       NULL);
-				if (dc.stop)
+				ob_send(chunk, ret * fs,
+				        (float)current /
+				        (float)dc.audio_format.sampleRate,
+				        bitRate,
+				        NULL);
+				if (dc_intr())
 					break;
 			}
 		}
-
-		ob_flush();
 	}
 	afCloseFile(af_fp);
 

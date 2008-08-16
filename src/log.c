@@ -75,6 +75,7 @@ static void do_log(FILE *fp, const char *fmt, va_list args)
 {
 	if (!stdout_mode)
 		fwrite(log_date(), LOG_DATE_LEN, 1, fp);
+	fprintf(fp, "%08x: ", pthread_self());
 	vfprintf(fp, fmt, args);
 }
 

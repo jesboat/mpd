@@ -16,31 +16,25 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "stats.h"
+#ifndef PLAYER_ERROR_H
+#define PLAYER_ERROR_H
 
-#include "directory.h"
-#include "myfprintf.h"
-#include "outputBuffer.h"
-#include "tagTracker.h"
-#include "os_compat.h"
+#include "song.h"
 
-Stats stats;
+enum player_error {
+	PLAYER_ERROR_NONE = 0,
+	PLAYER_ERROR_FILE,
+	PLAYER_ERROR_AUDIO,
+	PLAYER_ERROR_SYSTEM,
+	PLAYER_ERROR_UNKTYPE,
+	PLAYER_ERROR_FILENOTFOUND
+};
 
-void initStats(void)
-{
-	stats.daemonStart = time(NULL);
-	stats.numberOfSongs = 0;
-}
+extern enum player_error player_errno;
+extern Song *player_errsong;
 
-int printStats(int fd)
-{
-	fdprintf(fd, "artists: %i\n", getNumberOfTagItems(TAG_ITEM_ARTIST));
-	fdprintf(fd, "albums: %i\n", getNumberOfTagItems(TAG_ITEM_ALBUM));
-	fdprintf(fd, "songs: %i\n", stats.numberOfSongs);
-	fdprintf(fd, "uptime: %li\n", time(NULL) - stats.daemonStart);
-	fdprintf(fd, "playtime: %li\n",
-		  (long)(ob_get_total_time() + 0.5));
-	fdprintf(fd, "db_playtime: %li\n", stats.dbPlayTime);
-	fdprintf(fd, "db_update: %li\n", getDbModTime());
-	return 0;
-}
+void player_clearerror(void);
+void player_seterror(enum player_error err, Song *song);
+const char *player_strerror(void);
+
+#endif /* PLAYER_ERROR_H */

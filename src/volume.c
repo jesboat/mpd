@@ -20,7 +20,6 @@
 #include "command.h"
 #include "conf.h"
 #include "log.h"
-#include "player.h"
 #include "gcc.h"
 #include "utils.h"
 #include "ack.h"
@@ -492,7 +491,7 @@ static int changeSoftwareVolume(int fd, int change, int rel)
 		new =
 		    1000.0 * (exp(new / 25.0) - 1) / (54.5981500331F - 1) + 0.5;
 
-	setPlayerSoftwareVolume(new);
+	ob_set_sw_volume(new);
 
 	return 0;
 }

@@ -20,7 +20,6 @@
 #include "command.h"
 #include "playlist.h"
 #include "directory.h"
-#include "player.h"
 #include "listen.h"
 #include "conf.h"
 #include "path.h"
@@ -45,6 +44,7 @@
 #include "zeroconf.h"
 #include "main_notify.h"
 #include "os_compat.h"
+#include "outputBuffer.h"
 
 #define SYSTEM_CONFIG_FILE_LOCATION	"/etc/mpd.conf"
 #define USER_CONFIG_FILE_LOCATION	"/.mpdconf"
@@ -431,8 +431,7 @@ int main(int argc, char *argv[])
 	initZeroconf();
 
 	openVolumeDevice();
-	decoderInit();
-	playerInit();
+	decoder_init();
 	read_state_file();
 
 	while (COMMAND_RETURN_KILL != doIOForInterfaces() &&
@@ -443,7 +442,7 @@ int main(int argc, char *argv[])
 	}
 
 	write_state_file();
-	playerKill();
+	ob_trigger_action(OB_ACTION_PAUSE_SET);
 	finishZeroconf();
 	freeAllInterfaces();
 	closeAllListenSockets();

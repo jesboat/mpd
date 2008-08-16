@@ -175,7 +175,8 @@ void ringbuf_reset(struct ringbuf * rb);
 /**
  * Reset the write pointer to the read pointer, making an empty buffer.
  *
- * This should only be called by the writer
+ * This should only be called by the writer and only very carefully
+ * (it is subject to race conditions with vectors or peek)
  *
  * @param rb a pointer to the ringbuffer structure.
  */
@@ -184,7 +185,8 @@ void ringbuf_writer_reset(struct ringbuf * rb);
 /**
  * Reset the read pointer to the write pointer, making an empty buffer.
  *
- * This should only be called by the reader
+ * This should only be called by the writer and only very carefully
+ * (it is subject to race conditions with vectors or peek)
  *
  * @param rb a pointer to the ringbuffer structure.
  */

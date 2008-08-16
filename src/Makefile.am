@@ -29,8 +29,8 @@ mpd_inputPlugins = \
 
 
 mpd_headers = \
-	notify.h \
 	ack.h \
+	action_status.h \
 	audio.h \
 	audioOutput.h \
 	buffer2array.h \
@@ -61,10 +61,14 @@ mpd_headers = \
 	compress.h \
 	os_compat.h \
 	outputBuffer.h \
+	outputBuffer_accessors.h \
+	outputBuffer_audio.h \
+	outputBuffer_ob_send.h \
+	outputBuffer_xfade.h \
 	path.h \
 	pcm_utils.h \
 	permission.h \
-	player.h \
+	player_error.h \
 	playerData.h \
 	playlist.h \
 	replayGain.h \
@@ -92,7 +96,6 @@ mpd_SOURCES = \
 	$(mpd_headers) \
 	$(mpd_audioOutputs) \
 	$(mpd_inputPlugins) \
-	notify.c \
 	audio.c \
 	audioOutput.c \
 	buffer2array.c \
@@ -122,7 +125,7 @@ mpd_SOURCES = \
 	path.c \
 	pcm_utils.c \
 	permission.c \
-	player.c \
+	player_error.c \
 	playerData.c \
 	playlist.c \
 	replayGain.c \

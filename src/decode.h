@@ -22,43 +22,50 @@
 #include "song.h"
 
 #include "audio.h"
-#include "notify.h"
+#include "condition.h"
 
 #define DECODE_TYPE_FILE	0
 #define DECODE_TYPE_URL		1
 
-enum decoder_state {
-	DECODE_STATE_STOP = 0,
-	DECODE_STATE_START,
-	DECODE_STATE_DECODE
+enum dc_action {
+	DC_ACTION_NONE = 0,
+	DC_ACTION_START,
+	DC_ACTION_SEEK, /* like start, but clears previously decoded audio */
+	DC_ACTION_STOP,
+	DC_ACTION_QUIT
 };
 
-#define DECODE_ERROR_NOERROR	0
-#define DECODE_ERROR_UNKTYPE	10
-#define DECODE_ERROR_FILE	20
+/* only changeable by dc.thread */
+enum dc_state {
+	DC_STATE_STOP = 0,   /* decoder stopped (no song) */
+	DC_STATE_DECODE,     /* open() + {file,stream}DecodeFunc (+ paused) */
+	DC_STATE_QUIT        /* NIH, the pthread cancellation API blows... */
+};
 
-typedef struct _DecoderControl {
-	Notify notify;
+struct decoder_control {
+	Song * current_song; /* only needed for wavpack, remove? */
+	enum dc_state state; /* rw=dc.thread, r=main */
+	enum dc_action action; /* rw protected by action_cond */
+	float total_time;    /* w=dc.thread, r=main */
+	float seek_where;    /* -1 == error, rw protected by action_cond */
+	pthread_t thread;
+	AudioFormat audio_format; /* w=dc.thread, r=all */
+};
 
-	volatile enum decoder_state state;
-	volatile mpd_sint8 stop;
-	volatile mpd_sint8 start;
-	volatile mpd_uint16 error;
-	volatile mpd_sint8 seek;
-	volatile mpd_sint8 seekError;
-	volatile mpd_sint8 seekable;
-	volatile double seekWhere;
-	AudioFormat audioFormat;
-	Song *current_song;
-	volatile float totalTime;
-} DecoderControl;
+extern struct decoder_control dc;
 
-void decode(void);
+void dc_trigger_action(enum dc_action action, float seek_where);
+void decoder_init(void);
+int dc_try_unhalt(void);
+void dc_halt(void);
 
-void decoder_wakeup_player(void);
+void dc_action_begin(void);
+void dc_action_end(void);
 
-void decoder_sleep(void);
+int dc_intr(void);
+int dc_seek(void);
 
-void decoderInit(void);
+enum seek_err_type { DC_SEEK_MISMATCH = -2, DC_SEEK_ERROR = -1 };
+void dc_action_seek_fail(enum seek_err_type);
 
 #endif

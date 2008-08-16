@@ -339,9 +339,8 @@ static int aac_decode(char *path)
 		return -1;
 	}
 
-	dc.audioFormat.bits = 16;
-
-	dc.totalTime = totalTime;
+	dc.audio_format.bits = 16;
+	dc.total_time = totalTime;
 
 	file_time = 0.0;
 
@@ -372,13 +371,8 @@ static int aac_decode(char *path)
 		sampleRate = frameInfo.samplerate;
 #endif
 
-		if (dc.state != DECODE_STATE_DECODE) {
-			dc.audioFormat.channels = frameInfo.channels;
-			dc.audioFormat.sampleRate = sampleRate;
-			getOutputAudioFormat(&(dc.audioFormat),
-					     &(ob.audioFormat));
-			dc.state = DECODE_STATE_DECODE;
-		}
+		dc.audio_format.channels = frameInfo.channels;
+		dc.audio_format.sampleRate = sampleRate;
 
 		advanceAacBuffer(&b, frameInfo.bytesconsumed);
 
@@ -395,33 +389,23 @@ static int aac_decode(char *path)
 
 		sampleBufferLen = sampleCount * 2;
 
-		ob_send(NULL, 0, sampleBuffer,
-				       sampleBufferLen, file_time,
-				       bitRate, NULL);
-		if (dc.seek) {
-			dc.seekError = 1;
-			dc.seek = 0;
-			decoder_wakeup_player();
-		} else if (dc.stop) {
-			eof = 1;
+		switch (ob_send(sampleBuffer, sampleBufferLen,
+		                file_time, bitRate, NULL)) {
+		case DC_ACTION_NONE: break;
+		case DC_ACTION_SEEK:
+			/*
+			 * this plugin doesn't support seek because nobody
+			 * has bothered, yet...
+			 */
+			dc_action_seek_fail(DC_SEEK_ERROR);
 			break;
+		default: eof = 1;
 		}
 	}
-
-	ob_flush();
 
 	faacDecClose(decoder);
 	if (b.buffer)
 		free(b.buffer);
-
-	if (dc.state != DECODE_STATE_DECODE)
-		return -1;
-
-	if (dc.seek) {
-		dc.seekError = 1;
-		dc.seek = 0;
-		decoder_wakeup_player();
-	}
 
 	return 0;
 }

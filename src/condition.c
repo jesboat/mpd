@@ -27,54 +27,44 @@ void cond_init(struct condition *cond)
 	xpthread_cond_init(&cond->cond, NULL);
 }
 
-void cond_enter(struct condition *cond)
+int cond_timedwait(struct condition *cond, const long msec)
 {
-	pthread_mutex_lock(&cond->mutex);
-}
-
-void cond_leave(struct condition *cond)
-{
-	pthread_mutex_unlock(&cond->mutex);
-}
-
-void cond_wait(struct condition *cond)
-{
-	pthread_cond_wait(&cond->cond, &cond->mutex);
-}
-
-static struct timespec * ts_timeout(struct timespec *ts, const long sec)
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	ts->tv_sec = tv.tv_sec + sec;
-	ts->tv_nsec = tv.tv_usec * 1000;
-	return ts;
-}
-
-int cond_timedwait(struct condition *cond, const long sec)
-{
+	static const long nsec_per_msec = 1000000;
+	static const long nsec_per_usec = 1000;
+	static const long nsec_per_sec = 1000000000;
 	struct timespec ts;
-	int ret = pthread_cond_timedwait(&cond->cond, &cond->mutex,
-	                                 ts_timeout(&ts, sec));
+	struct timeval tv;
+	int ret;
+
+	gettimeofday(&tv, NULL);
+	ts.tv_sec = tv.tv_sec;
+	ts.tv_nsec = (tv.tv_usec * nsec_per_usec) + (msec * nsec_per_msec);
+	if (ts.tv_nsec >= nsec_per_sec) {
+		ts.tv_nsec -= nsec_per_sec;
+		ts.tv_sec++;
+	}
+
+	ret = pthread_cond_timedwait(&cond->cond, &cond->mutex, &ts);
 	if (!ret || ret == ETIMEDOUT)
 		return ret;
 	FATAL("cond_timedwait: %s\n", strerror(ret));
 	return ret;
 }
 
-int cond_signal_async(struct condition *cond)
+int cond_signal_trysync(struct condition *cond)
 {
-	if (!pthread_mutex_trylock(&cond->mutex)) {
-		pthread_cond_signal(&cond->cond);
-		pthread_mutex_unlock(&cond->mutex);
-		return 0;
-	}
-	return EBUSY;
+	if (pthread_mutex_trylock(&cond->mutex) == EBUSY)
+		return EBUSY;
+	pthread_cond_signal(&cond->cond);
+	pthread_mutex_unlock(&cond->mutex);
+	return 0;
 }
 
 void cond_signal_sync(struct condition *cond)
 {
+	pthread_mutex_lock(&cond->mutex);
 	pthread_cond_signal(&cond->cond);
+	pthread_mutex_unlock(&cond->mutex);
 }
 
 void cond_destroy(struct condition *cond)

@@ -25,89 +25,84 @@
 #include "inputStream.h"
 #include "replayGain.h"
 
-#define OUTPUT_BUFFER_DC_STOP   -1
-#define OUTPUT_BUFFER_DC_SEEK   -2
+/*
+ * As far as audio output is concerned, `stop' is a superset of `pause'
+ * That is, `stop' will drop decoded audio chunks from the buffer
+ * and `pause' will not.  Both will stop audio playback immediately
+ * and close audio playback devices (TODO: close mixer devices).
+ */
+enum ob_action {
+	OB_ACTION_NONE = 0,
+	OB_ACTION_PLAY,
+	OB_ACTION_DROP,
+	OB_ACTION_SEEK_START,
+	OB_ACTION_SEEK_FINISH,
+	OB_ACTION_PAUSE_SET,
+	OB_ACTION_PAUSE_UNSET,
+	OB_ACTION_PAUSE_FLIP,
+	OB_ACTION_STOP,
+	OB_ACTION_QUIT
+};
 
-/* pick 1020 since its devisible for 8,16,24, and 32-bit audio */
+/* 1020 bytes since its divisible for 8, 16, 24, and 32-bit audio */
 #define CHUNK_SIZE		1020
 
-typedef struct _OutputBufferChunk {
-	mpd_uint16 chunkSize;
-	mpd_uint16 bitRate;
-	float times;
-	char data[CHUNK_SIZE];
-} ob_chunk;
+void ob_init(size_t size);
 
-/**
- * A ring set of buffers where the decoder appends data after the end,
- * and the player consumes data from the beginning.
+enum ob_drop_type { OB_DROP_DECODED, OB_DROP_PLAYING };
+void ob_drop_audio(enum ob_drop_type type);
+
+/*
+ * Returns true if output buffer is playing the song we're decoding
  */
-typedef struct _OutputBuffer {
-	ob_chunk *chunks;
+int ob_synced(void);
 
-	unsigned int size;
+/*
+ * analogous to send(2) or write(2), it will put @data into
+ * the output buffer (like writing to a pipe, the consumer of
+ * which will read and play the contents of the output buffer
+ *
+ * Future direction:
+ *   zero-copy functions using vectors:
+ *   	vec = ob_getv(); decode_to(&vec, ...); ob_vmsplice(&vec, ...);
+ */
+enum dc_action ob_send(void *data, size_t len, float time,
+                       mpd_uint16 bit_rate, ReplayGainInfo *rgi);
 
-	/** the index of the first decoded chunk */
-	unsigned int volatile begin;
+/* synchronous and blocking (the only way it should be) */
+void ob_trigger_action(enum ob_action action);
 
-	/** the index after the last decoded chunk */
-	unsigned int volatile end;
+/* synchronous and blocking, called from dc.thread */
+void ob_seek_start(void);
+void ob_seek_finish(void);
 
-	/** non-zero if the player thread should only we woken up if
-	    the buffer becomes non-empty */
-	int lazy;
+/* boring accessor functions, only called by main-thread */
+unsigned long ob_get_elapsed_time(void);
+unsigned long ob_get_total_time(void);
+unsigned int ob_get_channels(void);
+unsigned int ob_get_bit_rate(void);
+unsigned int ob_get_sample_rate(void);
+unsigned int ob_get_bits(void);
+void ob_set_sw_volume(int volume);
+void ob_set_xfade(float xfade_seconds);
+float ob_get_xfade(void);
 
-	AudioFormat audioFormat;
-	ConvState convState;
-} OutputBuffer;
+enum ob_state {
+	OB_STATE_PLAY = 0,
+	OB_STATE_STOP,
+	OB_STATE_PAUSE,
+	OB_STATE_SEEK,
+	OB_STATE_QUIT
+};
 
-void ob_init(unsigned int size);
+enum ob_state ob_get_state(void);
 
-void ob_free(void);
+AudioFormat *ob_audio_format(void);
 
-void ob_clear(void);
+void ob_advance_sequence(void);
+
+void ob_wait_sync(void);
 
 void ob_flush(void);
-
-/**
- * When a chunk is decoded, we wake up the player thread to tell him
- * about it.  In "lazy" mode, we only wake him up when the buffer was
- * previously empty, i.e. when the player thread has really been
- * waiting for us.
- */
-void ob_set_lazy(int lazy);
-
-/** is the buffer empty? */
-int ob_is_empty(void);
-
-void ob_shift(void);
-
-/**
- * what is the position of the specified chunk number, relative to
- * the first chunk in use?
- */
-unsigned int ob_relative(const unsigned i);
-
-/** determine the number of decoded chunks */
-unsigned ob_available(void);
-
-/**
- * Get the absolute index of the nth used chunk after the first one.
- * Returns -1 if there is no such chunk.
- */
-int ob_absolute(const unsigned relative);
-
-ob_chunk * ob_get_chunk(const unsigned i);
-
-/* we send inStream for buffering the inputStream while waiting to
-   send the next chunk */
-int ob_send(InputStream * inStream,
-			   int seekable,
-			   void *data,
-			   size_t datalen,
-			   float data_time,
-			   mpd_uint16 bitRate, ReplayGainInfo * replayGainInfo);
-
-void ob_skip(unsigned num);
 
 #endif
