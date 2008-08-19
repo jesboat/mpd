@@ -207,18 +207,24 @@ static void ob_seq_player_set(unsigned int seq_num)
 	cond_leave(&ob_seq_cond);
 }
 
+static enum action_status ob_do_reset(void)
+{
+	assert(pthread_equal(pthread_self(), ob.thread));
+	ob.elapsed_time = 0;
+	ob.total_time = 0;
+	reader_reset_buffer();
+	ob.xfade_state = XFADE_DISABLED;
+	ob_seq_player_set((unsigned int)ob.seq_decoder);
+	return ob_finalize_action();
+}
+
 static enum action_status ob_do_stop(void)
 {
 	assert(pthread_equal(pthread_self(), ob.thread));
-	if (ob.state != OB_STATE_STOP) {
-		ob.elapsed_time = 0;
-		reader_reset_buffer();
-		ob.xfade_state = XFADE_DISABLED;
-		close_audio_devices();
-		ob.state = OB_STATE_STOP;
-		ob_seq_player_set((unsigned int)ob.seq_decoder);
-	}
-	return AS_INPROGRESS;
+	if (ob.state == OB_STATE_STOP)
+		return AS_INPROGRESS;
+	ob.state = OB_STATE_STOP;
+	return ob_do_reset();
 }
 
 /*
@@ -299,6 +305,7 @@ static enum action_status ob_take_action(void)
 		}
 		break;
 	case OB_ACTION_STOP: return ob_do_stop();
+	case OB_ACTION_RESET: return ob_do_reset();
 	case OB_ACTION_QUIT:
 		close_audio_devices();
 		ob.state = OB_STATE_QUIT;
@@ -348,24 +355,6 @@ void ob_drop_audio(enum ob_drop_type type)
 	/* DEBUG("dropping %u\n", ob.seq_drop); */
 	ob_trigger_action(OB_ACTION_DROP);
 	/* DEBUG("done dropping %u\n", ob.seq_drop); */
-}
-
-void ob_wait_sync(void)
-{
-	assert(!pthread_equal(pthread_self(), dc.thread));
-	assert(!pthread_equal(pthread_self(), ob.thread));
-
-	/* DEBUG(__FILE__": %s %d\n", __func__, __LINE__); */
-	cond_enter(&ob_seq_cond);
-	while (ob.seq_player != ob.seq_decoder) {
-		/* DEBUG("%s %d seq_player:%u seq_decoder:%u\n", */
-		      /* __func__, __LINE__, ob.seq_player, ob.seq_decoder); */
-		cond_wait(&ob_seq_cond);
-		/* DEBUG("%s %d seq_player:%u seq_decoder:%u\n", */
-		      /* __func__, __LINE__, ob.seq_player, ob.seq_decoder); */
-	}
-	cond_leave(&ob_seq_cond);
-	/* DEBUG(__FILE__": %s %d\n", __func__, __LINE__); */
 }
 
 /* call this exactly once before decoding each song */
@@ -527,7 +516,7 @@ void ob_flush(void)
 			case OB_STATE_SEEK:
 				assert(0);
 			case OB_STATE_PLAY:
-			case OB_STATE_PAUSE: /* should we assert if paused? */
+			case OB_STATE_PAUSE:
 				ringbuf_write_advance(ob.index, 1);
 				break;
 			case OB_STATE_STOP:
