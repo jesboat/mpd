@@ -29,6 +29,7 @@ static unsigned int logLevel = LOG_LEVEL_LOW;
 static int warningFlushed;
 static int stdout_mode = 1;
 static char *warningBuffer;
+static pthread_mutex_t warning_buffer_lock = PTHREAD_MUTEX_INITIALIZER;
 static int out_fd = -1;
 static int err_fd = -1;
 static const char *out_filename;
@@ -81,7 +82,10 @@ static void do_log(FILE *fp, const char *fmt, va_list args)
 
 void flushWarningLog(void)
 {
-	char *s = warningBuffer;
+	char *s;
+
+	pthread_mutex_lock(&warning_buffer_lock);
+	s = warningBuffer;
 
 	DEBUG("flushing warning messages\n");
 
@@ -98,8 +102,8 @@ void flushWarningLog(void)
 
 		warningBuffer = NULL;
 	}
-
 	warningFlushed = 1;
+	pthread_mutex_unlock(&warning_buffer_lock);
 
 	DEBUG("done flushing warning messages\n");
 }
@@ -189,10 +193,14 @@ void WARNING(const char *fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);
-	if (warningFlushed) {
+
+	pthread_mutex_lock(&warning_buffer_lock);
+	if (warningFlushed)
 		do_log(stderr, fmt, args);
-	} else
+	else
 		buffer_warning(fmt, args);
+	pthread_mutex_unlock(&warning_buffer_lock);
+
 	va_end(args);
 }
 
