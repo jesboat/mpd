@@ -78,12 +78,6 @@ static struct output_buffer ob;
 #include "outputBuffer_xfade.h"
 #include "outputBuffer_accessors.h"
 
-static void ob_free(void)
-{
-	free(ob.chunks);
-	ringbuf_free(ob.index);
-}
-
 static enum action_status ob_do_stop(void);
 static void stop_playback(void)
 {
@@ -497,22 +491,7 @@ out:
 	return NULL;
 }
 
-void ob_init(size_t size)
-{
-	pthread_attr_t attr;
-	assert(size > 0 && !ob.index && !ob.chunks);
-	ob.index = ringbuf_create(size);
-	ob.chunks = xcalloc(ob.index->size, sizeof(struct ob_chunk));
-	ob.preseek_len = xmalloc(ob.index->size * sizeof(ob.chunks[0].len));
-	ob.nr_bpp = 1;
-	ob.state = OB_STATE_STOP;
-
-	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	if (pthread_create(&ob.thread, &attr, ob_task, NULL))
-		FATAL("Failed to spawn player task: %s\n", strerror(errno));
-	atexit(ob_free);
-}
+#include "outputBuffer_config_init.h"
 
 void ob_seek_start(void)
 {

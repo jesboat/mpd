@@ -23,7 +23,6 @@
 #include "listen.h"
 #include "conf.h"
 #include "path.h"
-#include "playerData.h"
 #include "stats.h"
 #include "sig_handlers.h"
 #include "audio.h"
@@ -412,7 +411,7 @@ int main(int argc, char *argv[])
 	openDB(&options, argv[0]);
 
 	initCommands();
-	initPlayerData();
+	config_output_buffer();
 	initAudioConfig();
 	initAudioDriver();
 	initVolume();
@@ -424,6 +423,7 @@ int main(int argc, char *argv[])
 	daemonize(&options);
 
 	init_main_notify();
+	init_output_buffer();
 	setup_log_output(options.stdOutput);
 
 	initSigHandlers();

@@ -21,7 +21,6 @@
 
 #include "inputStream.h"
 #include "outputBuffer.h"
-#include "playerData.h"
 
 /* valid values for streamTypes in the InputPlugin struct: */
 #define INPUT_PLUGIN_STREAM_FILE	0x01

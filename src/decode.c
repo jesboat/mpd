@@ -20,7 +20,6 @@
 #include "outputBuffer.h"
 #include "player_error.h"
 #include "playlist.h"
-#include "playerData.h"
 #include "pcm_utils.h"
 #include "path.h"
 #include "log.h"

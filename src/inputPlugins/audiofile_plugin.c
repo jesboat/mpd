@@ -26,7 +26,6 @@
 #include "../audio.h"
 #include "../log.h"
 #include "../pcm_utils.h"
-#include "../playerData.h"
 #include "../os_compat.h"
 
 #include <audiofile.h>

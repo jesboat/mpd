@@ -16,7 +16,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "playerData.h"
 #include "conf.h"
 #include "log.h"
 #include "utils.h"
@@ -24,50 +23,65 @@
 #define DEFAULT_BUFFER_SIZE         2048
 #define DEFAULT_BUFFER_BEFORE_PLAY  10
 
-void initPlayerData(void)
+
+void config_output_buffer(void)
 {
 	float perc = DEFAULT_BUFFER_BEFORE_PLAY;
 	char *test;
-	size_t bufferSize = DEFAULT_BUFFER_SIZE;
-	unsigned int buffered_chunks;
+	size_t buffer_size = DEFAULT_BUFFER_SIZE;
 	ConfigParam *param;
 	unsigned int buffered_before_play;
+	unsigned int buffered_chunks;
 
-	param = getConfigParam(CONF_AUDIO_BUFFER_SIZE);
-
-	if (param) {
-		bufferSize = strtol(param->value, &test, 10);
-		if (*test != '\0' || bufferSize <= 0) {
-			FATAL("buffer size \"%s\" is not a positive integer, "
+	if ((param = getConfigParam(CONF_AUDIO_BUFFER_SIZE))) {
+		buffer_size = strtol(param->value, &test, 10);
+		if (*test != '\0' || buffer_size <= 0)
+			FATAL(CONF_AUDIO_BUFFER_SIZE
+			      " \"%s\" is not a positive integer, "
 			      "line %i\n", param->value, param->line);
-		}
 	}
 
-	bufferSize *= 1024;
+	buffer_size *= 1024;
+	buffered_chunks = buffer_size / CHUNK_SIZE;
 
-	buffered_chunks = bufferSize / CHUNK_SIZE;
+	if (buffered_chunks >= 1 << 15)
+		FATAL("buffer size \"%li\" is too big\n", (long)buffer_size);
 
-	if (buffered_chunks >= 1 << 15) {
-		FATAL("buffer size \"%li\" is too big\n", (long)bufferSize);
-	}
-
-	param = getConfigParam(CONF_BUFFER_BEFORE_PLAY);
-
-	if (param) {
+	if ((param = getConfigParam(CONF_BUFFER_BEFORE_PLAY))) {
 		perc = strtod(param->value, &test);
-		if (*test != '%' || perc < 0 || perc > 100) {
-			FATAL("buffered before play \"%s\" is not a positive "
+		if (*test != '%' || perc < 0 || perc > 100)
+			FATAL(CONF_BUFFER_BEFORE_PLAY
+			      " \"%s\" is not a positive "
 			      "percentage and less than 100 percent, line %i"
 			      "\n", param->value, param->line);
-		}
 	}
 
 	buffered_before_play = (perc / 100) * buffered_chunks;
-	if (buffered_before_play > buffered_chunks) {
+	if (buffered_before_play > buffered_chunks)
 		buffered_before_play = buffered_chunks;
-	}
+	ob.nr_bpp = buffered_before_play;
 
-	ob_init(buffered_chunks);
+	assert(buffered_chunks > 0 && !ob.index && !ob.chunks);
+	ob.index = ringbuf_create(buffered_chunks);
+	ob.chunks = xcalloc(ob.index->size, sizeof(struct ob_chunk));
+	ob.preseek_len = xmalloc(ob.index->size * sizeof(ob.chunks[0].len));
+	ob.state = OB_STATE_STOP;
 }
 
+static void ob_free(void)
+{
+	free(ob.chunks);
+	ringbuf_free(ob.index);
+}
 
+void init_output_buffer(void)
+{
+	pthread_attr_t attr;
+
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	if (pthread_create(&ob.thread, &attr, ob_task, NULL))
+		FATAL("Failed to spawn player task: %s\n", strerror(errno));
+
+	atexit(ob_free);
+}

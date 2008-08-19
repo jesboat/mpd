@@ -61,6 +61,7 @@ mpd_headers = \
 	compress.h \
 	os_compat.h \
 	outputBuffer.h \
+	outputBuffer_config_init.h \
 	outputBuffer_accessors.h \
 	outputBuffer_audio.h \
 	outputBuffer_ob_send.h \
@@ -69,7 +70,6 @@ mpd_headers = \
 	pcm_utils.h \
 	permission.h \
 	player_error.h \
-	playerData.h \
 	playlist.h \
 	replayGain.h \
 	ringbuf.h \
@@ -126,7 +126,6 @@ mpd_SOURCES = \
 	pcm_utils.c \
 	permission.c \
 	player_error.c \
-	playerData.c \
 	playlist.c \
 	replayGain.c \
 	ringbuf.c \

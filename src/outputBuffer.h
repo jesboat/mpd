@@ -47,7 +47,7 @@ enum ob_action {
 /* 1020 bytes since its divisible for 8, 16, 24, and 32-bit audio */
 #define CHUNK_SIZE		1020
 
-void ob_init(size_t size);
+void ob_flush(void);
 
 enum ob_drop_type { OB_DROP_DECODED, OB_DROP_PLAYING };
 void ob_drop_audio(enum ob_drop_type type);
@@ -101,8 +101,9 @@ AudioFormat *ob_audio_format(void);
 
 void ob_advance_sequence(void);
 
-void ob_wait_sync(void);
-
 void ob_flush(void);
+
+void config_output_buffer(void);
+void init_output_buffer(void);
 
 #endif
