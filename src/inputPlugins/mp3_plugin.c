@@ -880,13 +880,13 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		data->muteFrame = 0;
 		break;
 	case MUTEFRAME_SEEK:
-		dc_action_begin();
-		assert(dc.action == DC_ACTION_SEEK);
 		if (dc.seek_where <= data->elapsedTime) {
+			dc_action_begin();
+			assert(dc.action == DC_ACTION_SEEK);
 			data->outputPtr = data->outputBuffer;
 			data->muteFrame = 0;
+			dc_action_end();
 		}
-		dc_action_end();
 		break;
 	default:
 		mad_synth_frame(&data->synth, &data->frame);
