@@ -213,6 +213,7 @@ static enum action_status ob_do_reset(void)
 	ob.elapsed_time = 0;
 	ob.total_time = 0;
 	reader_reset_buffer();
+	dropBufferedAudio();
 	ob.xfade_state = XFADE_DISABLED;
 	ob_seq_player_set((unsigned int)ob.seq_decoder);
 	return ob_finalize_action();
