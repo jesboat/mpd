@@ -166,11 +166,10 @@ void flac_metadata_common_cb(const FLAC__StreamMetadata * block,
 
 	switch (block->type) {
 	case FLAC__METADATA_TYPE_STREAMINFO:
-		dc.audioFormat.bits = (mpd_sint8)si->bits_per_sample;
-		dc.audioFormat.sampleRate = si->sample_rate;
-		dc.audioFormat.channels = (mpd_sint8)si->channels;
-		dc.totalTime = ((float)si->total_samples) / (si->sample_rate);
-		getOutputAudioFormat(&(dc.audioFormat), &(ob.audioFormat));
+		dc.audio_format.bits = (mpd_sint8)si->bits_per_sample;
+		dc.audio_format.sampleRate = si->sample_rate;
+		dc.audio_format.channels = (mpd_sint8)si->channels;
+		dc.total_time = ((float)si->total_samples) / (si->sample_rate);
 		break;
 	case FLAC__METADATA_TYPE_VORBIS_COMMENT:
 		flacParseReplayGain(block, data);
@@ -183,7 +182,7 @@ void flac_error_common_cb(const char *plugin,
 			  const FLAC__StreamDecoderErrorStatus status,
 			  FlacData * data)
 {
-	if (dc.stop)
+	if (dc_intr())
 		return;
 
 	switch (status) {

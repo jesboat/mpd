@@ -17,7 +17,6 @@
  */
 
 #include "command.h"
-#include "player.h"
 #include "playlist.h"
 #include "ls.h"
 #include "directory.h"
@@ -33,6 +32,8 @@
 #include "sllist.h"
 #include "ack.h"
 #include "os_compat.h"
+#include "player_error.h"
+#include "outputBuffer.h"
 
 #define COMMAND_PLAY           	"play"
 #define COMMAND_PLAYID         	"playid"
@@ -280,13 +281,15 @@ static int handleCurrentSong(int fd, int *permission, int argc, char *argv[])
 
 static int handlePause(int fd, int *permission, int argc, char *argv[])
 {
+	enum ob_action action = OB_ACTION_PAUSE_FLIP;
 	if (argc == 2) {
-		int pause_flag;
-		if (check_int(fd, &pause_flag, argv[1], check_boolean, argv[1]) < 0)
+		int set;
+		if (check_int(fd, &set, argv[1], check_boolean, argv[1]) < 0)
 			return -1;
-		return playerSetPause(fd, pause_flag);
+		action = set ? OB_ACTION_PAUSE_SET : OB_ACTION_PAUSE_UNSET;
 	}
-	return playerPause(fd);
+	ob_trigger_action(action);
+	return 0;
 }
 
 static int commandStatus(int fd, int *permission, int argc, char *argv[])
@@ -295,15 +298,16 @@ static int commandStatus(int fd, int *permission, int argc, char *argv[])
 	int updateJobId;
 	int song;
 
-	playPlaylistIfPlayerStopped();
-	switch (getPlayerState()) {
-	case PLAYER_STATE_STOP:
+	switch (ob_get_state()) {
+	case OB_STATE_STOP:
+	case OB_STATE_QUIT:
 		state = COMMAND_STOP;
 		break;
-	case PLAYER_STATE_PAUSE:
+	case OB_STATE_PAUSE:
 		state = COMMAND_PAUSE;
 		break;
-	case PLAYER_STATE_PLAY:
+	case OB_STATE_PLAY:
+	case OB_STATE_SEEK:
 		state = COMMAND_PLAY;
 		break;
 	}
@@ -318,7 +322,7 @@ static int commandStatus(int fd, int *permission, int argc, char *argv[])
 	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_PLAYLIST_LENGTH,
 		 getPlaylistLength());
 	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_CROSSFADE,
-		 (int)(getPlayerCrossFade() + 0.5));
+		 (int)(ob_get_xfade() + 0.5));
 
 	fdprintf(fd, "%s: %s\n", COMMAND_STATUS_STATE, state);
 
@@ -328,14 +332,14 @@ static int commandStatus(int fd, int *permission, int argc, char *argv[])
 		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_SONGID,
 			 getPlaylistSongId(song));
 	}
-	if (getPlayerState() != PLAYER_STATE_STOP) {
-		fdprintf(fd, "%s: %i:%i\n", COMMAND_STATUS_TIME,
-			 getPlayerElapsedTime(), getPlayerTotalTime());
-		fdprintf(fd, "%s: %li\n", COMMAND_STATUS_BITRATE,
-			 getPlayerBitRate());
-		fdprintf(fd, "%s: %u:%i:%i\n", COMMAND_STATUS_AUDIO,
-			 getPlayerSampleRate(), getPlayerBits(),
-			 getPlayerChannels());
+	if (ob_get_state() != OB_STATE_STOP) {
+		fdprintf(fd, "%s: %lu:%lu\n", COMMAND_STATUS_TIME,
+			 ob_get_elapsed_time(), ob_get_total_time());
+		fdprintf(fd, "%s: %u\n", COMMAND_STATUS_BITRATE,
+		         ob_get_bit_rate());
+		fdprintf(fd, "%s: %u:%u:%u\n", COMMAND_STATUS_AUDIO,
+			 ob_get_sample_rate(), ob_get_bits(),
+			 ob_get_channels());
 	}
 
 	if ((updateJobId = isUpdatingDB())) {
@@ -343,9 +347,9 @@ static int commandStatus(int fd, int *permission, int argc, char *argv[])
 			 updateJobId);
 	}
 
-	if (getPlayerError() != PLAYER_ERROR_NOERROR) {
+	if (player_errno != PLAYER_ERROR_NONE) {
 		fdprintf(fd, "%s: %s\n", COMMAND_STATUS_ERROR,
-			 getPlayerErrorStr());
+			 player_strerror());
 	}
 
 	return 0;
@@ -741,7 +745,7 @@ static int handleStats(int fd, int *permission, int argc, char *argv[])
 
 static int handleClearError(int fd, int *permission, int argc, char *argv[])
 {
-	clearPlayerError();
+	player_clearerror();
 	return 0;
 }
 
@@ -890,7 +894,7 @@ static int handleCrossfade(int fd, int *permission, int argc, char *argv[])
 
 	if (check_int(fd, &xfade_time, argv[1], check_non_negative, argv[1]) < 0)
 		return -1;
-	setPlayerCrossFade(xfade_time);
+	ob_set_xfade(xfade_time);
 
 	return 0;
 }

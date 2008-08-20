@@ -19,7 +19,6 @@
  */
 
 #include "main_notify.h"
-#include "notify.h"
 #include "utils.h"
 #include "ioops.h"
 #include "gcc.h"
@@ -27,11 +26,6 @@
 
 static struct ioOps main_notify_IO;
 static int main_pipe[2];
-static pthread_t main_task;
-static pthread_cond_t main_wakeup = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t main_wakeup_mutex = PTHREAD_MUTEX_INITIALIZER;
-static volatile int pending;
-static pthread_mutex_t select_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int ioops_fdset(fd_set * rfds,
                        mpd_unused fd_set * wfds, mpd_unused fd_set * efds)
@@ -40,20 +34,19 @@ static int ioops_fdset(fd_set * rfds,
 	return main_pipe[0];
 }
 
-static void consume_pipe(void)
-{
-	char buffer[2];
-	ssize_t r = read(main_pipe[0], buffer, sizeof(buffer));
-
-	if (r < 0 && errno != EAGAIN && errno != EINTR)
-		FATAL("error reading from pipe: %s\n", strerror(errno));
-}
-
 static int ioops_consume(int fd_count, fd_set * rfds,
                          mpd_unused fd_set * wfds, mpd_unused fd_set * efds)
 {
+	char buffer[4096];
+	ssize_t r;
+
 	if (FD_ISSET(main_pipe[0], rfds)) {
-		consume_pipe();
+		do {
+			r = read(main_pipe[0], buffer, sizeof(buffer));
+		} while (r > 0);
+
+		if (r < 0 && errno != EAGAIN && errno != EINTR)
+			FATAL("error reading from pipe: %s\n", strerror(errno));
 		FD_CLR(main_pipe[0], rfds);
 		fd_count--;
 	}
@@ -62,65 +55,17 @@ static int ioops_consume(int fd_count, fd_set * rfds,
 
 void init_main_notify(void)
 {
-	if (pipe(main_pipe) < 0)
-		FATAL("Couldn't open pipe: %s", strerror(errno));
-	if (set_nonblocking(main_pipe[0]) < 0)
-		FATAL("Couldn't set non-blocking on main_notify fd: %s",
-		      strerror(errno));
-	if (set_nonblocking(main_pipe[1]) < 0)
-		FATAL("Couldn't set non-blocking on main_notify fd: %s",
-		      strerror(errno));
+	init_async_pipe(main_pipe);
 	main_notify_IO.fdset = ioops_fdset;
 	main_notify_IO.consume = ioops_consume;
 	registerIO(&main_notify_IO);
-	main_task = pthread_self();
-}
-
-static int wakeup_via_pipe(void)
-{
-	int ret = pthread_mutex_trylock(&select_mutex);
-	if (ret == EBUSY) {
-		ssize_t w = write(main_pipe[1], "", 1);
-		if (w < 0 && errno != EAGAIN && errno != EINTR)
-			FATAL("error writing to pipe: %s\n",
-			      strerror(errno));
-		return 1;
-	} else {
-		pthread_mutex_unlock(&select_mutex);
-		return 0;
-	}
 }
 
 void wakeup_main_task(void)
 {
-	assert(!pthread_equal(main_task, pthread_self()));
+	ssize_t w = write(main_pipe[1], "", 1);
 
-	pending = 1;
-
-	if (!wakeup_via_pipe())
-		pthread_cond_signal(&main_wakeup);
+	if (w < 0 && errno != EAGAIN && errno != EINTR)
+		FATAL("error writing to pipe: %s\n",
+		      strerror(errno));
 }
-
-void main_notify_lock(void)
-{
-	assert(pthread_equal(main_task, pthread_self()));
-	pthread_mutex_lock(&select_mutex);
-}
-
-void main_notify_unlock(void)
-{
-	assert(pthread_equal(main_task, pthread_self()));
-	pthread_mutex_unlock(&select_mutex);
-}
-
-void wait_main_task(void)
-{
-	assert(pthread_equal(main_task, pthread_self()));
-
-	pthread_mutex_lock(&main_wakeup_mutex);
-	if (!pending)
-		pthread_cond_wait(&main_wakeup, &main_wakeup_mutex);
-	pending = 0;
-	pthread_mutex_unlock(&main_wakeup_mutex);
-}
-

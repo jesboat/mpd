@@ -55,15 +55,14 @@ static OggFLAC__SeekableStreamDecoderReadStatus of_read_cb(const
 
 	while (1) {
 		r = readFromInputStream(data->inStream, (void *)buf, 1, *bytes);
-		if (r == 0 && !inputStreamAtEOF(data->inStream) &&
-		    !dc.stop)
-			my_usleep(10000);
+		if (r == 0 && !inputStreamAtEOF(data->inStream) && !dc_intr())
+			my_usleep(10000); /* FIXME */
 		else
 			break;
 	}
 	*bytes = r;
 
-	if (r == 0 && !inputStreamAtEOF(data->inStream) && !dc.stop)
+	if (r == 0 && !inputStreamAtEOF(data->inStream) && !dc_intr())
 		return OggFLAC__SEEKABLE_STREAM_DECODER_READ_STATUS_ERROR;
 
 	return OggFLAC__SEEKABLE_STREAM_DECODER_READ_STATUS_OK;
@@ -193,16 +192,17 @@ static FLAC__StreamDecoderWriteStatus oggflacWrite(const
 		     c_chan++) {
 			u16 = buf[c_chan][c_samp];
 			uc = (unsigned char *)&u16;
-			for (i = 0; i < (dc.audioFormat.bits / 8); i++) {
+			for (i = 0; i < (dc.audio_format.bits / 8); i++) {
 				if (data->chunk_length >= FLAC_CHUNK_SIZE) {
-					if (flacSendChunk(data) < 0) {
-						return
-						    FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
-					}
-					data->chunk_length = 0;
-					if (dc.seek) {
-						return
-						    FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+					/* FIXME: line wrapping */
+					switch (flacSendChunk(data)) {
+					case DC_ACTION_STOP:
+						return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+					case DC_ACTION_SEEK:
+						return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+					default:
+						/* compilers are complainers */
+						break;
 					}
 				}
 				data->chunk[data->chunk_length++] = *(uc++);
@@ -349,40 +349,39 @@ static int oggflac_decode(InputStream * inStream)
 		goto fail;
 	}
 
-	dc.state = DECODE_STATE_DECODE;
-
 	while (1) {
 		OggFLAC__seekable_stream_decoder_process_single(decoder);
 		if (OggFLAC__seekable_stream_decoder_get_state(decoder) !=
 		    OggFLAC__SEEKABLE_STREAM_DECODER_OK) {
 			break;
 		}
-		if (dc.seek) {
-			FLAC__uint64 sampleToSeek = dc.seekWhere *
-			    dc.audioFormat.sampleRate + 0.5;
+		if (dc_seek()) {
+			FLAC__uint64 sampleToSeek;
+			dc_action_begin();
+			assert(dc.action == DC_ACTION_SEEK);
+			sampleToSeek = dc.seek_where *
+			                 dc.audio_format.sampleRate + 0.5;
 			if (OggFLAC__seekable_stream_decoder_seek_absolute
 			    (decoder, sampleToSeek)) {
-				ob_clear();
 				data.time = ((float)sampleToSeek) /
-				    dc.audioFormat.sampleRate;
+				    dc.audio_format.sampleRate;
 				data.position = 0;
-			} else
-				dc.seekError = 1;
-			dc.seek = 0;
-			decoder_wakeup_player();
+				data.chunk_length = 0;
+			} else {
+				dc.seek_where = DC_SEEK_ERROR;
+			}
+			dc_action_end();
 		}
 	}
 
-	if (!dc.stop) {
+	if (!dc_intr()) {
 		oggflacPrintErroredState
 		    (OggFLAC__seekable_stream_decoder_get_state(decoder));
 		OggFLAC__seekable_stream_decoder_finish(decoder);
 	}
 	/* send last little bit */
-	if (data.chunk_length > 0 && !dc.stop) {
+	if (data.chunk_length > 0 && !dc_intr())
 		flacSendChunk(&data);
-		ob_flush();
-	}
 
 fail:
 	oggflac_cleanup(&data, decoder);

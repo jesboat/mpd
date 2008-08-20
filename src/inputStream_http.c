@@ -252,7 +252,7 @@ static int trigger_action(struct http_data *data,
 		goto out;
 	}
 	if (nonblocking)
-		cond_timedwait(&data->action_cond, 1);
+		cond_timedwait(&data->action_cond, 100);
 	else
 		cond_wait(&data->action_cond);
 	ret = 0;
@@ -279,7 +279,7 @@ static int take_action(struct http_data *data)
 	xclose(data->fd);
 	data->fd = -1;
 	data->action = CONN_ACTION_NONE;
-	cond_signal_sync(&data->action_cond);
+	cond_signal(&data->action_cond);
 	cond_leave(&data->action_cond);
 	return 1;
 }
@@ -436,7 +436,7 @@ static void await_buffer_space(struct http_data *data)
 static void feed_starved(struct http_data *data)
 {
 	assert(pthread_equal(data->io_thread, pthread_self()));
-	cond_signal_async(&data->empty_cond);
+	cond_signal(&data->empty_cond);
 }
 
 static int starved_wait(struct http_data *data, const long sec)
@@ -449,7 +449,7 @@ static int awaken_buffer_task(struct http_data *data)
 {
 	assert(!pthread_equal(data->io_thread, pthread_self()));
 
-	return ! cond_signal_async(&data->full_cond);
+	return ! cond_signal_trysync(&data->full_cond);
 }
 
 static ssize_t buffer_data(InputStream *is)

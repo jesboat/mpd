@@ -16,20 +16,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef PLAYER_DATA_H
-#define PLAYER_DATA_H
+#ifndef OUTPUT_BUFFER_SEQUENCE_H
+#define OUTPUT_BUFFER_SEQUENCE_H
 
-#include "audio.h"
-#include "player.h"
-#include "decode.h"
-#include "mpd_types.h"
-#include "outputBuffer.h"
+/*
+ * prevent the decoder thread from being more than one song
+ * ahead of the output buffer
+ */
+void ob_seq_enter(void);
+void ob_seq_leave(void);
+void ob_seq_wait(void);
 
-extern unsigned int buffered_before_play;
-extern PlayerControl pc;
-extern DecoderControl dc;
-extern OutputBuffer ob;
-
-void initPlayerData(void);
-
-#endif
+#endif /* OUTPUT_BUFFER_SEQUENCE_H */

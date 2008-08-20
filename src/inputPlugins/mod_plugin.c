@@ -24,7 +24,6 @@
 #include "../audio.h"
 #include "../log.h"
 #include "../pcm_utils.h"
-#include "../playerData.h"
 #include "../os_compat.h"
 
 #include <mikmod.h>
@@ -179,25 +178,20 @@ static int mod_decode(char *path)
 		return -1;
 	}
 
-	dc.totalTime = 0;
-	dc.audioFormat.bits = 16;
-	dc.audioFormat.sampleRate = 44100;
-	dc.audioFormat.channels = 2;
-	getOutputAudioFormat(&(dc.audioFormat), &(ob.audioFormat));
+	dc.total_time = 0;
+	dc.audio_format.bits = 16;
+	dc.audio_format.sampleRate = 44100;
+	dc.audio_format.channels = 2;
 
 	secPerByte =
-	    1.0 / ((dc.audioFormat.bits * dc.audioFormat.channels / 8.0) *
-		   (float)dc.audioFormat.sampleRate);
+	    1.0 / ((dc.audio_format.bits * dc.audio_format.channels / 8.0) *
+		   (float)dc.audio_format.sampleRate);
 
-	dc.state = DECODE_STATE_DECODE;
 	while (1) {
-		if (dc.seek) {
-			dc.seekError = 1;
-			dc.seek = 0;
-			decoder_wakeup_player();
-		}
+		if (dc_seek())
+			dc_action_seek_fail(DC_SEEK_ERROR);
 
-		if (dc.stop)
+		if (dc_intr())
 			break;
 
 		if (!Player_Active())
@@ -205,13 +199,8 @@ static int mod_decode(char *path)
 
 		ret = VC_WriteBytes(data->audio_buffer, MIKMOD_FRAME_SIZE);
 		total_time += ret * secPerByte;
-		ob_send(NULL, 0,
-				       (char *)data->audio_buffer, ret,
-				       total_time, 0, NULL);
+		ob_send((char *)data->audio_buffer, ret, total_time, 0, NULL);
 	}
-
-	ob_flush();
-
 	mod_close(data);
 
 	MikMod_Exit();

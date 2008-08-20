@@ -24,21 +24,6 @@
 #define PLAYLIST_FILE_SUFFIX 	"m3u"
 #define PLAYLIST_COMMENT	'#'
 
-typedef struct _Playlist {
-	Song **songs;
-	/* holds version a song was modified on */
-	mpd_uint32 *songMod;
-	int *order;
-	int *positionToId;
-	int *idToPosition;
-	int length;
-	int current;
-	int queued;
-	int repeat;
-	int random;
-	mpd_uint32 version;
-} Playlist;
-
 extern int playlist_saveAbsolutePaths;
 
 extern int playlist_max_length;
@@ -70,6 +55,12 @@ int deleteFromPlaylistById(int fd, int song);
 int playlistInfo(int fd, int song);
 
 int playlistId(int fd, int song);
+
+Song *playlist_queued_song(void);
+
+void playlist_queue_next(void);
+
+int playlist_playing(void);
 
 int stopPlaylist(int fd);
 
@@ -118,8 +109,6 @@ int getPlaylistSongId(int song);
 int getPlaylistLength(void);
 
 unsigned long getPlaylistVersion(void);
-
-void playPlaylistIfPlayerStopped(void);
 
 int seekSongInPlaylist(int fd, int song, float seek_time);
 
