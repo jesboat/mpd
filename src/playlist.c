@@ -682,6 +682,12 @@ int addSongToPlaylist(int fd, Song * song, int *added_id)
 
 	incrPlaylistVersion();
 
+	/* we could be playing (but done decoding) the last song */
+	if (ob_get_state() != OB_STATE_STOP) {
+		playlist_state = PLAYLIST_STATE_PLAY;
+		queueNextSongInPlaylist();
+	}
+
 	if (added_id)
 		*added_id = id;
 
