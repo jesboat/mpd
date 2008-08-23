@@ -59,7 +59,7 @@ void config_output_buffer(void)
 	buffered_before_play = (perc / 100) * buffered_chunks;
 	if (buffered_before_play > buffered_chunks)
 		buffered_before_play = buffered_chunks;
-	ob.nr_bpp = buffered_before_play;
+	ob.bpp_max = buffered_before_play;
 
 	assert(buffered_chunks > 0 && !ob.index && !ob.chunks);
 	ob.index = ringbuf_create(buffered_chunks);

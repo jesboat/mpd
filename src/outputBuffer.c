@@ -37,6 +37,8 @@ struct ob_chunk {
 	char data[CHUNK_SIZE];
 };
 
+static struct ob_chunk silence;
+
 enum ob_xfade_state {
 	XFADE_DISABLED = 0,
 	XFADE_ENABLED
@@ -49,7 +51,10 @@ static struct condition ob_seq_cond = STATIC_COND_INITIALIZER;
 struct output_buffer {
 	struct ringbuf *index; /* index for chunks */
 	struct ob_chunk *chunks;
-	size_t nr_bpp; /* nr (chunks) buffered before play */
+
+	size_t bpp_max; /* buffer_before_play, user setting, in chunks */
+	size_t bpp_cur; /* current prebuffer size (in chunks) */
+
 	enum ob_state state; /* protected by ob_action_cond */
 	enum ob_action action; /* protected by ob_action_cond */
 	enum ob_xfade_state xfade_state; /* thread-internal */
@@ -325,7 +330,7 @@ static struct ob_chunk *get_chunk(struct iovec vec[2], size_t i)
 {
 	if (vec[0].iov_len > i)
 		return &ob.chunks[vec[0].iov_base + i - ob.index->buf];
-	if (vec[1].iov_base) {
+	if (i && vec[1].iov_base) {
 		assert(vec[0].iov_len > 0);
 		i -= vec[0].iov_len;
 		if (vec[1].iov_len > i)
@@ -336,8 +341,7 @@ static struct ob_chunk *get_chunk(struct iovec vec[2], size_t i)
 
 static void prevent_buffer_underrun(void)
 {
-	static const char silence[CHUNK_SIZE];
-	if (playAudio(silence, sizeof(silence)) < 0)
+	if (playAudio(silence.data, sizeof(silence.data)) < 0)
 		stop_playback();
 }
 
@@ -407,16 +411,23 @@ static void play_next_chunk(void)
 	assert(pthread_equal(pthread_self(), ob.thread));
 
 	nr = ringbuf_get_read_vector(ob.index, vec);
-	if (mpd_unlikely(!nr &&
-			 (dc.state == DC_STATE_STOP) &&
-	                 ! playlist_playing())) {
-		stop_playback();
+	if (mpd_unlikely(!nr)) {
+		if (dc.state == DC_STATE_STOP && ! playlist_playing())
+			stop_playback();
+		else
+			prevent_buffer_underrun();
 		return;
 	}
-	if (nr < ((ob.xfade_time <= 0) ? ob.nr_bpp : xfade_chunks_needed(vec)))
-	{
+
+	if (ob.xfade_time <= 0 && nr < ob.bpp_cur) {
 		prevent_buffer_underrun();
 		return;
+	} else if (nr < xfade_chunks_needed(vec)) {
+		if (dc.state != DC_STATE_STOP && playlist_playing()) {
+			prevent_buffer_underrun();
+			return;
+		}
+		/* nearing end of last track, xfade to silence.. */
 	}
 
 	a = get_chunk(vec, 0);
@@ -424,8 +435,14 @@ static void play_next_chunk(void)
 	if (! a->len)
 		goto out;
 
-	if (nr > 1 && ob.xfade_state == XFADE_ENABLED) {
-		struct ob_chunk *b = get_chunk(vec, ob.xfade_max);
+	if (ob.xfade_state == XFADE_ENABLED) {
+		struct ob_chunk *b;
+		b = get_chunk(vec, ob.xfade_max);
+		if (!b) { /* xfade to silence */
+			b = &silence;
+			b->len = a->len;
+			b->seq = a->seq + 1;
+		}
 		xfade_mix(a, b);
 	}
 
@@ -443,6 +460,10 @@ static void play_next_chunk(void)
 	a->len = 0; /* mark the chunk as empty for ob_send() */
 out:
 	ringbuf_read_advance(ob.index, 1);
+
+	/* we've played our first chunk, stop prebuffering */
+	if (mpd_unlikely(ob.bpp_cur))
+		ob.bpp_cur = 0;
 
 	/* unblock ob_send() if it was waiting on a full buffer */
 	dc_try_unhalt();
@@ -466,6 +487,7 @@ static void * ob_task(mpd_unused void *arg)
 		case OB_STATE_PAUSE:
 		case OB_STATE_SEEK:
 			assert(as != AS_DEFERRED);
+			ob.bpp_cur = ob.bpp_max; /* enable prebuffer */
 			if (as == AS_INPROGRESS)
 				ob_finalize_action();
 			cond_wait(&ob_halt_cond);

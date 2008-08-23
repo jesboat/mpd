@@ -18,7 +18,7 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 	if (!ob.total_time ||
 	    (ob.elapsed_time + ob.xfade_time) < ob.total_time ||
 	    !isCurrentAudioFormat(af))
-		return ob.nr_bpp; /* too early, don't enable xfade yet */
+		return ob.bpp_cur; /* too early, don't enable xfade yet */
 
 	assert(af->bits > 0);
 	assert(af->channels > 0);
@@ -26,35 +26,30 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 
 	chunks = af->sampleRate * af->bits * af->channels / 8.0 / CHUNK_SIZE;
 	chunks = chunks * (ob.xfade_time + 0.5);
+	assert(chunks);
 
-	assert(ob.index->size >= ob.nr_bpp);
-	if (chunks > (ob.index->size - ob.nr_bpp))
-		chunks = ob.index->size - ob.nr_bpp;
+	assert(ob.index->size >= ob.bpp_cur);
+	if (chunks > (ob.index->size - ob.bpp_cur))
+		chunks = ob.index->size - ob.bpp_cur;
 	DEBUG("calculated xfade chunks: %d\n", chunks);
 	nr = vec[0].iov_len + vec[1].iov_len;
 
-	if (chunks > nr)
-		return chunks; /* not enough work with */
-
-	c = get_chunk(vec, chunks);
-	assert(c);
-	if (c->seq == ob.seq_player) {
-		do {
-			if (!(c = get_chunk(vec, ++chunks)))
-				return chunks; /* not enough to work with */
-		} while (c->seq == ob.seq_player);
-	} else {
-		do {
-			c = get_chunk(vec, --chunks);
-			assert(c);
-		} while (c->seq == ob.seq_decoder);
-		assert((c = get_chunk(vec, chunks)));
-		assert(c->seq != ob.seq_decoder);
-		++chunks;
-		assert((c = get_chunk(vec, chunks)));
-		assert(c->seq == ob.seq_decoder);
+	if (chunks <= nr) {
+		c = get_chunk(vec, chunks);
+		assert(c);
+		if (c->seq != ob.seq_player) {
+			do {
+				c = get_chunk(vec, --chunks);
+				assert(c);
+			} while (chunks && c->seq == ob.seq_decoder);
+			assert((c = get_chunk(vec, chunks)));
+			assert(c->seq != ob.seq_decoder);
+			++chunks;
+			assert((c = get_chunk(vec, chunks)));
+			assert(c->seq == ob.seq_decoder);
+		}
+		DEBUG("adjusted xfade chunks: %d\n", chunks);
 	}
-	DEBUG("adjusted xfade chunks: %d\n", chunks);
 
 	ob.xfade_cur = chunks;
 	ob.xfade_max = chunks;
