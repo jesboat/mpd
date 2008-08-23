@@ -525,7 +525,8 @@ static int next_order_num(void)
 
 static void queueNextSongInPlaylist(void)
 {
-	assert(playlist_state == PLAYLIST_STATE_PLAY);
+	if (playlist_state != PLAYLIST_STATE_PLAY)
+		return;
 	/* DEBUG("%s:%d\n", __func__, __LINE__); */
 	if (pthread_mutex_trylock(&queue_lock) == EBUSY)
 		return; /* still decoding */
