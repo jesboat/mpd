@@ -8,6 +8,7 @@
 static struct ob_chunk *get_chunk(struct iovec vec[2], size_t i);
 static size_t calculate_xfade_chunks(struct iovec vec[2])
 {
+	float xfade_time = ob.xfade_time; /* prevent race conditions */
 	size_t chunks;
 	struct ob_chunk *c;
 	size_t nr;
@@ -15,11 +16,13 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 
 	assert(pthread_equal(ob.thread, pthread_self()));
 
+	if (xfade_time <= 0)
+		return ob.bpp_cur;
 	if (!isCurrentAudioFormat(af))
 		return 0;
 
 	if (!ob.total_time ||
-	    (ob.elapsed_time + ob.xfade_time) < ob.total_time)
+	    (ob.elapsed_time + xfade_time) < ob.total_time)
 		return ob.bpp_cur; /* too early, don't enable xfade yet */
 
 	assert(af->bits > 0);
@@ -27,7 +30,7 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 	assert(af->sampleRate > 0);
 
 	chunks = af->sampleRate * af->bits * af->channels / 8.0 / CHUNK_SIZE;
-	chunks = chunks * (ob.xfade_time + 0.5);
+	chunks = chunks * (xfade_time + 0.5);
 	assert(chunks);
 
 	assert(ob.index->size >= ob.bpp_cur);
