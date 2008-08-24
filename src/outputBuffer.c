@@ -173,7 +173,6 @@ static enum action_status ob_do_drop(void)
 	return ob_finalize_action();
 }
 
-static void close_audio_devices(void);
 static enum action_status ob_do_pause(void)
 {
 	assert(pthread_equal(pthread_self(), ob.thread));
@@ -183,7 +182,8 @@ static enum action_status ob_do_pause(void)
 	 * state where it'll just play silence instead of disconnecting
 	 * listeners
 	 */
-	close_audio_devices();
+	dropBufferedAudio();
+	closeAudioDevice();
 	ob.state = OB_STATE_PAUSE;
 	return AS_INPROGRESS;
 }
@@ -212,13 +212,15 @@ static void ob_seq_player_set(unsigned int seq_num)
 	cond_leave(&ob_seq_cond);
 }
 
-static enum action_status ob_do_reset(void)
+static enum action_status ob_do_reset(int close)
 {
 	assert(pthread_equal(pthread_self(), ob.thread));
 	ob.elapsed_time = 0;
 	ob.total_time = 0;
 	reader_reset_buffer();
 	dropBufferedAudio();
+	if (close)
+		closeAudioDevice();
 	ob.xfade_state = XFADE_DISABLED;
 	ob_seq_player_set((unsigned int)ob.seq_decoder);
 	return ob_finalize_action();
@@ -230,7 +232,7 @@ static enum action_status ob_do_stop(void)
 	if (ob.state == OB_STATE_STOP)
 		return AS_INPROGRESS;
 	ob.state = OB_STATE_STOP;
-	return ob_do_reset();
+	return ob_do_reset(1);
 }
 
 /*
@@ -311,9 +313,10 @@ static enum action_status ob_take_action(void)
 		}
 		break;
 	case OB_ACTION_STOP: return ob_do_stop();
-	case OB_ACTION_RESET: return ob_do_reset();
+	case OB_ACTION_RESET: return ob_do_reset(0);
 	case OB_ACTION_QUIT:
-		close_audio_devices();
+		dropBufferedAudio();
+		closeAudioDevice();
 		ob.state = OB_STATE_QUIT;
 		return AS_INPROGRESS;
 	}

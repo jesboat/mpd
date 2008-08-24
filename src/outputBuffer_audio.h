@@ -17,12 +17,3 @@ static int open_audio_devices(int reopen)
 	return -1;
 }
 
-static void close_audio_devices(void)
-{
-	assert(pthread_equal(pthread_self(), ob.thread));
-	DEBUG(__FILE__":%s %d\n", __func__, __LINE__);
-	dropBufferedAudio();
-	closeAudioDevice();
-	/* DEBUG(__FILE__":%s %d\n", __func__, __LINE__); */
-}
-
