@@ -15,9 +15,11 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 
 	assert(pthread_equal(ob.thread, pthread_self()));
 
+	if (!isCurrentAudioFormat(af))
+		return 0;
+
 	if (!ob.total_time ||
-	    (ob.elapsed_time + ob.xfade_time) < ob.total_time ||
-	    !isCurrentAudioFormat(af))
+	    (ob.elapsed_time + ob.xfade_time) < ob.total_time)
 		return ob.bpp_cur; /* too early, don't enable xfade yet */
 
 	assert(af->bits > 0);
