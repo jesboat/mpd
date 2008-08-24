@@ -422,9 +422,11 @@ static void play_next_chunk(void)
 		return;
 	}
 
-	if (ob.xfade_time <= 0 && nr < ob.bpp_cur) {
-		prevent_buffer_underrun();
-		return;
+	if (ob.xfade_time <= 0) {
+		if (nr < ob.bpp_cur) {
+			prevent_buffer_underrun();
+			return;
+		}
 	} else if (nr < xfade_chunks_needed(vec)) {
 		if (dc.state != DC_STATE_STOP && playlist_playing()) {
 			prevent_buffer_underrun();
