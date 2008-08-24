@@ -48,7 +48,8 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 				assert(c);
 			} while (chunks && c->seq == ob.seq_decoder);
 			assert((c = get_chunk(vec, chunks)));
-			assert(c->seq != ob.seq_decoder);
+			if (!chunks && c->seq != ob.seq_decoder)
+				return 0; /* nothing to xfade */
 			++chunks;
 			assert((c = get_chunk(vec, chunks)));
 			assert(c->seq == ob.seq_decoder);
