@@ -1056,6 +1056,7 @@ int moveSongInPlaylist(int fd, int from, int to)
 	Song *tmpSong;
 	int tmpId;
 	int currentSong;
+	int queued_is_current = (playlist.queued == playlist.current);
 
 	if (from < 0 || from >= playlist.length) {
 		commandError(fd, ACK_ERROR_NO_EXIST,
@@ -1085,7 +1086,7 @@ int moveSongInPlaylist(int fd, int from, int to)
 		to = (currentSong + abs(to)) % playlist.length;
 	}
 
-	if (playlist_state == PLAYLIST_STATE_PLAY) {
+	if (playlist_state == PLAYLIST_STATE_PLAY && !queued_is_current) {
 		int queuedSong = -1;
 
 		if (playlist.queued >= 0)
@@ -1130,6 +1131,8 @@ int moveSongInPlaylist(int fd, int from, int to)
 		} else if (playlist.current >= to && playlist.current < from) {
 			playlist.current++;
 		}
+		if (queued_is_current)
+			playlist.queued = playlist.current;
 	}
 	queueNextSongInPlaylist();
 	incrPlaylistVersion();
