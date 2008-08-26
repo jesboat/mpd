@@ -21,8 +21,8 @@
 
 #include "song.h"
 
-#include "audio.h"
 #include "condition.h"
+#include "audio_format.h"
 
 #define DECODE_TYPE_FILE	0
 #define DECODE_TYPE_URL		1

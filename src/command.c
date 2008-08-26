@@ -31,6 +31,7 @@
 #include "storedPlaylist.h"
 #include "sllist.h"
 #include "ack.h"
+#include "audio.h"
 #include "os_compat.h"
 #include "player_error.h"
 #include "outputBuffer.h"
