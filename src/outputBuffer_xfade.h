@@ -29,7 +29,7 @@ static size_t calculate_xfade_chunks(struct rbvec vec[2])
 	assert(af->channels > 0);
 	assert(af->sampleRate > 0);
 
-	chunks = af->sampleRate * af->bits * af->channels / 8.0 / CHUNK_SIZE;
+	chunks = audio_format_time_to_size(af) / CHUNK_SIZE;
 	chunks = chunks * (xfade_time + 0.5);
 	assert(chunks);
 
