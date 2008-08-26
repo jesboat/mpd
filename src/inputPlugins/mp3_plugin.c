@@ -41,8 +41,11 @@ enum mp3_action {
 	DECODE_OK = 0
 };
 
-#define MUTEFRAME_SKIP     1
-#define MUTEFRAME_SEEK     2
+enum muteframe {
+	MUTEFRAME_NONE,
+	MUTEFRAME_SKIP,
+	MUTEFRAME_SEEK
+};
 
 /* the number of samples of silence the decoder inserts at start */
 #define DECODERDELAY 529
@@ -153,7 +156,7 @@ typedef struct _mp3DecodeData {
 	mpd_sint16 outputBuffer[MP3_DATA_OUTPUT_BUFFER_SIZE];
 	float totalTime;
 	float elapsedTime;
-	int muteFrame;
+	enum muteframe muteFrame;
 	long *frameOffset;
 	mad_timer_t *times;
 	unsigned long highestFrame;
@@ -174,7 +177,7 @@ typedef struct _mp3DecodeData {
 
 static void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream)
 {
-	data->muteFrame = 0;
+	data->muteFrame = MUTEFRAME_NONE;
 	data->highestFrame = 0;
 	data->maxFrames = 0;
 	data->frameOffset = NULL;
@@ -845,7 +848,7 @@ static void mp3Read_seek(mp3DecodeData * data)
 			dc.seek_where = DC_SEEK_ERROR;
 		else
 			data->currentFrame = j;
-		data->muteFrame = 0;
+		data->muteFrame = MUTEFRAME_NONE;
 		dc_action_end();
 	}
 }
@@ -887,17 +890,17 @@ mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 
 	switch (data->muteFrame) {
 	case MUTEFRAME_SKIP:
-		data->muteFrame = 0;
+		data->muteFrame = MUTEFRAME_NONE;
 		break;
 	case MUTEFRAME_SEEK:
 		if (dc.seek_where <= data->elapsedTime) {
 			dc_action_begin();
 			assert(dc.action == DC_ACTION_SEEK);
-			data->muteFrame = 0;
+			data->muteFrame = MUTEFRAME_NONE;
 			dc_action_end();
 		}
 		break;
-	default:
+	case MUTEFRAME_NONE:
 		mad_synth_frame(&data->synth, &data->frame);
 
 		if (!data->foundFirstFrame) {
@@ -1003,7 +1006,7 @@ mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 			break;
 		else if (ret == DECODE_SKIP)
 			skip = 1;
-		if (!data->muteFrame) {
+		if (data->muteFrame == MUTEFRAME_NONE) {
 			while ((ret = decodeNextFrame(data)) == DECODE_CONT &&
 			       !dc_intr() && dc_seek()) ;
 			if (ret == DECODE_BREAK || dc_intr() || dc_seek())
