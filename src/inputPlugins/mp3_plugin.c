@@ -861,7 +861,6 @@ static void mp3Read_seek(mp3DecodeData * data)
 
 static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 {
-	unsigned int samplesPerFrame;
 	unsigned int samplesLeft;
 	unsigned int i;
 	int ret;
@@ -911,7 +910,7 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		mad_synth_frame(&data->synth, &data->frame);
 
 		if (!data->foundFirstFrame) {
-			samplesPerFrame = (data->synth).pcm.length;
+			unsigned int samplesPerFrame = (data->synth).pcm.length;
 			data->dropFramesAtStart = data->dropSamplesAtStart / samplesPerFrame;
 			data->dropFramesAtEnd = data->dropSamplesAtEnd / samplesPerFrame;
 			data->dropSamplesAtStart = data->dropSamplesAtStart % samplesPerFrame;
