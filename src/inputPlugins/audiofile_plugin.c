@@ -85,10 +85,10 @@ static int audiofile_decode(char *path)
 	fs = (int)afGetVirtualFrameSize(af_fp, AF_DEFAULT_TRACK, 1);
 
 	{
-		int ret, eof = 0, current = 0;
+		int ret, current = 0;
 		char chunk[CHUNK_SIZE];
 
-		while (!eof) {
+		while (1) {
 			if (dc_seek()) {
 				dc_action_begin();
 				current = dc.seek_where *
@@ -101,7 +101,7 @@ static int audiofile_decode(char *path)
 			    afReadFrames(af_fp, AF_DEFAULT_TRACK, chunk,
 					 CHUNK_SIZE / fs);
 			if (ret <= 0)
-				eof = 1;
+				break;
 			else {
 				current += ret;
 				ob_send(chunk, ret * fs,
