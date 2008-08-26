@@ -300,6 +300,132 @@ static int getAacTotalTime(char *file)
 	return file_time;
 }
 
+static int aac_stream_decode(InputStream *inStream)
+{
+	float file_time;
+	float totalTime = 0;
+	faacDecHandle decoder;
+	faacDecFrameInfo frameInfo;
+	faacDecConfigurationPtr config;
+	long bread;
+	uint32_t sampleRate;
+	unsigned char channels;
+	unsigned int sampleCount;
+	char *sampleBuffer;
+	size_t sampleBufferLen;
+	mpd_uint16 bitRate = 0;
+	AacBuffer b;
+
+	initAacBuffer(inStream, &b);
+	aac_parse_header(&b, NULL);
+
+	decoder = faacDecOpen();
+
+	config = faacDecGetCurrentConfiguration(decoder);
+	config->outputFormat = FAAD_FMT_16BIT;
+#ifdef HAVE_FAACDECCONFIGURATION_DOWNMATRIX
+	config->downMatrix = 1;
+#endif
+#ifdef HAVE_FAACDECCONFIGURATION_DONTUPSAMPLEIMPLICITSBR
+	config->dontUpSampleImplicitSBR = 0;
+#endif
+	faacDecSetConfiguration(decoder, config);
+
+	while (b.bytesIntoBuffer < FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS &&
+	       !b.atEof && !dc_intr()) {
+		fillAacBuffer(&b);
+		adts_find_frame(&b);
+		fillAacBuffer(&b);
+	}
+
+#ifdef HAVE_FAAD_BUFLEN_FUNCS
+	bread = faacDecInit(decoder, b.buffer, b.bytesIntoBuffer,
+			    &sampleRate, &channels);
+#else
+	bread = faacDecInit(decoder, b.buffer, &sampleRate, &channels);
+#endif
+	if (bread < 0) {
+		ERROR("Error not a AAC stream.\n");
+		faacDecClose(decoder);
+		if (b.buffer)
+			free(b.buffer);
+		return -1;
+	}
+
+	dc.audio_format.bits = 16;
+	dc.total_time = totalTime;
+
+	file_time = 0.0;
+
+	advanceAacBuffer(&b, bread);
+
+	while (1) {
+		fillAacBuffer(&b);
+		adts_find_frame(&b);
+		fillAacBuffer(&b);
+
+		if (b.bytesIntoBuffer == 0)
+			break;
+
+#ifdef HAVE_FAAD_BUFLEN_FUNCS
+		sampleBuffer = faacDecDecode(decoder, &frameInfo, b.buffer,
+					     b.bytesIntoBuffer);
+#else
+		sampleBuffer = faacDecDecode(decoder, &frameInfo, b.buffer);
+#endif
+
+		if (frameInfo.error > 0) {
+			ERROR("error decoding AAC stream\n");
+			ERROR("faad2 error: %s\n",
+			      faacDecGetErrorMessage(frameInfo.error));
+			break;
+		}
+#ifdef HAVE_FAACDECFRAMEINFO_SAMPLERATE
+		sampleRate = frameInfo.samplerate;
+#endif
+
+		dc.audio_format.channels = frameInfo.channels;
+		dc.audio_format.sampleRate = sampleRate;
+
+		advanceAacBuffer(&b, frameInfo.bytesconsumed);
+
+		sampleCount = (unsigned long)(frameInfo.samples);
+
+		if (sampleCount > 0) {
+			bitRate = frameInfo.bytesconsumed * 8.0 *
+			    frameInfo.channels * sampleRate /
+			    frameInfo.samples / 1000 + 0.5;
+			file_time +=
+			    (float)(frameInfo.samples) / frameInfo.channels /
+			    sampleRate;
+		}
+
+		sampleBufferLen = sampleCount * 2;
+
+		switch (ob_send(sampleBuffer, sampleBufferLen,
+		                file_time, bitRate, NULL)) {
+		case DC_ACTION_NONE: break;
+		case DC_ACTION_SEEK:
+			/*
+			 * this plugin doesn't support seek because nobody
+			 * has bothered, yet...
+			 */
+			dc_action_seek_fail(DC_SEEK_ERROR);
+			break;
+		default: goto out;
+		}
+	}
+out:
+
+	faacDecClose(decoder);
+	if (b.buffer)
+		free(b.buffer);
+
+	return 0;
+}
+
+
+
 static int aac_decode(char *path)
 {
 	float file_time;
@@ -452,10 +578,10 @@ InputPlugin aacPlugin = {
 	NULL,
 	NULL,
 	NULL,
-	NULL,
+	aac_stream_decode,
 	aac_decode,
 	aacTagDup,
-	INPUT_PLUGIN_STREAM_FILE,
+	INPUT_PLUGIN_STREAM_FILE | INPUT_PLUGIN_STREAM_URL,
 	aac_suffixes,
 	aac_mimeTypes
 };
