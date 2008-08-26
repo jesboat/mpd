@@ -240,32 +240,32 @@ static int oggvorbis_decode(InputStream * inStream)
 	callbacks.close_func = ogg_close_cb;
 	callbacks.tell_func = ogg_tell_cb;
 	if ((ret = ov_open_callbacks(&data, &vf, NULL, 0, callbacks)) < 0) {
-		if (!dc_intr()) {
-			switch (ret) {
-			case OV_EREAD:
-				errorStr = "read error";
-				break;
-			case OV_ENOTVORBIS:
-				errorStr = "not vorbis stream";
-				break;
-			case OV_EVERSION:
-				errorStr = "vorbis version mismatch";
-				break;
-			case OV_EBADHEADER:
-				errorStr = "invalid vorbis header";
-				break;
-			case OV_EFAULT:
-				errorStr = "internal logic error";
-				break;
-			default:
-				errorStr = "unknown error";
-				break;
-			}
-			ERROR("Error decoding Ogg Vorbis stream: %s\n",
-			      errorStr);
-			return -1;
+		if (dc_intr())
+			return 0;
+
+		switch (ret) {
+		case OV_EREAD:
+			errorStr = "read error";
+			break;
+		case OV_ENOTVORBIS:
+			errorStr = "not vorbis stream";
+			break;
+		case OV_EVERSION:
+			errorStr = "vorbis version mismatch";
+			break;
+		case OV_EBADHEADER:
+			errorStr = "invalid vorbis header";
+			break;
+		case OV_EFAULT:
+			errorStr = "internal logic error";
+			break;
+		default:
+			errorStr = "unknown error";
+			break;
 		}
-		return 0;
+
+		ERROR("Error decoding Ogg Vorbis stream: %s\n", errorStr);
+		return -1;
 	}
 	dc.total_time = ov_time_total(&vf, -1);
 	if (dc.total_time < 0)
