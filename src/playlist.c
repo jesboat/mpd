@@ -824,6 +824,8 @@ int deleteFromPlaylist(int fd, int song)
 		stop_current = 1;
 
 	if (playlist.current > songOrder) {
+		if (playlist.current == prev_queued)
+			playlist.queued = playlist.current - 1;
 		playlist.current--;
 	} else if (playlist.current >= playlist.length) {
 		incrPlaylistCurrent();
