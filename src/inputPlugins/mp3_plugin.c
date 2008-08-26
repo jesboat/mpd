@@ -158,13 +158,13 @@ typedef struct _mp3DecodeData {
 	int muteFrame;
 	long *frameOffset;
 	mad_timer_t *times;
-	long highestFrame;
-	long maxFrames;
-	long currentFrame;
-	int dropFramesAtStart;
-	int dropFramesAtEnd;
-	int dropSamplesAtStart;
-	int dropSamplesAtEnd;
+	unsigned long highestFrame;
+	unsigned long maxFrames;
+	unsigned long currentFrame;
+	unsigned int dropFramesAtStart;
+	unsigned int dropFramesAtEnd;
+	unsigned int dropSamplesAtStart;
+	unsigned int dropSamplesAtEnd;
 	int foundXing;
 	int foundFirstFrame;
 	int decodedFirstFrame;
@@ -838,7 +838,7 @@ static float frame_time(mp3DecodeData * data, long j)
 
 static void mp3Read_seek(mp3DecodeData * data)
 {
-	long j = 0;
+	unsigned long j = 0;
 	data->muteFrame = MUTEFRAME_SEEK;
 
 	assert(pthread_equal(pthread_self(), dc.thread));
@@ -861,9 +861,9 @@ static void mp3Read_seek(mp3DecodeData * data)
 
 static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 {
-	int samplesPerFrame;
-	int samplesLeft;
-	int i;
+	unsigned int samplesPerFrame;
+	unsigned int samplesLeft;
+	unsigned int i;
 	int ret;
 	int skip;
 
