@@ -168,7 +168,6 @@ typedef struct _mp3DecodeData {
 	int foundXing;
 	int foundFirstFrame;
 	int decodedFirstFrame;
-	int flush;
 	unsigned long bitRate;
 	InputStream *inStream;
 	struct audio_dither dither;
@@ -193,7 +192,6 @@ static void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream)
 	data->foundXing = 0;
 	data->foundFirstFrame = 0;
 	data->decodedFirstFrame = 0;
-	data->flush = 1;
 	data->inStream = inStream;
 	data->layer = 0;
 	memset(&(data->dither), 0, sizeof(struct audio_dither));
@@ -419,7 +417,6 @@ static int decodeNextFrameHeader(mp3DecodeData * data, MpdTag ** tag,
 				ERROR("unrecoverable frame level error "
 				      "(%s).\n",
 				      mad_stream_errorstr(&data->stream));
-				data->flush = 0;
 				return DECODE_BREAK;
 			}
 		}
@@ -472,7 +469,6 @@ static int decodeNextFrame(mp3DecodeData * data)
 				ERROR("unrecoverable frame level error "
 				      "(%s).\n",
 				      mad_stream_errorstr(&data->stream));
-				data->flush = 0;
 				return DECODE_BREAK;
 			}
 		}
@@ -979,10 +975,8 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 				      data->bitRate / 1000,
 				      replayGainInfo ? *replayGainInfo : NULL);
 
-			if (action == DC_ACTION_STOP) {
-				data->flush = 0;
+			if (action == DC_ACTION_STOP)
 				return DECODE_BREAK;
-			}
 			data->outputPtr = data->outputBuffer;
 
 			if (action == DC_ACTION_SEEK)
@@ -1082,11 +1076,6 @@ static int mp3_decode(InputStream * inStream)
 		metadata_pipe_send(tag, 0);
 
 	while (mp3Read(&data, &replayGainInfo) != DECODE_BREAK) ;
-	/* send last little bit if not dc_intr() */
-	if (!dc_intr() && data.outputPtr != data.outputBuffer && data.flush) {
-		ob_send(data.outputBuffer, data.outputPtr - data.outputBuffer,
-		        data.elapsedTime, data.bitRate / 1000, replayGainInfo);
-	}
 
 	if (replayGainInfo)
 		freeReplayGainInfo(replayGainInfo);
