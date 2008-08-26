@@ -1261,7 +1261,7 @@ int previousSongInPlaylist(int fd)
 	return play_order_num(fd, prev_order_num, 0);
 }
 
-int shufflePlaylist(int fd)
+int shufflePlaylist(mpd_unused int fd)
 {
 	int i;
 	int ri;
