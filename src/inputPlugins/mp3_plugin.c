@@ -850,7 +850,7 @@ static void mp3Read_seek(mp3DecodeData * data)
 
 static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 {
-	unsigned int pcm_length;
+	unsigned int pcm_length, max_samples;
 	unsigned int i;
 	int ret;
 	int skip;
@@ -945,14 +945,15 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 				pcm_length -= data->dropSamplesAtEnd;
 		}
 
+		max_samples = sizeof(data->outputBuffer) /
+			(2 * MAD_NCHANNELS(&(data->frame).header));
+
 		while (i < pcm_length) {
 			enum dc_action action;
-			unsigned int num_samples = sizeof(data->outputBuffer) /
-				(2 * MAD_NCHANNELS(&(data->frame).header));
+			unsigned int num_samples = pcm_length - i;
 
-			if (num_samples > pcm_length - i)
-				num_samples = pcm_length - i;
-
+			if (num_samples > max_samples)
+				num_samples = max_samples;
 			i += num_samples;
 
 			num_samples = dither_buffer((mpd_sint16 *)
