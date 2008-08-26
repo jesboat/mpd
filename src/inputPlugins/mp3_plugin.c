@@ -151,8 +151,6 @@ typedef struct _mp3DecodeData {
 	mad_timer_t timer;
 	unsigned char readBuffer[READ_BUFFER_SIZE];
 	char outputBuffer[MP3_DATA_OUTPUT_BUFFER_SIZE];
-	char *outputPtr;
-	char *outputBufferEnd;
 	float totalTime;
 	float elapsedTime;
 	int muteFrame;
@@ -176,9 +174,6 @@ typedef struct _mp3DecodeData {
 
 static void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream)
 {
-	data->outputPtr = data->outputBuffer;
-	data->outputBufferEnd =
-	    data->outputBuffer + MP3_DATA_OUTPUT_BUFFER_SIZE;
 	data->muteFrame = 0;
 	data->highestFrame = 0;
 	data->maxFrames = 0;
@@ -844,12 +839,10 @@ static void mp3Read_seek(mp3DecodeData * data)
 		j++;
 	if (j < data->highestFrame) {
 		dc_action_begin();
-		if (seekMp3InputBuffer(data, data->frameOffset[j]) < 0) {
+		if (seekMp3InputBuffer(data, data->frameOffset[j]) < 0)
 			dc.seek_where = DC_SEEK_ERROR;
-		} else {
-			data->outputPtr = data->outputBuffer;
+		else
 			data->currentFrame = j;
-		}
 		data->muteFrame = 0;
 		dc_action_end();
 	}
@@ -897,7 +890,6 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		if (dc.seek_where <= data->elapsedTime) {
 			dc_action_begin();
 			assert(dc.action == DC_ACTION_SEEK);
-			data->outputPtr = data->outputBuffer;
 			data->muteFrame = 0;
 			dc_action_end();
 		}
@@ -955,29 +947,29 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 
 		while (i < pcm_length) {
 			enum dc_action action;
-			unsigned int num_samples =
-				(data->outputBufferEnd - data->outputPtr) /
+			unsigned int num_samples = sizeof(data->outputBuffer) /
 				(2 * MAD_NCHANNELS(&(data->frame).header));
+
 			if (num_samples > pcm_length - i)
 				num_samples = pcm_length - i;
 
 			i += num_samples;
 
-			num_samples = dither_buffer((mpd_sint16 *) data->outputPtr,
+			num_samples = dither_buffer((mpd_sint16 *)
+			                               data->outputBuffer,
 						    &data->synth, &data->dither,
 						    i - num_samples, i,
-						    MAD_NCHANNELS(&(data->frame).header));
-			data->outputPtr += 2 * num_samples;
+						    MAD_NCHANNELS(
+						        &(data->frame).header));
 
 			action = ob_send(data->outputBuffer,
-				      data->outputPtr - data->outputBuffer,
+				      2 * num_samples,
 				      data->elapsedTime,
 				      data->bitRate / 1000,
 				      replayGainInfo ? *replayGainInfo : NULL);
 
 			if (action == DC_ACTION_STOP)
 				return DECODE_BREAK;
-			data->outputPtr = data->outputBuffer;
 
 			if (action == DC_ACTION_SEEK)
 				break;
