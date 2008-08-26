@@ -47,6 +47,8 @@ static int audiofile_decode(char *path)
 	int bits;
 	mpd_uint16 bitRate;
 	struct stat st;
+	int ret, current = 0;
+	char chunk[CHUNK_SIZE];
 
 	if (stat(path, &st) < 0) {
 		ERROR("failed to stat: %s\n", path);
@@ -84,34 +86,29 @@ static int audiofile_decode(char *path)
 
 	fs = (int)afGetVirtualFrameSize(af_fp, AF_DEFAULT_TRACK, 1);
 
-	{
-		int ret, current = 0;
-		char chunk[CHUNK_SIZE];
+	while (1) {
+		if (dc_seek()) {
+			dc_action_begin();
+			current = dc.seek_where *
+			    dc.audio_format.sampleRate;
+			afSeekFrame(af_fp, AF_DEFAULT_TRACK, current);
+			dc_action_end();
+		}
 
-		while (1) {
-			if (dc_seek()) {
-				dc_action_begin();
-				current = dc.seek_where *
-				    dc.audio_format.sampleRate;
-				afSeekFrame(af_fp, AF_DEFAULT_TRACK, current);
-				dc_action_end();
-			}
-
-			ret =
-			    afReadFrames(af_fp, AF_DEFAULT_TRACK, chunk,
-					 CHUNK_SIZE / fs);
-			if (ret <= 0)
+		ret =
+		    afReadFrames(af_fp, AF_DEFAULT_TRACK, chunk,
+				 CHUNK_SIZE / fs);
+		if (ret <= 0)
+			break;
+		else {
+			current += ret;
+			ob_send(chunk, ret * fs,
+				(float)current /
+				(float)dc.audio_format.sampleRate,
+				bitRate,
+				NULL);
+			if (dc_intr())
 				break;
-			else {
-				current += ret;
-				ob_send(chunk, ret * fs,
-				        (float)current /
-				        (float)dc.audio_format.sampleRate,
-				        bitRate,
-				        NULL);
-				if (dc_intr())
-					break;
-			}
 		}
 	}
 	afCloseFile(af_fp);
