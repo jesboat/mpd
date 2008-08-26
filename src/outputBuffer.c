@@ -27,6 +27,7 @@
 #include "player_error.h"
 #include "log.h"
 #include "action_status.h"
+#include "decode.h"
 
 /* typically have 2048-4096 of these structs, so pack tightly */
 struct ob_chunk {

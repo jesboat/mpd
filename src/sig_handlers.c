@@ -23,7 +23,6 @@
 #include "command.h"
 #include "signal_check.h"
 #include "log.h"
-#include "decode.h"
 
 int handlePendingSignals(void)
 {
