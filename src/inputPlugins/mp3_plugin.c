@@ -958,6 +958,7 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		}
 
 		while (i < pcm_length) {
+			enum dc_action action;
 			unsigned int num_samples =
 				(data->outputBufferEnd - data->outputPtr) /
 				(2 * MAD_NCHANNELS(&(data->frame).header));
@@ -972,25 +973,20 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 						    MAD_NCHANNELS(&(data->frame).header));
 			data->outputPtr += 2 * num_samples;
 
-			if (data->outputPtr >= data->outputBufferEnd) {
-				enum dc_action action = ob_send(
-				              data->outputBuffer,
-				              data->outputPtr -
-				                 data->outputBuffer,
-				              data->elapsedTime,
-				              data->bitRate / 1000,
-				              replayGainInfo ? *replayGainInfo
-				                             : NULL);
+			action = ob_send(data->outputBuffer,
+				      data->outputPtr - data->outputBuffer,
+				      data->elapsedTime,
+				      data->bitRate / 1000,
+				      replayGainInfo ? *replayGainInfo : NULL);
 
-				if (action == DC_ACTION_STOP) {
-					data->flush = 0;
-					return DECODE_BREAK;
-				}
-				data->outputPtr = data->outputBuffer;
-
-				if (action == DC_ACTION_SEEK)
-					break;
+			if (action == DC_ACTION_STOP) {
+				data->flush = 0;
+				return DECODE_BREAK;
 			}
+			data->outputPtr = data->outputBuffer;
+
+			if (action == DC_ACTION_SEEK)
+				break;
 		}
 
 		if (data->dropSamplesAtEnd &&
