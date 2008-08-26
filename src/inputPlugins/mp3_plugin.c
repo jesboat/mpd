@@ -861,7 +861,7 @@ static void mp3Read_seek(mp3DecodeData * data)
 
 static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 {
-	unsigned int samplesLeft;
+	unsigned int pcm_length;
 	unsigned int i;
 	int ret;
 	int skip;
@@ -942,32 +942,23 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 			metadata_pipe_send(tag, data->elapsedTime);
 		}
 
-		samplesLeft = (data->synth).pcm.length;
-
 		if (!data->decodedFirstFrame) {
-			if (data->dropSamplesAtStart >= samplesLeft) {
-				i = samplesLeft;
-				samplesLeft = 0;
-			} else {
-				i = data->dropSamplesAtStart;
-				samplesLeft -= data->dropSamplesAtStart;
-			}
+			i = data->dropSamplesAtStart;
 			data->decodedFirstFrame = 1;
 		} else
 			i = 0;
 
-		for (; i < (data->synth).pcm.length; i++) {
+		pcm_length = data->synth.pcm.length;
+		if (data->dropSamplesAtEnd &&
+		    (data->currentFrame == data->maxFrames - data->dropFramesAtEnd)) {
+			if (data->dropSamplesAtEnd >= pcm_length)
+				pcm_length = 0;
+			else
+				pcm_length -= data->dropSamplesAtEnd;
+		}
+
+		for (; i < pcm_length; i++) {
 			unsigned int num_samples;
-
-			samplesLeft--;
-
-			if (data->dropSamplesAtEnd &&
-			           (data->currentFrame == (data->maxFrames - data->dropFramesAtEnd)) &&
-				   (samplesLeft < data->dropSamplesAtEnd)) {
-				/* stop decoding, effectively dropping
-				 * all remaining samples */
-				return DECODE_BREAK;
-			}
 
 			num_samples = dither_buffer((mpd_sint16 *) data->outputPtr,
 						    &data->synth, &data->dither,
@@ -995,6 +986,13 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 					break;
 			}
 		}
+
+		if (data->dropSamplesAtEnd &&
+		    (data->currentFrame ==
+		     (data->maxFrames - data->dropFramesAtEnd)))
+			/* stop decoding, effectively dropping
+			 * all remaining samples */
+			return DECODE_BREAK;
 
 		if (dc_seek()) {
 			if (data->inStream->seekable)
