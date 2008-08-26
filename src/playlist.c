@@ -32,6 +32,7 @@
 #include "myfprintf.h"
 #include "os_compat.h"
 #include "main_notify.h"
+#include "metadata_pipe.h"
 
 enum _playlist_state {
 	PLAYLIST_STATE_STOP = 0,
@@ -966,31 +967,34 @@ int playPlaylistById(int fd, int id, int stopOnError)
 	return playPlaylist(fd, playlist.idToPosition[id], stopOnError);
 }
 
-static void syncCurrentPlayerDecodeMetadata(void)
+/* This is used when we stream data out to shout while playing static files */
+MpdTag *playlist_current_tag(void)
 {
-	Song *songPlayer = song_at(playlist.current);
+	Song *song = song_at(playlist.current);
+
+	/* Non-file song tags can get swept out from under us */
+	return (song && song->type == SONG_TYPE_FILE) ? song->tag : NULL;
+}
+
+/* This receives dynamic metadata updates from streams */
+static void sync_metadata(void)
+{
 	Song *song;
-	int songNum;
-	char path_max_tmp[MPD_PATH_MAX];
+	MpdTag *tag;
 
-	if (!songPlayer)
+	if (!(tag = metadata_pipe_current()))
 		return;
-
-	if (playlist_state != PLAYLIST_STATE_PLAY)
+	song = song_at(playlist.current);
+	if (!song || song->type != SONG_TYPE_URL ||
+	    mpdTagsAreEqual(song->tag, tag)) {
+		freeMpdTag(tag);
 		return;
-
-	songNum = playlist.order[playlist.current];
-	song = playlist.songs[songNum];
-
-	if (song->type == SONG_TYPE_URL &&
-	    0 == strcmp(get_song_url(path_max_tmp, song), songPlayer->url) &&
-	    !mpdTagsAreEqual(song->tag, songPlayer->tag)) {
-		if (song->tag)
-			freeMpdTag(song->tag);
-		song->tag = mpdTagDup(songPlayer->tag);
-		playlist.songMod[songNum] = playlist.version;
-		incrPlaylistVersion();
 	}
+	if (song->tag)
+		freeMpdTag(song->tag);
+	song->tag = tag;
+	playlist.songMod[playlist.order[playlist.current]] = playlist.version;
+	incrPlaylistVersion();
 }
 
 void syncPlayerAndPlaylist(void)
@@ -998,6 +1002,7 @@ void syncPlayerAndPlaylist(void)
 	if (playlist_state != PLAYLIST_STATE_PLAY)
 		return;
 	syncPlaylistWithQueue();
+	sync_metadata();
 	/* DEBUG("queued:%d current:%d\n", playlist.queued, playlist.current); */
 	if (playlist_state == PLAYLIST_STATE_PLAY &&
 	    playlist.queued >= 0 &&

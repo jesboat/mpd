@@ -75,3 +75,14 @@ AudioFormat *ob_audio_format(void)
 {
 	return &ob.audio_format;
 }
+
+mpd_uint8 ob_get_decoder_sequence(void)
+{
+	return ob.seq_decoder;
+}
+
+mpd_uint8 ob_get_player_sequence(void)
+{
+	return ob.seq_player;
+}
+

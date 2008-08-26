@@ -44,6 +44,7 @@
 #include "main_notify.h"
 #include "os_compat.h"
 #include "outputBuffer.h"
+#include "metadata_pipe.h"
 
 #define SYSTEM_CONFIG_FILE_LOCATION	"/etc/mpd.conf"
 #define USER_CONFIG_FILE_LOCATION	"/.mpdconf"
@@ -419,6 +420,7 @@ int main(int argc, char *argv[])
 	initReplayGainState();
 	initNormalization();
 	initInputStream();
+	init_metadata_pipe();
 
 	daemonize(&options);
 

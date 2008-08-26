@@ -55,6 +55,7 @@ mpd_headers = \
 	log.h \
 	ls.h \
 	main_notify.h \
+	metadata_pipe.h \
 	mpd_types.h \
 	myfprintf.h \
 	normalize.h \
@@ -118,6 +119,7 @@ mpd_SOURCES = \
 	ls.c \
 	main.c \
 	main_notify.c \
+	metadata_pipe.c \
 	myfprintf.c \
 	normalize.c \
 	compress.c \

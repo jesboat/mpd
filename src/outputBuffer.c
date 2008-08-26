@@ -70,8 +70,8 @@ struct output_buffer {
 	size_t conv_buf_len;
 	pthread_t thread;
 	ConvState conv_state;
-	unsigned int seq_drop;
-	unsigned int seq_player; /* only gets changed by ob.thread */
+	mpd_uint8 seq_drop;
+	mpd_uint8 seq_player; /* only gets changed by ob.thread */
 	mpd_uint8 seq_decoder; /* only gets changed by dc.thread */
 	struct ringbuf preseek_index;
 	enum ob_state preseek_state;
@@ -154,7 +154,7 @@ static enum action_status ob_do_drop(void)
 {
 	struct iovec vec[2];
 	long i;
-	unsigned int seq_drop;
+	mpd_uint8 seq_drop;
 
 	cond_enter(&ob_seq_cond);
 	seq_drop = ob.seq_drop;
@@ -202,9 +202,10 @@ static void reader_reset_buffer(void)
 		c->len = 0;
 	}
 	ringbuf_read_advance(ob.index, nr);
+	metadata_pipe_clear();
 }
 
-static void ob_seq_player_set(unsigned int seq_num)
+static void ob_seq_player_set(mpd_uint8 seq_num)
 {
 	cond_enter(&ob_seq_cond);
 	ob.seq_player = seq_num;
@@ -222,7 +223,7 @@ static enum action_status ob_do_reset(int close)
 	if (close)
 		closeAudioDevice();
 	ob.xfade_state = XFADE_DISABLED;
-	ob_seq_player_set((unsigned int)ob.seq_decoder);
+	ob_seq_player_set(ob.seq_decoder);
 	return ob_finalize_action();
 }
 
@@ -277,7 +278,7 @@ static enum action_status ob_do_seek_finish(void)
 		ob.total_time = dc.total_time;
 		reader_reset_buffer();
 		dropBufferedAudio();
-		ob_seq_player_set((unsigned int)ob.seq_decoder);
+		ob_seq_player_set(ob.seq_decoder);
 	}
 	return ob_finalize_action();
 }
@@ -398,11 +399,30 @@ static void new_song_chunk(struct ob_chunk *a)
 	ob.xfade_state = XFADE_DISABLED;
 	ob.total_time = dc.total_time;
 	/* DEBUG("ob.total_time: %f\n", ob.total_time); */
-	ob_seq_player_set((unsigned int)a->seq);
+	ob_seq_player_set(a->seq);
 	wakeup_main_task(); /* sync playlist */
 }
 
 #include "outputBuffer_audio.h"
+
+static void send_next_tag(void)
+{
+	static MpdTag *last_tag;
+	MpdTag *tag;
+
+	if ((tag = metadata_pipe_recv())) { /* streaming tag */
+		DEBUG("Caught new metadata! %p\n", tag);
+		sendMetadataToAudioDevice(tag);
+		freeMpdTag(tag);
+		wakeup_main_task(); /* call sync_metadata() in playlist.c */
+	} else if ((tag = playlist_current_tag())) { /* static file tag */
+		/* shouldn't need mpdTagsAreEqual here for static tags */
+		if (last_tag != tag) {
+			sendMetadataToAudioDevice(tag);
+			last_tag = tag;
+		}
+	}
+}
 
 static void play_next_chunk(void)
 {
@@ -459,6 +479,8 @@ static void play_next_chunk(void)
 			return;
 		new_song_chunk(a);
 	}
+	send_next_tag();
+
 	/* pcm_volumeChange(a->data, a->len, &ob.audio_format, ob.sw_vol); */
 	if (playAudio(a->data, a->len) < 0)
 		stop_playback();

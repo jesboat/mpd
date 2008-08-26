@@ -196,7 +196,8 @@ static MpdTag *oggCommentsParse(char **comments)
 }
 
 static void putOggCommentsIntoOutputBuffer(char *streamName,
-					   char **comments)
+					   char **comments,
+					   float time)
 {
 	MpdTag *tag;
 
@@ -212,7 +213,12 @@ static void putOggCommentsIntoOutputBuffer(char *streamName,
 		addItemToMpdTag(tag, TAG_ITEM_NAME, streamName);
 	}
 
-	freeMpdTag(tag);
+	metadata_pipe_send(tag, time);
+}
+
+static float current_time(OggVorbis_File *vf)
+{
+	return (ov_pcm_tell(vf) / dc.audio_format.sampleRate);
 }
 
 /* public */
@@ -291,7 +297,8 @@ static int oggvorbis_decode(InputStream * inStream)
 			dc.audio_format.sampleRate = vi->rate;
 			comments = ov_comment(&vf, -1)->user_comments;
 			putOggCommentsIntoOutputBuffer(inStream->metaName,
-						       comments);
+						       comments,
+						       current_time(&vf));
 			ogg_getReplayGainInfo(comments, &replayGainInfo);
 		}
 
@@ -310,8 +317,7 @@ static int oggvorbis_decode(InputStream * inStream)
 			if ((test = ov_bitrate_instant(&vf)) > 0) {
 				bitRate = test / 1000;
 			}
-			ob_send(chunk, chunkpos,
-			        ov_pcm_tell(&vf) / dc.audio_format.sampleRate,
+			ob_send(chunk, chunkpos, current_time(&vf),
 			        bitRate, replayGainInfo);
 			chunkpos = 0;
 			if (dc_intr())

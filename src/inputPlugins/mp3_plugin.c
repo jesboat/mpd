@@ -921,7 +921,7 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 					data->inStream->metaTitle);
 			free(data->inStream->metaTitle);
 			data->inStream->metaTitle = NULL;
-			freeMpdTag(tag);
+			metadata_pipe_send(tag, data->elapsedTime);
 		}
 
 		samplesLeft = (data->synth).pcm.length;
@@ -1050,20 +1050,19 @@ static int mp3_decode(InputStream * inStream)
 		if (inStream->metaName) {
 			addItemToMpdTag(tag, TAG_ITEM_NAME, inStream->metaName);
 		}
-		freeMpdTag(tag);
 	} else if (tag) {
 		if (inStream->metaName) {
 			clearItemsFromMpdTag(tag, TAG_ITEM_NAME);
 			addItemToMpdTag(tag, TAG_ITEM_NAME, inStream->metaName);
 		}
-		freeMpdTag(tag);
 	} else if (inStream->metaName) {
 		tag = newMpdTag();
 		if (inStream->metaName) {
 			addItemToMpdTag(tag, TAG_ITEM_NAME, inStream->metaName);
 		}
-		freeMpdTag(tag);
 	}
+	if (tag)
+		metadata_pipe_send(tag, 0);
 
 	while (mp3Read(&data, &replayGainInfo) != DECODE_BREAK) ;
 	/* send last little bit if not dc_intr() */
