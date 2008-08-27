@@ -66,6 +66,7 @@ void config_output_buffer(void)
 	ob.chunks = xcalloc(ob.index->size, sizeof(struct ob_chunk));
 	ob.preseek_len = xmalloc(ob.index->size * sizeof(ob.chunks[0].len));
 	ob.state = OB_STATE_STOP;
+	ob.sw_vol = 1000;
 }
 
 static void ob_free(void)

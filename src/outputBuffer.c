@@ -481,7 +481,7 @@ static void play_next_chunk(void)
 	}
 	send_next_tag();
 
-	/* pcm_volumeChange(a->data, a->len, &ob.audio_format, ob.sw_vol); */
+	pcm_volumeChange(a->data, a->len, &ob.audio_format, ob.sw_vol);
 	if (playAudio(a->data, a->len) < 0)
 		stop_playback();
 	a->len = 0; /* mark the chunk as empty for ob_send() */
