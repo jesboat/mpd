@@ -833,7 +833,7 @@ int deleteFromPlaylist(int fd, int song)
 	}
 	if (stop_current) {
 		/* DEBUG(__FILE__": %d\n", __LINE__); */
-		if (playlist.current >= 0)
+		if (playlist.current >= 0 && songOrder > 0)
 			play_order_num(fd, playlist.current, 0);
 		else
 			stopPlaylist(fd);
@@ -894,6 +894,7 @@ static int play_order_num(int fd, int order_num, float seek_time)
 	playlist_state = PLAYLIST_STATE_PLAY;
 	assert(order_num >= 0);
 	assert(seek_time >= 0);
+	assert(song_at(order_num));
 
 	DEBUG("playlist: play %i:\"%s\"\n", order_num,
 	      get_song_url(path, song_at(order_num)));
