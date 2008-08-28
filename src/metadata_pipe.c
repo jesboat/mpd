@@ -79,17 +79,6 @@ void metadata_pipe_send(MpdTag *tag, float metadata_time)
 	assert(written == sizeof(struct tag_container));
 }
 
-static void pipe_clear_unlocked(void)
-{
-	struct tag_container tc;
-	size_t r;
-
-	while ((r = ringbuf_read(mp, &tc, sizeof(struct tag_container)))) {
-		assert(r == sizeof(struct tag_container));
-		freeMpdTag(tc.tag);
-	}
-}
-
 MpdTag * metadata_pipe_recv(void)
 {
 	struct tag_container tc;
@@ -150,7 +139,15 @@ MpdTag *metadata_pipe_current(void)
 
 void metadata_pipe_clear(void)
 {
+	struct tag_container tc;
+	size_t r;
+
 	pthread_mutex_lock(&read_lock);
-	pipe_clear_unlocked();
+
+	while ((r = ringbuf_read(mp, &tc, sizeof(struct tag_container)))) {
+		assert(r == sizeof(struct tag_container));
+		freeMpdTag(tc.tag);
+	}
+
 	pthread_mutex_unlock(&read_lock);
 }
