@@ -415,7 +415,7 @@ int main(int argc, char *argv[])
 	initAudioConfig();
 	initAudioDriver();
 	initVolume();
-	initInterfaces();
+	client_manager_init();
 	initReplayGainState();
 	initNormalization();
 	initInputStream();
@@ -435,17 +435,17 @@ int main(int argc, char *argv[])
 	decoder_init();
 	read_state_file();
 
-	while (COMMAND_RETURN_KILL != doIOForInterfaces() &&
+	while (COMMAND_RETURN_KILL != client_manager_io() &&
 	       COMMAND_RETURN_KILL != handlePendingSignals()) {
 		syncPlayerAndPlaylist();
-		closeOldInterfaces();
+		client_manager_expire();
 		readDirectoryDBIfUpdateIsFinished();
 	}
 
 	write_state_file();
 	ob_trigger_action(OB_ACTION_PAUSE_SET);
 	finishZeroconf();
-	freeAllInterfaces();
+	client_manager_deinit();
 	closeAllListenSockets();
 	finishPlaylist();
 
