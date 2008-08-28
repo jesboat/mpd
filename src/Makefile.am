@@ -51,6 +51,7 @@ mpd_headers = \
 	inputStream_http_auth.h \
 	interface.h \
 	list.h \
+	dlist.h \
 	listen.h \
 	log.h \
 	ls.h \
