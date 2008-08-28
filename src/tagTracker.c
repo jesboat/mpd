@@ -22,6 +22,7 @@
 #include "tree.h"
 #include "utils.h"
 #include "myfprintf.h"
+#include "os_compat.h"
 
 static Tree *tagTrees[TAG_NUM_OF_ITEM_TYPES];
 
@@ -30,9 +31,14 @@ typedef struct tagTrackerItem {
 	mpd_sint8 visited;
 } TagTrackerItem;
 
+static pthread_mutex_t tag_item_lock = PTHREAD_MUTEX_INITIALIZER;
+
 char *getTagItemString(int type, char *string)
 {
 	TreeIterator iter;
+	char *ret;
+
+	pthread_mutex_lock(&tag_item_lock);
 
 	if (tagTrees[type] == NULL)
 	{
@@ -44,7 +50,7 @@ char *getTagItemString(int type, char *string)
 	if (FindInTree(tagTrees[type], string, &iter))
 	{
 		((TagTrackerItem *)GetTreeKeyData(&iter)->data)->count++;
-		return (char *)GetTreeKeyData(&iter)->key;
+		ret = (char *)GetTreeKeyData(&iter)->key;
 	}
 	else
 	{
@@ -53,8 +59,11 @@ char *getTagItemString(int type, char *string)
 		item->count = 1;
 		item->visited = 0;
 		InsertInTree(tagTrees[type], key, item);
-		return key;
+		ret = key;
 	}
+
+	pthread_mutex_unlock(&tag_item_lock);
+	return ret;
 }
 
 void removeTagItemString(int type, char *string)
@@ -67,6 +76,7 @@ void removeTagItemString(int type, char *string)
 	if (tagTrees[type] == NULL)
 		return;
 
+	pthread_mutex_lock(&tag_item_lock);
 	if (FindInTree(tagTrees[type], string, &iter))
 	{
 		TagTrackerItem * item =
@@ -81,6 +91,7 @@ void removeTagItemString(int type, char *string)
 		FreeTree(tagTrees[type]);
 		tagTrees[type] = NULL;
 	}
+	pthread_mutex_unlock(&tag_item_lock);
 }
 
 int getNumberOfTagItems(int type)
