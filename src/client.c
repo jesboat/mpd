@@ -146,6 +146,8 @@ static void client_init(struct client *client, int fd)
 {
 	static unsigned int next_client_num;
 
+	assert(fd >= 0);
+
 	client->cmd_list_size = 0;
 	client->cmd_list_dup = 0;
 	client->cmd_list_OK = -1;
@@ -632,6 +634,8 @@ static void client_write_deferred(struct client *client)
 
 	buf = client->deferred_send;
 	while (buf) {
+		assert(buf->size > 0);
+
 		ret = write(client->fd, buf->data, buf->size);
 		if (ret < 0)
 			break;
@@ -715,6 +719,7 @@ static void client_defer_output(struct client *client,
 {
 	struct sllnode **buf_r;
 
+	assert(length > 0);
 	assert(client->deferred_send != NULL);
 
 	client->deferred_bytes += sizeof(struct sllnode) + length;
@@ -740,6 +745,7 @@ static void client_write(struct client *client,
 {
 	ssize_t ret;
 
+	assert(length > 0);
 	assert(client->deferred_send == NULL);
 
 	if ((ret = write(client->fd, data, length)) < 0) {
