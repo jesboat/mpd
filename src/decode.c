@@ -41,8 +41,7 @@ void dc_trigger_action(enum dc_action action, float seek_where)
 	/* DEBUG(__FILE__ ":%s %d\n", __func__,__LINE__); */
 	cond_enter(&dc_action_cond);
 	assert(dc.action == DC_ACTION_NONE);
-	if (action == DC_ACTION_SEEK)
-		dc.seek_where = seek_where; /* usually 0 */
+	dc.seek_where = (action == DC_ACTION_SEEK) ? seek_where : 0;
 	dc.action = action;
 	do {
 		/* DEBUG(__FILE__ ":%s %d\n", __func__,__LINE__); */
