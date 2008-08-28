@@ -68,6 +68,7 @@ void metadata_pipe_send(MpdTag *tag, float metadata_time)
 	if (mpd_unlikely(ringbuf_write_space(mp)
 	                 < sizeof(struct tag_container))) {
 		DEBUG("metadata_pipe: insufficient buffer space, dropping\n");
+		freeMpdTag(tag);
 		return;
 	}
 
