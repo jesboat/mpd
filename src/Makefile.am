@@ -49,7 +49,7 @@ mpd_headers = \
 	inputStream_file.h \
 	inputStream_http.h \
 	inputStream_http_auth.h \
-	interface.h \
+	client.h \
 	list.h \
 	dlist.h \
 	listen.h \
@@ -112,7 +112,7 @@ mpd_SOURCES = \
 	inputStream.c \
 	inputStream_file.c \
 	inputStream_http.c \
-	interface.c \
+	client.c \
 	ioops.c \
 	list.c \
 	listen.c \
