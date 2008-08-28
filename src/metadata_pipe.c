@@ -149,5 +149,10 @@ void metadata_pipe_clear(void)
 		freeMpdTag(tc.tag);
 	}
 
+	if (current_tag) {
+		freeMpdTag(current_tag);
+		current_tag = NULL;
+	}
+
 	pthread_mutex_unlock(&read_lock);
 }
