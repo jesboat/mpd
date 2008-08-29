@@ -145,7 +145,7 @@ static const char *VORBIS_COMMENT_DISC_KEY = "discnumber";
 
 static unsigned int ogg_parseCommentAddToTag(char *comment,
 					     unsigned int itemType,
-					     MpdTag ** tag)
+					     struct mpd_tag ** tag)
 {
 	const char *needle;
 	unsigned int len;
@@ -173,9 +173,9 @@ static unsigned int ogg_parseCommentAddToTag(char *comment,
 	return 0;
 }
 
-static MpdTag *oggCommentsParse(char **comments)
+static struct mpd_tag *oggCommentsParse(char **comments)
 {
-	MpdTag *tag = NULL;
+	struct mpd_tag *tag = NULL;
 
 	while (*comments) {
 		int j;
@@ -193,7 +193,7 @@ static void putOggCommentsIntoOutputBuffer(char *streamName,
 					   char **comments,
 					   float cur_time)
 {
-	MpdTag *tag;
+	struct mpd_tag *tag;
 
 	tag = oggCommentsParse(comments);
 	if (!tag && streamName) {
@@ -332,9 +332,9 @@ static int oggvorbis_decode(InputStream * inStream)
 	return 0;
 }
 
-static MpdTag *oggvorbis_TagDup(char *file)
+static struct mpd_tag *oggvorbis_TagDup(char *file)
 {
-	MpdTag *ret;
+	struct mpd_tag *ret;
 	FILE *fp;
 	OggVorbis_File vf;
 

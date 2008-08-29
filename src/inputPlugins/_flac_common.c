@@ -101,7 +101,7 @@ static const char *VORBIS_COMMENT_DISC_KEY = "discnumber";
 static unsigned int commentMatchesAddToTag(const
 					   FLAC__StreamMetadata_VorbisComment_Entry
 					   * entry, unsigned int itemType,
-					   MpdTag ** tag)
+					   struct mpd_tag ** tag)
 {
 	const char *str;
 	size_t slen;
@@ -134,8 +134,8 @@ static unsigned int commentMatchesAddToTag(const
 	return 0;
 }
 
-MpdTag *copyVorbisCommentBlockToMpdTag(const FLAC__StreamMetadata * block,
-				       MpdTag * tag)
+struct mpd_tag *copyVorbisCommentBlockToMpdTag(const FLAC__StreamMetadata * block,
+					   struct mpd_tag * tag)
 {
 	unsigned int i, j;
 	FLAC__StreamMetadata_VorbisComment_Entry *comments;

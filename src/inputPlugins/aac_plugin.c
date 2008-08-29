@@ -553,9 +553,9 @@ out:
 	return 0;
 }
 
-static MpdTag *aacTagDup(char *file)
+static struct mpd_tag *aacTagDup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	int file_time = getAacTotalTime(file);
 
 	if (file_time >= 0) {

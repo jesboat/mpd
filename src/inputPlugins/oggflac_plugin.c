@@ -300,7 +300,7 @@ fail:
 }
 
 /* public functions: */
-static MpdTag *oggflac_TagDup(char *file)
+static struct mpd_tag *oggflac_TagDup(char *file)
 {
 	InputStream inStream;
 	OggFLAC__SeekableStreamDecoder *decoder;

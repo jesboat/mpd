@@ -34,7 +34,7 @@ static struct ringbuf *mp;
 struct tag_container {
 	float metadata_time;
 	mpd_uint8 seq; /* ob.seq_decoder at time of metadata_pipe_send() */
-	MpdTag *tag; /* our payload */
+	struct mpd_tag *tag; /* our payload */
 };
 
 /*
@@ -43,7 +43,7 @@ struct tag_container {
  * done from one thread, so it will never block or clobber.
  */
 static pthread_mutex_t read_lock = PTHREAD_MUTEX_INITIALIZER;
-static MpdTag *current_tag; /* requires read_lock for both r/w access */
+static struct mpd_tag *current_tag; /* requires read_lock for both r/w access */
 
 static void metadata_pipe_finish(void)
 {
@@ -58,7 +58,7 @@ void init_metadata_pipe(void)
 	atexit(metadata_pipe_finish);
 }
 
-void metadata_pipe_send(MpdTag *tag, float metadata_time)
+void metadata_pipe_send(struct mpd_tag *tag, float metadata_time)
 {
 	struct tag_container tc;
 	size_t written;
@@ -79,14 +79,14 @@ void metadata_pipe_send(MpdTag *tag, float metadata_time)
 	assert(written == sizeof(struct tag_container));
 }
 
-MpdTag * metadata_pipe_recv(void)
+struct mpd_tag * metadata_pipe_recv(void)
 {
 	struct tag_container tc;
 	size_t r;
 	static const size_t mpd_uint8_max = 255; /* XXX CLEANUP */
 	mpd_uint8 expect_seq = ob_get_player_sequence();
 	unsigned long current_time = ob_get_elapsed_time();
-	MpdTag *tag = NULL;
+	struct mpd_tag *tag = NULL;
 
 	if (pthread_mutex_trylock(&read_lock) == EBUSY)
 		return NULL;
@@ -124,9 +124,9 @@ out:
 	return tag;
 }
 
-MpdTag *metadata_pipe_current(void)
+struct mpd_tag *metadata_pipe_current(void)
 {
-	MpdTag *tag;
+	struct mpd_tag *tag;
 
 	assert(! pthread_equal(pthread_self(), dc.thread));
 	if (pthread_mutex_trylock(&read_lock) == EBUSY)

@@ -45,34 +45,34 @@ enum tag_type {
 
 extern const char *mpdTagItemKeys[];
 
-typedef struct _MpdTagItem {
+struct tag_item {
 	enum tag_type type;
 	char *value;
-} MpdTagItem;
+};
 
-typedef struct _MpdTag {
+struct mpd_tag {
 	int time;
-	MpdTagItem *items;
+	struct tag_item *items;
 	mpd_uint8 numOfItems;
-} MpdTag;
+};
 
 #ifdef HAVE_ID3TAG
-MpdTag *parseId3Tag(struct id3_tag *);
+struct mpd_tag *parseId3Tag(struct id3_tag *);
 #endif
 
-MpdTag *apeDup(char *file);
+struct mpd_tag *apeDup(char *file);
 
-MpdTag *id3Dup(char *file);
+struct mpd_tag *id3Dup(char *file);
 
-MpdTag *newMpdTag(void);
+struct mpd_tag *newMpdTag(void);
 
 void initTagConfig(void);
 
-void clearItemsFromMpdTag(MpdTag * tag, enum tag_type itemType);
+void clearItemsFromMpdTag(struct mpd_tag *tag, enum tag_type itemType);
 
-void freeMpdTag(MpdTag * tag);
+void freeMpdTag(struct mpd_tag *tag);
 
-void addItemToMpdTagWithLen(MpdTag * tag, enum tag_type itemType,
+void addItemToMpdTagWithLen(struct mpd_tag *tag, enum tag_type itemType,
 			    const char *value, size_t len);
 
 #define addItemToMpdTag(tag, itemType, value) \
@@ -80,10 +80,10 @@ void addItemToMpdTagWithLen(MpdTag * tag, enum tag_type itemType,
 
 void printTagTypes(int fd);
 
-void printMpdTag(int fd, MpdTag * tag);
+void printMpdTag(int fd, struct mpd_tag *tag);
 
-MpdTag *mpdTagDup(MpdTag * tag);
+struct mpd_tag *mpdTagDup(struct mpd_tag *tag);
 
-int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2);
+int mpdTagsAreEqual(struct mpd_tag *tag1, struct mpd_tag *tag2);
 
 #endif

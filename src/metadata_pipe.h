@@ -29,21 +29,21 @@ void init_metadata_pipe(void);
  * DO NOT FREE the tag placed into the pipe; that is that job of the
  * caller of metadata_pipe_recv() or metadata_pipe_clear().
  */
-void metadata_pipe_send(MpdTag * tag, float metadata_time);
+void metadata_pipe_send(struct mpd_tag * tag, float metadata_time);
 
 /*
- * Reads and consumes one MpdTag pointer off the pipe.  The caller
- * of this MUST free the MpdTag pointer after it is done using it.
+ * Reads and consumes one struct mpd_tag pointer off the pipe.  The caller
+ * of this MUST free the struct mpd_tag pointer after it is done using it.
  */
-MpdTag * metadata_pipe_recv(void);
+struct mpd_tag * metadata_pipe_recv(void);
 
 /*
- * Returns the last read MpdTag from metadata_pipe_recv(), caller
+ * Returns the last read struct mpd_tag from metadata_pipe_recv(), caller
  * must free this pointer when it is done using it.
  */
-MpdTag * metadata_pipe_current(void);
+struct mpd_tag * metadata_pipe_current(void);
 
-/* Clears all MpdTag pointers on the pipe, freeing all associated elements */
+/* Clears all struct mpd_tag pointers on the pipe, freeing all associated elements */
 void metadata_pipe_clear(void);
 
 #endif /* METADATA_PIPE_H */

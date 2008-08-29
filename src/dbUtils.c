@@ -257,7 +257,7 @@ static void freeListCommandItem(ListCommandItem * item)
 static void visitTag(int fd, Song * song, enum tag_type tagType)
 {
 	int i;
-	MpdTag *tag = song->tag;
+	struct mpd_tag *tag = song->tag;
 
 	if (tagType == LOCATE_TAG_FILE_TYPE) {
 		printSongUrl(fd, song);

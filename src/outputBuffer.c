@@ -408,8 +408,8 @@ static void new_song_chunk(struct ob_chunk *a)
 
 static void send_next_tag(void)
 {
-	static MpdTag *last_tag;
-	MpdTag *tag;
+	static struct mpd_tag *last_tag;
+	struct mpd_tag *tag;
 
 	if ((tag = metadata_pipe_recv())) { /* streaming tag */
 		DEBUG("Caught new metadata! %p\n", tag);

@@ -146,7 +146,7 @@ typedef struct {
 	FLAC__uint64 position;
 	InputStream *inStream;
 	ReplayGainInfo *replayGainInfo;
-	MpdTag *tag;
+	struct mpd_tag *tag;
 } FlacData;
 
 /* initializes a given FlacData struct */
@@ -157,8 +157,8 @@ void flac_error_common_cb(const char *plugin,
 			  FLAC__StreamDecoderErrorStatus status,
 			  FlacData * data);
 
-MpdTag *copyVorbisCommentBlockToMpdTag(const FLAC__StreamMetadata * block,
-				       MpdTag * tag);
+struct mpd_tag *copyVorbisCommentBlockToMpdTag(const FLAC__StreamMetadata * block,
+					   struct mpd_tag *tag);
 
 /* keep this inlined, this is just macro but prettier :) */
 static inline enum dc_action flacSendChunk(FlacData * data)
