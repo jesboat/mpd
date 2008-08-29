@@ -285,9 +285,9 @@ static struct mpd_tag *wavpack_tagdup(char *fname)
 		return NULL;
 	}
 
-	tag = newMpdTag();
+	tag = tag_new();
 	if (tag == NULL) {
-		ERROR("failed to newMpdTag()\n");
+		ERROR("failed to tag_new()\n");
 		return NULL;
 	}
 
@@ -314,7 +314,7 @@ static struct mpd_tag *wavpack_tagdup(char *fname)
 			}
 
 			WavpackGetTagItem(wpc, tagtypes[i].name, s, j);
-			addItemToMpdTag(tag, tagtypes[i].type, s);
+			tag_add_item(tag, tagtypes[i].type, s);
 		}
 	}
 

@@ -348,10 +348,10 @@ static void mp3_parseId3Tag(mp3DecodeData * data, size_t tagsize,
 		goto fail;
 
 	if (mpdTag) {
-		tmpMpdTag = parseId3Tag(id3Tag);
+		tmpMpdTag = tag_id3_import(id3Tag);
 		if (tmpMpdTag) {
 			if (*mpdTag)
-				freeMpdTag(*mpdTag);
+				tag_free(*mpdTag);
 			*mpdTag = tmpMpdTag;
 		}
 	}
@@ -819,7 +819,7 @@ static int openMp3FromInputStream(InputStream * inStream, mp3DecodeData * data,
 	if (decodeFirstFrame(data, tag, replayGainInfo) < 0) {
 		mp3DecodeDataFinalize(data);
 		if (tag && *tag)
-			freeMpdTag(*tag);
+			tag_free(*tag);
 		return -1;
 	}
 
@@ -923,13 +923,12 @@ mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 		}
 
 		if (data->inStream->metaTitle) {
-			struct mpd_tag *tag = newMpdTag();
+			struct mpd_tag *tag = tag_new();
 			if (data->inStream->metaName) {
-				addItemToMpdTag(tag,
-						TAG_ITEM_NAME,
-						data->inStream->metaName);
+				tag_add_item(tag, TAG_ITEM_NAME,
+					     data->inStream->metaName);
 			}
-			addItemToMpdTag(tag, TAG_ITEM_TITLE,
+			tag_add_item(tag, TAG_ITEM_TITLE,
 					data->inStream->metaTitle);
 			free(data->inStream->metaTitle);
 			data->inStream->metaTitle = NULL;
@@ -1051,23 +1050,23 @@ static int mp3_decode(InputStream * inStream)
 
 	if (inStream->metaTitle) {
 		if (tag)
-			freeMpdTag(tag);
-		tag = newMpdTag();
-		addItemToMpdTag(tag, TAG_ITEM_TITLE, inStream->metaTitle);
+			tag_free(tag);
+		tag = tag_new();
+		tag_add_item(tag, TAG_ITEM_TITLE, inStream->metaTitle);
 		free(inStream->metaTitle);
 		inStream->metaTitle = NULL;
 		if (inStream->metaName) {
-			addItemToMpdTag(tag, TAG_ITEM_NAME, inStream->metaName);
+			tag_add_item(tag, TAG_ITEM_NAME, inStream->metaName);
 		}
 	} else if (tag) {
 		if (inStream->metaName) {
-			clearItemsFromMpdTag(tag, TAG_ITEM_NAME);
-			addItemToMpdTag(tag, TAG_ITEM_NAME, inStream->metaName);
+			tag_clear_items_by_type(tag, TAG_ITEM_NAME);
+			tag_add_item(tag, TAG_ITEM_NAME, inStream->metaName);
 		}
 	} else if (inStream->metaName) {
-		tag = newMpdTag();
+		tag = tag_new();
 		if (inStream->metaName) {
-			addItemToMpdTag(tag, TAG_ITEM_NAME, inStream->metaName);
+			tag_add_item(tag, TAG_ITEM_NAME, inStream->metaName);
 		}
 	}
 	if (tag)
@@ -1086,13 +1085,13 @@ static struct mpd_tag *mp3_tagDup(char *file)
 	struct mpd_tag *ret = NULL;
 	int total_time;
 
-	ret = id3Dup(file);
+	ret = tag_id3_load(file);
 
 	total_time = getMp3TotalTime(file);
 
 	if (total_time >= 0) {
 		if (!ret)
-			ret = newMpdTag();
+			ret = tag_new();
 		ret->time = total_time;
 	} else {
 		DEBUG("mp3_tagDup: Failed to get total song time from: %s\n",

@@ -49,7 +49,7 @@ static void metadata_pipe_finish(void)
 {
 	ringbuf_free(mp);
 	if (current_tag)
-		freeMpdTag(current_tag);
+		tag_free(current_tag);
 }
 
 void init_metadata_pipe(void)
@@ -68,7 +68,7 @@ void metadata_pipe_send(struct mpd_tag *tag, float metadata_time)
 	if (mpd_unlikely(ringbuf_write_space(mp)
 	                 < sizeof(struct tag_container))) {
 		DEBUG("metadata_pipe: insufficient buffer space, dropping\n");
-		freeMpdTag(tag);
+		tag_free(tag);
 		return;
 	}
 
@@ -99,20 +99,20 @@ retry:
 	if (expect_seq == tc.seq) {
 		if (current_time < tc.metadata_time)
 			goto out; /* not ready for tag yet */
-		if (mpdTagsAreEqual(tc.tag, current_tag)) {
-			freeMpdTag(tc.tag);
+		if (tag_equal(tc.tag, current_tag)) {
+			tag_free(tc.tag);
 			ringbuf_read_advance(mp, sizeof(struct tag_container));
 			goto out; /* nothing changed, don't bother */
 		}
-		tag = mpdTagDup(tc.tag);
+		tag = tag_dup(tc.tag);
 		if (current_tag)
-			freeMpdTag(current_tag);
+			tag_free(current_tag);
 		current_tag = tc.tag;
 		ringbuf_read_advance(mp, sizeof(struct tag_container));
 	} else if (expect_seq > tc.seq ||
 	           (!expect_seq && tc.seq == mpd_uint8_max)) {
 		DEBUG("metadata_pipe: reader is ahead of writer\n");
-		freeMpdTag(tc.tag);
+		tag_free(tc.tag);
 		ringbuf_read_advance(mp, sizeof(struct tag_container));
 		goto retry; /* read and skip packets */
 	} else {
@@ -131,7 +131,7 @@ struct mpd_tag *metadata_pipe_current(void)
 	assert(! pthread_equal(pthread_self(), dc.thread));
 	if (pthread_mutex_trylock(&read_lock) == EBUSY)
 		return NULL;
-	tag = current_tag ? mpdTagDup(current_tag) : NULL;
+	tag = current_tag ? tag_dup(current_tag) : NULL;
 	pthread_mutex_unlock(&read_lock);
 
 	return tag;
@@ -146,11 +146,11 @@ void metadata_pipe_clear(void)
 
 	while ((r = ringbuf_read(mp, &tc, sizeof(struct tag_container)))) {
 		assert(r == sizeof(struct tag_container));
-		freeMpdTag(tc.tag);
+		tag_free(tc.tag);
 	}
 
 	if (current_tag) {
-		freeMpdTag(current_tag);
+		tag_free(current_tag);
 		current_tag = NULL;
 	}
 

@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 		killFromPidFile();
 
 	initStats();
-	initTagConfig();
+	tag_lib_init();
 	initLog(options.verbose);
 
 	if (options.createDB <= 0)

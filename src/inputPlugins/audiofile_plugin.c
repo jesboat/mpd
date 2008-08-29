@@ -123,7 +123,7 @@ static struct mpd_tag *audiofileTagDup(char *file)
 
 	if (total_time >= 0) {
 		if (!ret)
-			ret = newMpdTag();
+			ret = tag_new();
 		ret->time = total_time;
 	} else {
 		DEBUG

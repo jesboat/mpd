@@ -93,7 +93,7 @@ static void freeShoutData(ShoutData * sd)
 	if (sd->shoutConn)
 		shout_free(sd->shoutConn);
 	if (sd->tag)
-		freeMpdTag(sd->tag);
+		tag_free(sd->tag);
 	if (sd->timer)
 		timer_free(sd->timer);
 
@@ -593,7 +593,7 @@ static void myShout_sendMetadata(ShoutData * sd)
 		}
 	}
 
-	/*if(sd->tag) freeMpdTag(sd->tag);
+	/*if(sd->tag) tag_free(sd->tag);
 	   sd->tag = NULL; */
 	sd->tagToSend = 0;
 }
@@ -668,14 +668,14 @@ static void myShout_setTag(AudioOutput * audioOutput, struct mpd_tag *tag)
 	ShoutData *sd = (ShoutData *) audioOutput->data;
 
 	if (sd->tag)
-		freeMpdTag(sd->tag);
+		tag_free(sd->tag);
 	sd->tag = NULL;
 	sd->tagToSend = 0;
 
 	if (!tag)
 		return;
 
-	sd->tag = mpdTagDup(tag);
+	sd->tag = tag_dup(tag);
 	sd->tagToSend = 1;
 }
 

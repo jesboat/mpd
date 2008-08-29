@@ -284,11 +284,11 @@ static struct mpd_tag *mpcTagDup(char *file)
 		return NULL;
 	}
 
-	ret = apeDup(file);
+	ret = tag_ape_load(file);
 	if (!ret)
-		ret = id3Dup(file);
+		ret = tag_id3_load(file);
 	if (!ret)
-		ret = newMpdTag();
+		ret = tag_new();
 	ret->time = total_time;
 
 	return ret;

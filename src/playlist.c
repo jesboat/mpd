@@ -987,12 +987,12 @@ static void sync_metadata(void)
 		return;
 	song = song_at(playlist.current);
 	if (!song || song->type != SONG_TYPE_URL ||
-	    mpdTagsAreEqual(song->tag, tag)) {
-		freeMpdTag(tag);
+	    tag_equal(song->tag, tag)) {
+		tag_free(tag);
 		return;
 	}
 	if (song->tag)
-		freeMpdTag(song->tag);
+		tag_free(song->tag);
 	song->tag = tag;
 	playlist.songMod[playlist.order[playlist.current]] = playlist.version;
 	incrPlaylistVersion();

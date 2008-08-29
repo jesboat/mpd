@@ -414,7 +414,7 @@ static void send_next_tag(void)
 	if ((tag = metadata_pipe_recv())) { /* streaming tag */
 		DEBUG("Caught new metadata! %p\n", tag);
 		sendMetadataToAudioDevice(tag);
-		freeMpdTag(tag);
+		tag_free(tag);
 		wakeup_main_task(); /* call sync_metadata() in playlist.c */
 	} else if ((tag = playlist_current_tag())) { /* static file tag */
 		/* shouldn't need mpdTagsAreEqual here for static tags */
