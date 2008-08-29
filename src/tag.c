@@ -350,7 +350,9 @@ int tag_equal(struct mpd_tag *tag1, struct mpd_tag *tag2)
 static inline char *fix_utf8(char *str) {
 	char *temp;
 
-	if (str != NULL && validUtf8String(str))
+	assert(str != NULL);
+
+	if (validUtf8String(str))
 		return str;
 
 	DEBUG("not valid utf8 in tag: %s\n",str);
