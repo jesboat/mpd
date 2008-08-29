@@ -81,6 +81,7 @@ mpd_headers = \
 	state_file.h \
 	stats.h \
 	tag.h \
+	tag_id3.h \
 	tagTracker.h \
 	tree.h \
 	utf8.h \
@@ -138,6 +139,7 @@ mpd_SOURCES = \
 	state_file.c \
 	stats.c \
 	tag.c \
+	tag_id3.c \
 	tagTracker.c \
 	tree.c \
 	utils.c \
