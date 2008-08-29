@@ -28,6 +28,8 @@
 #include "../utils.h"
 #include "../log.h"
 
+#include <OggFLAC/seekable_stream_decoder.h>
+
 static void oggflac_cleanup(FlacData * data,
 			    OggFLAC__SeekableStreamDecoder * decoder)
 {
@@ -216,7 +218,7 @@ static void of_metadata_dup_cb(mpd_unused const OggFLAC__SeekableStreamDecoder *
 	switch (block->type) {
 	case FLAC__METADATA_TYPE_STREAMINFO:
 		if (!data->tag)
-			data->tag = newMpdTag();
+			data->tag = tag_new();
 		data->tag->time = ((float)block->data.stream_info.
 				   total_samples) /
 		    block->data.stream_info.sample_rate + 0.5;

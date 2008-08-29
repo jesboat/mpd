@@ -402,15 +402,15 @@ static void copyTagToVorbisComment(ShoutData * sd)
 		int i;
 
 		for (i = 0; i < sd->tag->numOfItems; i++) {
-			switch (sd->tag->items[i].type) {
+			switch (sd->tag->items[i]->type) {
 			case TAG_ITEM_ARTIST:
-				addTag(sd, "ARTIST", sd->tag->items[i].value);
+				addTag(sd, "ARTIST", sd->tag->items[i]->value);
 				break;
 			case TAG_ITEM_ALBUM:
-				addTag(sd, "ALBUM", sd->tag->items[i].value);
+				addTag(sd, "ALBUM", sd->tag->items[i]->value);
 				break;
 			case TAG_ITEM_TITLE:
-				addTag(sd, "TITLE", sd->tag->items[i].value);
+				addTag(sd, "TITLE", sd->tag->items[i]->value);
 				break;
 			default:
 				break;
@@ -663,7 +663,7 @@ static int myShout_play(AudioOutput * audioOutput,
 	return 0;
 }
 
-static void myShout_setTag(AudioOutput * audioOutput, struct mpd_tag *tag)
+static void myShout_setTag(AudioOutput * audioOutput, const struct mpd_tag *tag)
 {
 	ShoutData *sd = (ShoutData *) audioOutput->data;
 
