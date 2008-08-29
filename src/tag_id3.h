@@ -28,6 +28,6 @@ struct id3_tag;
 struct mpd_tag *tag_id3_import(struct id3_tag *);
 #endif
 
-struct mpd_tag *tag_id3_load(char *file);
+struct mpd_tag *tag_id3_load(const char *file);
 
 #endif

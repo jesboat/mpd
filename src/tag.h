@@ -51,7 +51,7 @@ struct mpd_tag {
 	mpd_uint8 numOfItems;
 };
 
-struct mpd_tag *tag_ape_load(char *file);
+struct mpd_tag *tag_ape_load(const char *file);
 
 struct mpd_tag *tag_new(void);
 
@@ -86,10 +86,10 @@ static inline void tag_add_item(struct mpd_tag *tag, enum tag_type itemType,
 
 void tag_print_types(int fd);
 
-void tag_print(int fd, struct mpd_tag *tag);
+void tag_print(int fd, const struct mpd_tag *tag);
 
-struct mpd_tag *tag_dup(struct mpd_tag *tag);
+struct mpd_tag *tag_dup(const struct mpd_tag *tag);
 
-int tag_equal(struct mpd_tag *tag1, struct mpd_tag *tag2);
+int tag_equal(const struct mpd_tag *tag1, const struct mpd_tag *tag2);
 
 #endif
