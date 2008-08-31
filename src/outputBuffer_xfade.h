@@ -5,8 +5,8 @@
 #include "audio.h"
 #include "pcm_utils.h"
 
-static struct ob_chunk *get_chunk(struct iovec vec[2], size_t i);
-static size_t calculate_xfade_chunks(struct iovec vec[2])
+static struct ob_chunk *get_chunk(struct rbvec vec[2], size_t i);
+static size_t calculate_xfade_chunks(struct rbvec vec[2])
 {
 	float xfade_time = ob.xfade_time; /* prevent race conditions */
 	size_t chunks;
@@ -37,7 +37,7 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 	if (chunks > (ob.index->size - ob.bpp_cur))
 		chunks = ob.index->size - ob.bpp_cur;
 	DEBUG("calculated xfade chunks: %d\n", chunks);
-	nr = vec[0].iov_len + vec[1].iov_len;
+	nr = vec[0].len + vec[1].len;
 
 	if (chunks <= nr) {
 		c = get_chunk(vec, chunks);
@@ -64,7 +64,7 @@ static size_t calculate_xfade_chunks(struct iovec vec[2])
 	return chunks;
 }
 
-static size_t xfade_chunks_needed(struct iovec vec[2])
+static size_t xfade_chunks_needed(struct rbvec vec[2])
 {
 	assert(pthread_equal(ob.thread, pthread_self()));
 

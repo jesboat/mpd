@@ -461,7 +461,7 @@ static ssize_t buffer_data(InputStream *is)
 	assert(pthread_equal(data->io_thread, pthread_self()));
 	assert_state2(CONN_STATE_BUFFER, CONN_STATE_PREBUFFER);
 
-	if (!ringbuf_get_write_vector(data->rb, vec)) {
+	if (!ringbuf_get_write_vector(data->rb, (struct rbvec *)vec)) {
 		data->state = CONN_STATE_BUFFER_FULL;
 		return 0;
 	}
