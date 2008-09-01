@@ -197,7 +197,7 @@ static MpdTag *oggCommentsParse(char **comments)
 
 static void putOggCommentsIntoOutputBuffer(char *streamName,
 					   char **comments,
-					   float time)
+					   float cur_time)
 {
 	MpdTag *tag;
 
@@ -213,7 +213,7 @@ static void putOggCommentsIntoOutputBuffer(char *streamName,
 		addItemToMpdTag(tag, TAG_ITEM_NAME, streamName);
 	}
 
-	metadata_pipe_send(tag, time);
+	metadata_pipe_send(tag, cur_time);
 }
 
 static float current_time(OggVorbis_File *vf)

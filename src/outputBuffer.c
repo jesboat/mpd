@@ -213,14 +213,14 @@ static void ob_seq_player_set(mpd_uint8 seq_num)
 	cond_leave(&ob_seq_cond);
 }
 
-static enum action_status ob_do_reset(int close)
+static enum action_status ob_do_reset(int close_audio)
 {
 	assert(pthread_equal(pthread_self(), ob.thread));
 	ob.elapsed_time = 0;
 	ob.total_time = 0;
 	reader_reset_buffer();
 	dropBufferedAudio();
-	if (close)
+	if (close_audio)
 		closeAudioDevice();
 	ob.xfade_state = XFADE_DISABLED;
 	ob_seq_player_set(ob.seq_decoder);
