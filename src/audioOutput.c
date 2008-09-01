@@ -22,6 +22,7 @@
 #include "log.h"
 #include "pcm_utils.h"
 #include "os_compat.h"
+#include "audio.h"
 
 #define AUDIO_OUTPUT_TYPE	"type"
 #define AUDIO_OUTPUT_NAME	"name"
@@ -243,7 +244,7 @@ void finishAudioOutput(AudioOutput * audioOutput)
 		free(audioOutput->convBuffer);
 }
 
-void sendMetadataToAudioOutput(AudioOutput * audioOutput, MpdTag * tag)
+void sendMetadataToAudioOutput(AudioOutput * audioOutput, const MpdTag * tag)
 {
 	if (!audioOutput->sendMetdataFunc)
 		return;

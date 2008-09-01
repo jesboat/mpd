@@ -23,7 +23,6 @@
 #include "command.h"
 #include "signal_check.h"
 #include "log.h"
-#include "decode.h"
 
 int handlePendingSignals(void)
 {
@@ -46,7 +45,7 @@ int handlePendingSignals(void)
 	return 0;
 }
 
-static void chldSigHandler(int sig)
+static void chldSigHandler(mpd_unused int sig)
 {
 	int status;
 	int pid;

@@ -39,11 +39,17 @@
  */
 
 struct ringbuf {
-	void *buf;
+	unsigned char *buf;
 	size_t write_ptr;
 	size_t read_ptr;
 	size_t size;
 	size_t size_mask;
+};
+
+/* remain binary-compatible with struct iovec declared in <sys/uio.h>: */
+struct rbvec {
+	unsigned char *base;
+	size_t len;
 };
 
 /**
@@ -69,7 +75,7 @@ void ringbuf_free(struct ringbuf * rb);
 /**
  * Fill a data structure with a description of the current readable
  * data held in the ringbuffer.  This description is returned in a two
- * element array of struct iovec.  Two elements are needed
+ * element array of struct rbvec.  Two elements are needed
  * because the data to be read may be split across the end of the
  * ringbuffer.
  *
@@ -83,16 +89,16 @@ void ringbuf_free(struct ringbuf * rb);
  * its corresponding @a buf field.
  *
  * @param rb a pointer to the ringbuffer structure.
- * @param vec a pointer to a 2 element array of struct iovec.
+ * @param vec a pointer to a 2 element array of struct rbvec.
  *
  * @return total number of bytes readable into both vec elements
  */
-size_t ringbuf_get_read_vector(const struct ringbuf * rb, struct iovec * vec);
+size_t ringbuf_get_read_vector(const struct ringbuf * rb, struct rbvec * vec);
 
 /**
  * Fill a data structure with a description of the current writable
  * space in the ringbuffer.  The description is returned in a two
- * element array of struct iovec.  Two elements are needed
+ * element array of struct rbvec.  Two elements are needed
  * because the space available for writing may be split across the end
  * of the ringbuffer.
  *
@@ -106,11 +112,11 @@ size_t ringbuf_get_read_vector(const struct ringbuf * rb, struct iovec * vec);
  * the corresponding @a buf field.
  *
  * @param rb a pointer to the ringbuffer structure.
- * @param vec a pointer to a 2 element array of struct iovec.
+ * @param vec a pointer to a 2 element array of struct rbvec.
  *
  * @return total number of bytes writable in both vec elements
  */
-size_t ringbuf_get_write_vector(const struct ringbuf * rb, struct iovec * vec);
+size_t ringbuf_get_write_vector(const struct ringbuf * rb, struct rbvec * vec);
 
 /**
  * Read data from the ringbuffer.

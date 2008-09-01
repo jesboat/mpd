@@ -23,66 +23,65 @@
 #define AAC_MAX_CHANNELS	6
 
 #include "../utils.h"
-#include "../audio.h"
 #include "../log.h"
-#include "../inputStream.h"
-#include "../outputBuffer.h"
-#include "../os_compat.h"
 
 #include <faad.h>
 
 /* all code here is either based on or copied from FAAD2's frontend code */
 typedef struct {
 	InputStream *inStream;
-	long bytesIntoBuffer;
-	long bytesConsumed;
-	long fileOffset;
+	size_t bytesIntoBuffer;
+	size_t bytesConsumed;
+	off_t fileOffset;
 	unsigned char *buffer;
 	int atEof;
 } AacBuffer;
 
-static void fillAacBuffer(AacBuffer * b)
+static void aac_buffer_shift(AacBuffer * b, size_t length)
 {
-	if (b->bytesConsumed > 0) {
-		int bread;
+	assert(length >= b->bytesConsumed);
+	assert(length <= b->bytesConsumed + b->bytesIntoBuffer);
 
-		if (b->bytesIntoBuffer) {
-			memmove((void *)b->buffer, (void *)(b->buffer +
-							    b->bytesConsumed),
-				b->bytesIntoBuffer);
-		}
+	memmove(b->buffer, b->buffer + length,
+		b->bytesConsumed + b->bytesIntoBuffer - length);
 
-		if (!b->atEof) {
-			bread = readFromInputStream(b->inStream,
-						    (void *)(b->buffer +
-							     b->
-							     bytesIntoBuffer),
-						    1, b->bytesConsumed);
-			if (bread != b->bytesConsumed)
-				b->atEof = 1;
-			b->bytesIntoBuffer += bread;
-		}
-
-		b->bytesConsumed = 0;
-
-		if (b->bytesIntoBuffer > 3) {
-			if (memcmp(b->buffer, "TAG", 3) == 0)
-				b->bytesIntoBuffer = 0;
-		}
-		if (b->bytesIntoBuffer > 11) {
-			if (memcmp(b->buffer, "LYRICSBEGIN", 11) == 0) {
-				b->bytesIntoBuffer = 0;
-			}
-		}
-		if (b->bytesIntoBuffer > 8) {
-			if (memcmp(b->buffer, "APETAGEX", 8) == 0) {
-				b->bytesIntoBuffer = 0;
-			}
-		}
-	}
+	length -= b->bytesConsumed;
+	b->bytesConsumed = 0;
+	b->bytesIntoBuffer -= length;
 }
 
-static void advanceAacBuffer(AacBuffer * b, int bytes)
+static void fillAacBuffer(AacBuffer * b)
+{
+	size_t bread;
+
+	if (b->bytesIntoBuffer >= FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS)
+		/* buffer already full */
+		return;
+
+	aac_buffer_shift(b, b->bytesConsumed);
+
+	if (!b->atEof) {
+		size_t rest = FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS -
+			b->bytesIntoBuffer;
+
+		bread = readFromInputStream(b->inStream,
+					    (void *)(b->buffer +
+						     b->
+						     bytesIntoBuffer),
+					    1, rest);
+		if (bread == 0 && inputStreamAtEOF(b->inStream))
+			b->atEof = 1;
+		b->bytesIntoBuffer += bread;
+	}
+
+	if ((b->bytesIntoBuffer > 3 && memcmp(b->buffer, "TAG", 3) == 0) ||
+	    (b->bytesIntoBuffer > 11 &&
+	     memcmp(b->buffer, "LYRICSBEGIN", 11) == 0) ||
+	    (b->bytesIntoBuffer > 8 && memcmp(b->buffer, "APETAGEX", 8) == 0))
+		b->bytesIntoBuffer = 0;
+}
+
+static void advanceAacBuffer(AacBuffer * b, size_t bytes)
 {
 	b->fileOffset += bytes;
 	b->bytesConsumed = bytes;
@@ -94,35 +93,75 @@ static int adtsSampleRates[] =
 	16000, 12000, 11025, 8000, 7350, 0, 0, 0
 };
 
-static int adtsParse(AacBuffer * b, float *length)
+/**
+ * Check whether the buffer head is an AAC frame, and return the frame
+ * length.  Returns 0 if it is not a frame.
+ */
+static size_t adts_check_frame(AacBuffer * b)
 {
-	int frames, frameLength;
-	int tFrameLength = 0;
+	if (b->bytesIntoBuffer <= 7)
+		return 0;
+
+	/* check syncword */
+	if (!((b->buffer[0] == 0xFF) && ((b->buffer[1] & 0xF6) == 0xF0)))
+		return 0;
+
+	return (((unsigned int)b->buffer[3] & 0x3) << 11) |
+		(((unsigned int)b->buffer[4]) << 3) |
+		(b->buffer[5] >> 5);
+}
+
+/**
+ * Find the next AAC frame in the buffer.  Returns 0 if no frame is
+ * found or if not enough data is available.
+ */
+static size_t adts_find_frame(AacBuffer * b)
+{
+	const unsigned char *p;
+	size_t frame_length;
+
+	while ((p = memchr(b->buffer, 0xff, b->bytesIntoBuffer)) != NULL) {
+		/* discard data before 0xff */
+		if (p > b->buffer)
+			aac_buffer_shift(b, p - b->buffer);
+
+		if (b->bytesIntoBuffer <= 7)
+			/* not enough data yet */
+			return 0;
+
+		/* is it a frame? */
+		frame_length = adts_check_frame(b);
+		if (frame_length > 0)
+			/* yes, it is */
+			return frame_length;
+
+		/* it's just some random 0xff byte; discard and and
+		   continue searching */
+		aac_buffer_shift(b, 1);
+	}
+
+	/* nothing at all; discard the whole buffer */
+	aac_buffer_shift(b, b->bytesIntoBuffer);
+	return 0;
+}
+
+static void adtsParse(AacBuffer * b, float *length)
+{
+	unsigned int frames, frameLength;
 	int sampleRate = 0;
-	float framesPerSec, bytesPerFrame;
+	float framesPerSec;
 
 	/* Read all frames to ensure correct time and bitrate */
 	for (frames = 0;; frames++) {
 		fillAacBuffer(b);
 
-		if (b->bytesIntoBuffer > 7) {
-			/* check syncword */
-			if (!((b->buffer[0] == 0xFF) &&
-			      ((b->buffer[1] & 0xF6) == 0xF0))) {
-				break;
-			}
-
+		frameLength = adts_find_frame(b);
+		if (frameLength > 0) {
 			if (frames == 0) {
 				sampleRate = adtsSampleRates[(b->
 							      buffer[2] & 0x3c)
 							     >> 2];
 			}
-
-			frameLength = ((((unsigned int)b->buffer[3] & 0x3))
-				       << 11) | (((unsigned int)b->buffer[4])
-						 << 3) | (b->buffer[5] >> 5);
-
-			tFrameLength += frameLength;
 
 			if (frameLength > b->bytesIntoBuffer)
 				break;
@@ -133,46 +172,34 @@ static int adtsParse(AacBuffer * b, float *length)
 	}
 
 	framesPerSec = (float)sampleRate / 1024.0;
-	if (frames != 0) {
-		bytesPerFrame = (float)tFrameLength / (float)(frames * 1000);
-	} else
-		bytesPerFrame = 0;
 	if (framesPerSec != 0)
 		*length = (float)frames / framesPerSec;
-
-	return 1;
 }
 
-static void initAacBuffer(InputStream * inStream, AacBuffer * b, float *length,
-			  size_t * retFileread, size_t * retTagsize)
+static void initAacBuffer(InputStream * inStream, AacBuffer * b)
+{
+	memset(b, 0, sizeof(AacBuffer));
+
+	b->inStream = inStream;
+
+	b->buffer = xmalloc(FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS);
+	memset(b->buffer, 0, FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS);
+}
+
+static void aac_parse_header(AacBuffer * b, float *length)
 {
 	size_t fileread;
-	size_t bread;
 	size_t tagsize;
 
 	if (length)
 		*length = -1;
 
-	memset(b, 0, sizeof(AacBuffer));
+	fileread = b->inStream->size;
 
-	b->inStream = inStream;
-
-	fileread = inStream->size;
-
-	b->buffer = xmalloc(FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS);
-	memset(b->buffer, 0, FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS);
-
-	bread = readFromInputStream(inStream, b->buffer, 1,
-				    FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS);
-	b->bytesIntoBuffer = bread;
-	b->bytesConsumed = 0;
-	b->fileOffset = 0;
-
-	if (bread != FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS)
-		b->atEof = 1;
+	fillAacBuffer(b);
 
 	tagsize = 0;
-	if (!memcmp(b->buffer, "ID3", 3)) {
+	if (b->bytesIntoBuffer >= 10 && !memcmp(b->buffer, "ID3", 3)) {
 		tagsize = (b->buffer[6] << 21) | (b->buffer[7] << 14) |
 		    (b->buffer[8] << 7) | (b->buffer[9] << 0);
 
@@ -181,28 +208,19 @@ static void initAacBuffer(InputStream * inStream, AacBuffer * b, float *length,
 		fillAacBuffer(b);
 	}
 
-	if (retFileread)
-		*retFileread = fileread;
-	if (retTagsize)
-		*retTagsize = tagsize;
-
 	if (length == NULL)
 		return;
 
-	if ((b->buffer[0] == 0xFF) && ((b->buffer[1] & 0xF6) == 0xF0)) {
+	if (b->bytesIntoBuffer >= 2 &&
+	    (b->buffer[0] == 0xFF) && ((b->buffer[1] & 0xF6) == 0xF0)) {
 		adtsParse(b, length);
 		seekInputStream(b->inStream, tagsize, SEEK_SET);
 
-		bread = readFromInputStream(b->inStream, b->buffer, 1,
-					    FAAD_MIN_STREAMSIZE *
-					    AAC_MAX_CHANNELS);
-		if (bread != FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS)
-			b->atEof = 1;
-		else
-			b->atEof = 0;
-		b->bytesIntoBuffer = bread;
+		b->bytesIntoBuffer = 0;
 		b->bytesConsumed = 0;
 		b->fileOffset = tagsize;
+
+		fillAacBuffer(b);
 	} else if (memcmp(b->buffer, "ADIF", 4) == 0) {
 		int bitRate;
 		int skipSize = (b->buffer[4] & 0x80) ? 9 : 0;
@@ -231,7 +249,6 @@ static float getAacFloatTotalTime(char *file)
 {
 	AacBuffer b;
 	float length;
-	size_t fileread, tagsize;
 	faacDecHandle decoder;
 	faacDecConfigurationPtr config;
 	uint32_t sampleRate;
@@ -242,7 +259,8 @@ static float getAacFloatTotalTime(char *file)
 	if (openInputStream(&inStream, file) < 0)
 		return -1;
 
-	initAacBuffer(&inStream, &b, &length, &fileread, &tagsize);
+	initAacBuffer(&inStream, &b);
+	aac_parse_header(&b, &length);
 
 	if (length < 0) {
 		decoder = faacDecOpen();
@@ -282,6 +300,132 @@ static int getAacTotalTime(char *file)
 	return file_time;
 }
 
+static int aac_stream_decode(InputStream *inStream)
+{
+	float file_time;
+	float totalTime = 0;
+	faacDecHandle decoder;
+	faacDecFrameInfo frameInfo;
+	faacDecConfigurationPtr config;
+	long bread;
+	uint32_t sampleRate;
+	unsigned char channels;
+	unsigned int sampleCount;
+	char *sampleBuffer;
+	size_t sampleBufferLen;
+	mpd_uint16 bitRate = 0;
+	AacBuffer b;
+
+	initAacBuffer(inStream, &b);
+	aac_parse_header(&b, NULL);
+
+	decoder = faacDecOpen();
+
+	config = faacDecGetCurrentConfiguration(decoder);
+	config->outputFormat = FAAD_FMT_16BIT;
+#ifdef HAVE_FAACDECCONFIGURATION_DOWNMATRIX
+	config->downMatrix = 1;
+#endif
+#ifdef HAVE_FAACDECCONFIGURATION_DONTUPSAMPLEIMPLICITSBR
+	config->dontUpSampleImplicitSBR = 0;
+#endif
+	faacDecSetConfiguration(decoder, config);
+
+	while (b.bytesIntoBuffer < FAAD_MIN_STREAMSIZE * AAC_MAX_CHANNELS &&
+	       !b.atEof && !dc_intr()) {
+		fillAacBuffer(&b);
+		adts_find_frame(&b);
+		fillAacBuffer(&b);
+	}
+
+#ifdef HAVE_FAAD_BUFLEN_FUNCS
+	bread = faacDecInit(decoder, b.buffer, b.bytesIntoBuffer,
+			    &sampleRate, &channels);
+#else
+	bread = faacDecInit(decoder, b.buffer, &sampleRate, &channels);
+#endif
+	if (bread < 0) {
+		ERROR("Error not a AAC stream.\n");
+		faacDecClose(decoder);
+		if (b.buffer)
+			free(b.buffer);
+		return -1;
+	}
+
+	dc.audio_format.bits = 16;
+	dc.total_time = totalTime;
+
+	file_time = 0.0;
+
+	advanceAacBuffer(&b, bread);
+
+	while (1) {
+		fillAacBuffer(&b);
+		adts_find_frame(&b);
+		fillAacBuffer(&b);
+
+		if (b.bytesIntoBuffer == 0)
+			break;
+
+#ifdef HAVE_FAAD_BUFLEN_FUNCS
+		sampleBuffer = faacDecDecode(decoder, &frameInfo, b.buffer,
+					     b.bytesIntoBuffer);
+#else
+		sampleBuffer = faacDecDecode(decoder, &frameInfo, b.buffer);
+#endif
+
+		if (frameInfo.error > 0) {
+			ERROR("error decoding AAC stream\n");
+			ERROR("faad2 error: %s\n",
+			      faacDecGetErrorMessage(frameInfo.error));
+			break;
+		}
+#ifdef HAVE_FAACDECFRAMEINFO_SAMPLERATE
+		sampleRate = frameInfo.samplerate;
+#endif
+
+		dc.audio_format.channels = frameInfo.channels;
+		dc.audio_format.sampleRate = sampleRate;
+
+		advanceAacBuffer(&b, frameInfo.bytesconsumed);
+
+		sampleCount = (unsigned long)(frameInfo.samples);
+
+		if (sampleCount > 0) {
+			bitRate = frameInfo.bytesconsumed * 8.0 *
+			    frameInfo.channels * sampleRate /
+			    frameInfo.samples / 1000 + 0.5;
+			file_time +=
+			    (float)(frameInfo.samples) / frameInfo.channels /
+			    sampleRate;
+		}
+
+		sampleBufferLen = sampleCount * 2;
+
+		switch (ob_send(sampleBuffer, sampleBufferLen,
+		                file_time, bitRate, NULL)) {
+		case DC_ACTION_NONE: break;
+		case DC_ACTION_SEEK:
+			/*
+			 * this plugin doesn't support seek because nobody
+			 * has bothered, yet...
+			 */
+			dc_action_seek_fail(DC_SEEK_ERROR);
+			break;
+		default: goto out;
+		}
+	}
+out:
+
+	faacDecClose(decoder);
+	if (b.buffer)
+		free(b.buffer);
+
+	return 0;
+}
+
+
+
 static int aac_decode(char *path)
 {
 	float file_time;
@@ -292,7 +436,6 @@ static int aac_decode(char *path)
 	long bread;
 	uint32_t sampleRate;
 	unsigned char channels;
-	int eof = 0;
 	unsigned int sampleCount;
 	char *sampleBuffer;
 	size_t sampleBufferLen;
@@ -309,7 +452,8 @@ static int aac_decode(char *path)
 	if (openInputStream(&inStream, path) < 0)
 		return -1;
 
-	initAacBuffer(&inStream, &b, NULL, NULL, NULL);
+	initAacBuffer(&inStream, &b);
+	aac_parse_header(&b, NULL);
 
 	decoder = faacDecOpen();
 
@@ -346,13 +490,12 @@ static int aac_decode(char *path)
 
 	advanceAacBuffer(&b, bread);
 
-	while (!eof) {
+	while (1) {
 		fillAacBuffer(&b);
 
-		if (b.bytesIntoBuffer == 0) {
-			eof = 1;
+		if (b.bytesIntoBuffer == 0)
 			break;
-		}
+
 #ifdef HAVE_FAAD_BUFLEN_FUNCS
 		sampleBuffer = faacDecDecode(decoder, &frameInfo, b.buffer,
 					     b.bytesIntoBuffer);
@@ -364,7 +507,6 @@ static int aac_decode(char *path)
 			ERROR("error decoding AAC file: %s\n", path);
 			ERROR("faad2 error: %s\n",
 			      faacDecGetErrorMessage(frameInfo.error));
-			eof = 1;
 			break;
 		}
 #ifdef HAVE_FAACDECFRAMEINFO_SAMPLERATE
@@ -399,9 +541,10 @@ static int aac_decode(char *path)
 			 */
 			dc_action_seek_fail(DC_SEEK_ERROR);
 			break;
-		default: eof = 1;
+		default: goto out;
 		}
 	}
+out:
 
 	faacDecClose(decoder);
 	if (b.buffer)
@@ -435,10 +578,10 @@ InputPlugin aacPlugin = {
 	NULL,
 	NULL,
 	NULL,
-	NULL,
+	aac_stream_decode,
 	aac_decode,
 	aacTagDup,
-	INPUT_PLUGIN_STREAM_FILE,
+	INPUT_PLUGIN_STREAM_FILE | INPUT_PLUGIN_STREAM_URL,
 	aac_suffixes,
 	aac_mimeTypes
 };

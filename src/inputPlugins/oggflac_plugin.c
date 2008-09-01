@@ -27,12 +27,6 @@
 
 #include "../utils.h"
 #include "../log.h"
-#include "../pcm_utils.h"
-#include "../inputStream.h"
-#include "../outputBuffer.h"
-#include "../replayGain.h"
-#include "../audio.h"
-#include "../os_compat.h"
 
 static void oggflac_cleanup(FlacData * data,
 			    OggFLAC__SeekableStreamDecoder * decoder)
@@ -43,7 +37,7 @@ static void oggflac_cleanup(FlacData * data,
 		OggFLAC__seekable_stream_decoder_delete(decoder);
 }
 
-static OggFLAC__SeekableStreamDecoderReadStatus of_read_cb(const
+static OggFLAC__SeekableStreamDecoderReadStatus of_read_cb(mpd_unused const
 							   OggFLAC__SeekableStreamDecoder
 							   * decoder,
 							   FLAC__byte buf[],
@@ -68,7 +62,7 @@ static OggFLAC__SeekableStreamDecoderReadStatus of_read_cb(const
 	return OggFLAC__SEEKABLE_STREAM_DECODER_READ_STATUS_OK;
 }
 
-static OggFLAC__SeekableStreamDecoderSeekStatus of_seek_cb(const
+static OggFLAC__SeekableStreamDecoderSeekStatus of_seek_cb(mpd_unused const
 							   OggFLAC__SeekableStreamDecoder
 							   * decoder,
 							   FLAC__uint64 offset,
@@ -83,7 +77,7 @@ static OggFLAC__SeekableStreamDecoderSeekStatus of_seek_cb(const
 	return OggFLAC__SEEKABLE_STREAM_DECODER_SEEK_STATUS_OK;
 }
 
-static OggFLAC__SeekableStreamDecoderTellStatus of_tell_cb(const
+static OggFLAC__SeekableStreamDecoderTellStatus of_tell_cb(mpd_unused const
 							   OggFLAC__SeekableStreamDecoder
 							   * decoder,
 							   FLAC__uint64 *
@@ -96,7 +90,7 @@ static OggFLAC__SeekableStreamDecoderTellStatus of_tell_cb(const
 	return OggFLAC__SEEKABLE_STREAM_DECODER_TELL_STATUS_OK;
 }
 
-static OggFLAC__SeekableStreamDecoderLengthStatus of_length_cb(const
+static OggFLAC__SeekableStreamDecoderLengthStatus of_length_cb(mpd_unused const
 							       OggFLAC__SeekableStreamDecoder
 							       * decoder,
 							       FLAC__uint64 *
@@ -110,7 +104,7 @@ static OggFLAC__SeekableStreamDecoderLengthStatus of_length_cb(const
 	return OggFLAC__SEEKABLE_STREAM_DECODER_LENGTH_STATUS_OK;
 }
 
-static FLAC__bool of_EOF_cb(const OggFLAC__SeekableStreamDecoder * decoder,
+static FLAC__bool of_EOF_cb(mpd_unused const OggFLAC__SeekableStreamDecoder * decoder,
 			    void *fdata)
 {
 	FlacData *data = (FlacData *) fdata;
@@ -120,7 +114,7 @@ static FLAC__bool of_EOF_cb(const OggFLAC__SeekableStreamDecoder * decoder,
 	return false;
 }
 
-static void of_error_cb(const OggFLAC__SeekableStreamDecoder * decoder,
+static void of_error_cb(mpd_unused const OggFLAC__SeekableStreamDecoder * decoder,
 			FLAC__StreamDecoderErrorStatus status, void *fdata)
 {
 	flac_error_common_cb("oggflac", status, (FlacData *) fdata);
@@ -157,7 +151,7 @@ static void oggflacPrintErroredState(OggFLAC__SeekableStreamDecoderState state)
 	}
 }
 
-static FLAC__StreamDecoderWriteStatus oggflacWrite(const
+static FLAC__StreamDecoderWriteStatus oggflacWrite(mpd_unused const
 						   OggFLAC__SeekableStreamDecoder
 						   * decoder,
 						   const FLAC__Frame * frame,
@@ -214,7 +208,7 @@ static FLAC__StreamDecoderWriteStatus oggflacWrite(const
 }
 
 /* used by TagDup */
-static void of_metadata_dup_cb(const OggFLAC__SeekableStreamDecoder * decoder,
+static void of_metadata_dup_cb(mpd_unused const OggFLAC__SeekableStreamDecoder * decoder,
 			       const FLAC__StreamMetadata * block, void *vdata)
 {
 	FlacData *data = (FlacData *) vdata;
@@ -235,7 +229,7 @@ static void of_metadata_dup_cb(const OggFLAC__SeekableStreamDecoder * decoder,
 }
 
 /* used by decode */
-static void of_metadata_decode_cb(const OggFLAC__SeekableStreamDecoder * dec,
+static void of_metadata_decode_cb(mpd_unused const OggFLAC__SeekableStreamDecoder * dec,
 				  const FLAC__StreamMetadata * block,
 				  void *vdata)
 {
@@ -333,6 +327,11 @@ static MpdTag *oggflac_TagDup(char *file)
 
 static unsigned int oggflac_try_decode(InputStream * inStream)
 {
+	if (!inStream->seekable)
+		/* we cannot seek after the detection, so don't bother
+		   checking */
+		return 1;
+
 	return (ogg_stream_type_detect(inStream) == FLAC) ? 1 : 0;
 }
 

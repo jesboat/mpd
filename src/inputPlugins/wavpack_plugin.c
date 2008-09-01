@@ -23,11 +23,7 @@
 #ifdef HAVE_WAVPACK
 
 #include "../utils.h"
-#include "../audio.h"
 #include "../log.h"
-#include "../pcm_utils.h"
-#include "../outputBuffer.h"
-#include "../os_compat.h"
 #include "../path.h"
 
 #include <wavpack/wavpack.h>
@@ -113,7 +109,8 @@ static void format_samples_int(int Bps, void *buffer, uint32_t samcnt)
 /*
  * This function converts floating point sample data to 16 bit integer.
  */
-static void format_samples_float(int Bps, void *buffer, uint32_t samcnt)
+static void format_samples_float(mpd_unused int Bps, void *buffer,
+				 uint32_t samcnt)
 {
 	int16_t *dst = (int16_t *)buffer;
 	float *src = (float *)buffer;
@@ -427,6 +424,66 @@ static unsigned int wavpack_trydecode(InputStream *is)
 	return 1;
 }
 
+/* wvc being the "correction" file to supplement the original .wv */
+static int wavpack_open_wvc(InputStream *is_wvc)
+{
+	char wvc_url[MPD_PATH_MAX];
+	size_t len;
+
+	/* This is the only reader of dc.current_song */
+	if (!get_song_url(wvc_url, dc.current_song))
+		return 0;
+
+	len = strlen(wvc_url);
+	if ((len + 2) >= MPD_PATH_MAX)
+		return 0;
+
+	/* convert the original ".wv" path to a ".wvc" path */
+	assert(wvc_url[len - 3] == '.');
+	assert(wvc_url[len - 2] == 'w' || wvc_url[len - 2] == 'w');
+	assert(wvc_url[len - 1] == 'v' || wvc_url[len - 1] == 'V');
+	assert(wvc_url[len] == '\0');
+
+	wvc_url[len] = 'c';
+	wvc_url[len + 1] = '\0';
+
+	if (openInputStream(is_wvc, wvc_url) < 0) {
+		/* lowercase 'c' didn't work, maybe uppercase... */
+		wvc_url[len] = 'C';
+		if (openInputStream(is_wvc, wvc_url) < 0)
+			return 0;
+	}
+
+       /*
+        * And we try to buffer in order to get know
+        * about a possible 404 error.
+        */
+	for (;;) {
+		if (inputStreamAtEOF(is_wvc))
+			/*
+			 * EOF is reached even without
+			 * a single byte is read...
+			 * So, this is not good :/
+			 */
+			break;
+
+		/* FIXME: replace with future "peek" function */
+		if (bufferInputStream(is_wvc) >= 0) {
+			DEBUG("wavpack: got wvc file: %s\n", wvc_url);
+			return 1; /* success */
+		}
+
+		if (dc_intr())
+			break;
+		/* Save some CPU */
+		my_usleep(1000); /* FIXME: remove */
+	}
+
+	closeInputStream(is_wvc);
+	return 0;
+}
+
+
 /*
  * Decodes a stream.
  */
@@ -436,77 +493,11 @@ static int wavpack_streamdecode(InputStream *is)
 	WavpackContext *wpc;
 	InputStream is_wvc;
 	int open_flags = OPEN_2CH_MAX | OPEN_NORMALIZE /*| OPEN_STREAMING*/;
-	char *wvc_url = NULL;
-	int err;
 	InputStreamPlus isp, isp_wvc;
-	int canseek;
 
-	/* Try to find wvc */
-	/* wvc being the "correction" file to supplement the original .wv */
-	do {
-		char tmp[MPD_PATH_MAX];
-		const char *utf8url;
-		size_t len;
-		err = 1;
-
-		/* This is the only reader of dc.current_song */
-		if (!(utf8url = get_song_url(tmp, dc.current_song)))
-			break;
-
-		if (!(len = strlen(utf8url)))
-			break;
-
-		wvc_url = (char *)xmalloc(len + sizeof("c"));
-		memcpy(wvc_url, utf8url, len);
-		wvc_url[len] = 'c';
-		wvc_url[len + 1] = '\0';
-
-		if (openInputStream(&is_wvc, wvc_url))
-			break;
-
-		/*
-		 * And we try to buffer in order to get know
-		 * about a possible 404 error.
-		 */
-		for (;;) {
-			if (inputStreamAtEOF(&is_wvc)) {
-				/*
-				 * EOF is reached even without
-				 * a single byte is read...
-				 * So, this is not good :/
-				 */
-				break;
-			}
-
-			/* FIXME: replace with future "peek" function */
-			if (bufferInputStream(&is_wvc) >= 0) {
-				err = 0;
-				break;
-			}
-
-			if (dc_intr())
-				break;
-
-			/* Save some CPU */
-			my_usleep(1000); /* FIXME: remove */
-		}
-		if (err) {
-			closeInputStream(&is_wvc);
-			break;
-		}
-
+	if (wavpack_open_wvc(&is_wvc)) {
+		initInputStreamPlus(&isp_wvc, &is_wvc);
 		open_flags |= OPEN_WVC;
-
-	} while (0);
-
-	canseek = can_seek(&isp);
-	if (wvc_url != NULL) {
-		if (err) {
-			free(wvc_url);
-			wvc_url = NULL;
-		} else {
-			initInputStreamPlus(&isp_wvc, &is_wvc);
-		}
 	}
 
 	initInputStreamPlus(&isp, is);
@@ -515,17 +506,16 @@ static int wavpack_streamdecode(InputStream *is)
 
 	if (wpc == NULL) {
 		ERROR("failed to open WavPack stream: %s\n", error);
+		if (open_flags & OPEN_WVC)
+			closeInputStream(&is_wvc);
 		return -1;
 	}
 
-	wavpack_decode(wpc, canseek, NULL);
+	wavpack_decode(wpc, can_seek(&isp), NULL);
 
 	WavpackCloseFile(wpc);
-	if (wvc_url != NULL) {
+	if (open_flags & OPEN_WVC)
 		closeInputStream(&is_wvc);
-		free(wvc_url);
-	}
-	closeInputStream(is);
 
 	return 0;
 }

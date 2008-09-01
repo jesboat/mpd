@@ -63,7 +63,7 @@ enum dc_action
 ob_send(void *data, size_t len,
         float decode_time, mpd_uint16 bit_rate, ReplayGainInfo * rgi)
 {
-	struct iovec vec[2];
+	struct rbvec vec[2];
 	struct ob_chunk *c;
 	size_t idx;
 	size_t i, j;
@@ -86,9 +86,9 @@ ob_send(void *data, size_t len,
 		}
 
 		for (i = 0; i < ARRAY_SIZE(vec); i++) {
-			for (j = 0; j < vec[i].iov_len; j++) {
+			for (j = 0; j < vec[i].len; j++) {
 				size_t c_len;
-				idx = vec[i].iov_base - ob.index->buf + j;
+				idx = vec[i].base - ob.index->buf + j;
 				c = &(ob.chunks[idx]);
 
 				if (!c->len) { /* populate empty chunk */

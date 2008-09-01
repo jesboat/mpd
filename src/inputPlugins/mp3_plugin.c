@@ -20,7 +20,6 @@
 
 #ifdef HAVE_MAD
 
-#include "../pcm_utils.h"
 #include <mad.h>
 
 #ifdef HAVE_ID3TAG
@@ -29,23 +28,24 @@
 
 #include "../log.h"
 #include "../utils.h"
-#include "../replayGain.h"
-#include "../tag.h"
 #include "../conf.h"
-
-#include "../os_compat.h"
 
 #define FRAMES_CUSHION    2000
 
 #define READ_BUFFER_SIZE  40960
 
-#define DECODE_SKIP       -3
-#define DECODE_BREAK      -2
-#define DECODE_CONT       -1
-#define DECODE_OK          0
+enum mp3_action {
+	DECODE_SKIP = -3,
+	DECODE_BREAK = -2,
+	DECODE_CONT = -1,
+	DECODE_OK = 0
+};
 
-#define MUTEFRAME_SKIP     1
-#define MUTEFRAME_SEEK     2
+enum muteframe {
+	MUTEFRAME_NONE,
+	MUTEFRAME_SKIP,
+	MUTEFRAME_SEEK
+};
 
 /* the number of samples of silence the decoder inserts at start */
 #define DECODERDELAY 529
@@ -65,8 +65,8 @@ static unsigned long prng(unsigned long state)
 	return (state * 0x0019660dL + 0x3c6ef35fL) & 0xffffffffL;
 }
 
-static signed long audio_linear_dither(unsigned int bits, mad_fixed_t sample,
-				       struct audio_dither *dither)
+static mpd_sint16 audio_linear_dither(unsigned int bits, mad_fixed_t sample,
+				      struct audio_dither *dither)
 {
 	unsigned int scalebits;
 	mad_fixed_t output, mask, rnd;
@@ -107,7 +107,29 @@ static signed long audio_linear_dither(unsigned int bits, mad_fixed_t sample,
 
 	dither->error[0] = sample - output;
 
-	return output >> scalebits;
+	return (mpd_sint16)(output >> scalebits);
+}
+
+static unsigned dither_buffer(mpd_sint16 *dest0, const struct mad_synth *synth,
+			      struct audio_dither *dither,
+			      unsigned int start, unsigned int end,
+			      unsigned int num_channels)
+{
+	mpd_sint16 *dest = dest0;
+	unsigned int i;
+
+	for (i = start; i < end; ++i) {
+		*dest++ = audio_linear_dither(16,
+					      synth->pcm.samples[0][i],
+					      dither);
+
+		if (num_channels == 2)
+			*dest++ = audio_linear_dither(16,
+						      synth->pcm.samples[1][i],
+						      dither);
+	}
+
+	return dest - dest0;
 }
 
 /* end of stolen stuff from mpg321 */
@@ -123,7 +145,7 @@ static int mp3_plugin_init(void)
 
 /* decoder stuff is based on madlld */
 
-#define MP3_DATA_OUTPUT_BUFFER_SIZE 4096
+#define MP3_DATA_OUTPUT_BUFFER_SIZE 2048
 
 typedef struct _mp3DecodeData {
 	struct mad_stream stream;
@@ -131,25 +153,22 @@ typedef struct _mp3DecodeData {
 	struct mad_synth synth;
 	mad_timer_t timer;
 	unsigned char readBuffer[READ_BUFFER_SIZE];
-	char outputBuffer[MP3_DATA_OUTPUT_BUFFER_SIZE];
-	char *outputPtr;
-	char *outputBufferEnd;
+	mpd_sint16 outputBuffer[MP3_DATA_OUTPUT_BUFFER_SIZE];
 	float totalTime;
 	float elapsedTime;
-	int muteFrame;
+	enum muteframe muteFrame;
 	long *frameOffset;
 	mad_timer_t *times;
-	long highestFrame;
-	long maxFrames;
-	long currentFrame;
-	int dropFramesAtStart;
-	int dropFramesAtEnd;
-	int dropSamplesAtStart;
-	int dropSamplesAtEnd;
+	unsigned long highestFrame;
+	unsigned long maxFrames;
+	unsigned long currentFrame;
+	unsigned int dropFramesAtStart;
+	unsigned int dropFramesAtEnd;
+	unsigned int dropSamplesAtStart;
+	unsigned int dropSamplesAtEnd;
 	int foundXing;
 	int foundFirstFrame;
 	int decodedFirstFrame;
-	int flush;
 	unsigned long bitRate;
 	InputStream *inStream;
 	struct audio_dither dither;
@@ -158,10 +177,7 @@ typedef struct _mp3DecodeData {
 
 static void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream)
 {
-	data->outputPtr = data->outputBuffer;
-	data->outputBufferEnd =
-	    data->outputBuffer + MP3_DATA_OUTPUT_BUFFER_SIZE;
-	data->muteFrame = 0;
+	data->muteFrame = MUTEFRAME_NONE;
 	data->highestFrame = 0;
 	data->maxFrames = 0;
 	data->frameOffset = NULL;
@@ -174,7 +190,6 @@ static void initMp3DecodeData(mp3DecodeData * data, InputStream * inStream)
 	data->foundXing = 0;
 	data->foundFirstFrame = 0;
 	data->decodedFirstFrame = 0;
-	data->flush = 1;
 	data->inStream = inStream;
 	data->layer = 0;
 	memset(&(data->dither), 0, sizeof(struct audio_dither));
@@ -357,8 +372,9 @@ fail:
 }
 #endif
 
-static int decodeNextFrameHeader(mp3DecodeData * data, MpdTag ** tag,
-				 ReplayGainInfo ** replayGainInfo)
+static enum mp3_action
+decodeNextFrameHeader(mp3DecodeData * data, MpdTag ** tag,
+		      ReplayGainInfo ** replayGainInfo)
 {
 	enum mad_layer layer;
 
@@ -400,7 +416,6 @@ static int decodeNextFrameHeader(mp3DecodeData * data, MpdTag ** tag,
 				ERROR("unrecoverable frame level error "
 				      "(%s).\n",
 				      mad_stream_errorstr(&data->stream));
-				data->flush = 0;
 				return DECODE_BREAK;
 			}
 		}
@@ -421,7 +436,8 @@ static int decodeNextFrameHeader(mp3DecodeData * data, MpdTag ** tag,
 	return DECODE_OK;
 }
 
-static int decodeNextFrame(mp3DecodeData * data)
+static enum mp3_action
+decodeNextFrame(mp3DecodeData * data)
 {
 	if ((data->stream).buffer == NULL
 	    || (data->stream).error == MAD_ERROR_BUFLEN) {
@@ -453,7 +469,6 @@ static int decodeNextFrame(mp3DecodeData * data)
 				ERROR("unrecoverable frame level error "
 				      "(%s).\n",
 				      mad_stream_errorstr(&data->stream));
-				data->flush = 0;
 				return DECODE_BREAK;
 			}
 		}
@@ -819,7 +834,7 @@ static float frame_time(mp3DecodeData * data, long j)
 
 static void mp3Read_seek(mp3DecodeData * data)
 {
-	long j = 0;
+	unsigned long j = 0;
 	data->muteFrame = MUTEFRAME_SEEK;
 
 	assert(pthread_equal(pthread_self(), dc.thread));
@@ -829,22 +844,20 @@ static void mp3Read_seek(mp3DecodeData * data)
 		j++;
 	if (j < data->highestFrame) {
 		dc_action_begin();
-		if (seekMp3InputBuffer(data, data->frameOffset[j]) < 0) {
+		if (seekMp3InputBuffer(data, data->frameOffset[j]) < 0)
 			dc.seek_where = DC_SEEK_ERROR;
-		} else {
-			data->outputPtr = data->outputBuffer;
+		else
 			data->currentFrame = j;
-		}
-		data->muteFrame = 0;
+		data->muteFrame = MUTEFRAME_NONE;
 		dc_action_end();
 	}
 }
 
-static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
+static enum mp3_action
+mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 {
-	int samplesPerFrame;
-	int samplesLeft;
-	int i;
+	unsigned int pcm_length, max_samples;
+	unsigned int i;
 	int ret;
 	int skip;
 
@@ -877,22 +890,21 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 
 	switch (data->muteFrame) {
 	case MUTEFRAME_SKIP:
-		data->muteFrame = 0;
+		data->muteFrame = MUTEFRAME_NONE;
 		break;
 	case MUTEFRAME_SEEK:
 		if (dc.seek_where <= data->elapsedTime) {
 			dc_action_begin();
 			assert(dc.action == DC_ACTION_SEEK);
-			data->outputPtr = data->outputBuffer;
-			data->muteFrame = 0;
+			data->muteFrame = MUTEFRAME_NONE;
 			dc_action_end();
 		}
 		break;
-	default:
+	case MUTEFRAME_NONE:
 		mad_synth_frame(&data->synth, &data->frame);
 
 		if (!data->foundFirstFrame) {
-			samplesPerFrame = (data->synth).pcm.length;
+			unsigned int samplesPerFrame = (data->synth).pcm.length;
 			data->dropFramesAtStart = data->dropSamplesAtStart / samplesPerFrame;
 			data->dropFramesAtEnd = data->dropSamplesAtEnd / samplesPerFrame;
 			data->dropSamplesAtStart = data->dropSamplesAtStart % samplesPerFrame;
@@ -924,60 +936,57 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 			metadata_pipe_send(tag, data->elapsedTime);
 		}
 
-		samplesLeft = (data->synth).pcm.length;
+		if (!data->decodedFirstFrame) {
+			i = data->dropSamplesAtStart;
+			data->decodedFirstFrame = 1;
+		} else
+			i = 0;
 
-		for (i = 0; i < (data->synth).pcm.length; i++) {
-			mpd_sint16 *sample;
-
-			samplesLeft--;
-
-			if (!data->decodedFirstFrame &&
-			    (i < data->dropSamplesAtStart)) {
-				continue;
-			} else if (data->dropSamplesAtEnd &&
-			           (data->currentFrame == (data->maxFrames - data->dropFramesAtEnd)) &&
-				   (samplesLeft < data->dropSamplesAtEnd)) {
-				/* stop decoding, effectively dropping
-				 * all remaining samples */
-				return DECODE_BREAK;
-			}
-
-			sample = (mpd_sint16 *) data->outputPtr;
-			*sample = (mpd_sint16) audio_linear_dither(16,
-								   (data->synth).pcm.samples[0][i],
-								   &(data->dither));
-			data->outputPtr += 2;
-
-			if (MAD_NCHANNELS(&(data->frame).header) == 2) {
-				sample = (mpd_sint16 *) data->outputPtr;
-				*sample = (mpd_sint16) audio_linear_dither(16,
-									   (data->synth).pcm.samples[1][i],
-									   &(data->dither));
-				data->outputPtr += 2;
-			}
-
-			if (data->outputPtr >= data->outputBufferEnd) {
-				enum dc_action action = ob_send(
-				              data->outputBuffer,
-				              data->outputPtr -
-				                 data->outputBuffer,
-				              data->elapsedTime,
-				              data->bitRate / 1000,
-				              replayGainInfo ? *replayGainInfo
-				                             : NULL);
-
-				if (action == DC_ACTION_STOP) {
-					data->flush = 0;
-					return DECODE_BREAK;
-				}
-				data->outputPtr = data->outputBuffer;
-
-				if (action == DC_ACTION_SEEK)
-					break;
-			}
+		pcm_length = data->synth.pcm.length;
+		if (data->dropSamplesAtEnd &&
+		    (data->currentFrame == data->maxFrames - data->dropFramesAtEnd)) {
+			if (data->dropSamplesAtEnd >= pcm_length)
+				pcm_length = 0;
+			else
+				pcm_length -= data->dropSamplesAtEnd;
 		}
 
-		data->decodedFirstFrame = 1;
+		max_samples = sizeof(data->outputBuffer) /
+			(2 * MAD_NCHANNELS(&(data->frame).header));
+
+		while (i < pcm_length) {
+			enum dc_action action;
+			unsigned int num_samples = pcm_length - i;
+
+			if (num_samples > max_samples)
+				num_samples = max_samples;
+			i += num_samples;
+
+			num_samples = dither_buffer(data->outputBuffer,
+						    &data->synth, &data->dither,
+						    i - num_samples, i,
+						    MAD_NCHANNELS(
+						        &(data->frame).header));
+
+			action = ob_send(data->outputBuffer,
+				      2 * num_samples,
+				      data->elapsedTime,
+				      data->bitRate / 1000,
+				      replayGainInfo ? *replayGainInfo : NULL);
+
+			if (action == DC_ACTION_STOP)
+				return DECODE_BREAK;
+
+			if (action == DC_ACTION_SEEK)
+				break;
+		}
+
+		if (data->dropSamplesAtEnd &&
+		    (data->currentFrame ==
+		     (data->maxFrames - data->dropFramesAtEnd)))
+			/* stop decoding, effectively dropping
+			 * all remaining samples */
+			return DECODE_BREAK;
 
 		if (dc_seek()) {
 			if (data->inStream->seekable)
@@ -997,7 +1006,7 @@ static int mp3Read(mp3DecodeData * data, ReplayGainInfo ** replayGainInfo)
 			break;
 		else if (ret == DECODE_SKIP)
 			skip = 1;
-		if (!data->muteFrame) {
+		if (data->muteFrame == MUTEFRAME_NONE) {
 			while ((ret = decodeNextFrame(data)) == DECODE_CONT &&
 			       !dc_intr() && dc_seek()) ;
 			if (ret == DECODE_BREAK || dc_intr() || dc_seek())
@@ -1065,11 +1074,6 @@ static int mp3_decode(InputStream * inStream)
 		metadata_pipe_send(tag, 0);
 
 	while (mp3Read(&data, &replayGainInfo) != DECODE_BREAK) ;
-	/* send last little bit if not dc_intr() */
-	if (!dc_intr() && data.outputPtr != data.outputBuffer && data.flush) {
-		ob_send(data.outputBuffer, data.outputPtr - data.outputBuffer,
-		        data.elapsedTime, data.bitRate / 1000, replayGainInfo);
-	}
 
 	if (replayGainInfo)
 		freeReplayGainInfo(replayGainInfo);

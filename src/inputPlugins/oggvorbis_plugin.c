@@ -25,13 +25,7 @@
 #include "_ogg_common.h"
 
 #include "../utils.h"
-#include "../audio.h"
 #include "../log.h"
-#include "../pcm_utils.h"
-#include "../inputStream.h"
-#include "../outputBuffer.h"
-#include "../replayGain.h"
-#include "../os_compat.h"
 
 #ifndef HAVE_TREMOR
 #include <vorbis/vorbisfile.h>
@@ -86,7 +80,7 @@ static int ogg_seek_cb(void *vdata, ogg_int64_t offset, int whence)
 }
 
 /* TODO: check Ogg libraries API and see if we can just not have this func */
-static int ogg_close_cb(void *vdata)
+static int ogg_close_cb(mpd_unused void *vdata)
 {
 	return 0;
 }
@@ -246,32 +240,32 @@ static int oggvorbis_decode(InputStream * inStream)
 	callbacks.close_func = ogg_close_cb;
 	callbacks.tell_func = ogg_tell_cb;
 	if ((ret = ov_open_callbacks(&data, &vf, NULL, 0, callbacks)) < 0) {
-		if (!dc_intr()) {
-			switch (ret) {
-			case OV_EREAD:
-				errorStr = "read error";
-				break;
-			case OV_ENOTVORBIS:
-				errorStr = "not vorbis stream";
-				break;
-			case OV_EVERSION:
-				errorStr = "vorbis version mismatch";
-				break;
-			case OV_EBADHEADER:
-				errorStr = "invalid vorbis header";
-				break;
-			case OV_EFAULT:
-				errorStr = "internal logic error";
-				break;
-			default:
-				errorStr = "unknown error";
-				break;
-			}
-			ERROR("Error decoding Ogg Vorbis stream: %s\n",
-			      errorStr);
-			return -1;
+		if (dc_intr())
+			return 0;
+
+		switch (ret) {
+		case OV_EREAD:
+			errorStr = "read error";
+			break;
+		case OV_ENOTVORBIS:
+			errorStr = "not vorbis stream";
+			break;
+		case OV_EVERSION:
+			errorStr = "vorbis version mismatch";
+			break;
+		case OV_EBADHEADER:
+			errorStr = "invalid vorbis header";
+			break;
+		case OV_EFAULT:
+			errorStr = "internal logic error";
+			break;
+		default:
+			errorStr = "unknown error";
+			break;
 		}
-		return 0;
+
+		ERROR("Error decoding Ogg Vorbis stream: %s\n", errorStr);
+		return -1;
 	}
 	dc.total_time = ov_time_total(&vf, -1);
 	if (dc.total_time < 0)
@@ -368,6 +362,11 @@ static MpdTag *oggvorbis_TagDup(char *file)
 
 static unsigned int oggvorbis_try_decode(InputStream * inStream)
 {
+	if (!inStream->seekable)
+		/* we cannot seek after the detection, so don't bother
+		   checking */
+		return 1;
+
 	return (ogg_stream_type_detect(inStream) == VORBIS) ? 1 : 0;
 }
 

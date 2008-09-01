@@ -94,7 +94,7 @@ static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 int playlist_saveAbsolutePaths = DEFAULT_PLAYLIST_SAVE_ABSOLUTE_PATHS;
 
 static void swapOrder(int a, int b);
-static int play_order_num(int fd, int order_num, float seek_time);
+static void play_order_num(int order_num, float seek_time);
 static void randomizeOrder(int start, int end);
 
 static void incrPlaylistVersion(void)
@@ -219,12 +219,11 @@ void finishPlaylist(void)
 	playlist.positionToId = NULL;
 }
 
-int clearPlaylist(int fd)
+void clearPlaylist(void)
 {
 	int i;
 
-	if (stopPlaylist(fd) < 0)
-		return -1;
+	stopPlaylist();
 
 	for (i = 0; i < playlist.length; i++) {
 		if (playlist.songs[i]->type == SONG_TYPE_URL) {
@@ -237,8 +236,6 @@ int clearPlaylist(int fd)
 	playlist.current = -1;
 
 	incrPlaylistVersion();
-
-	return 0;
 }
 
 int clearStoredPlaylist(int fd, char *utf8file)
@@ -834,9 +831,9 @@ int deleteFromPlaylist(int fd, int song)
 	if (stop_current) {
 		/* DEBUG(__FILE__": %d\n", __LINE__); */
 		if (playlist.current >= 0 && songOrder > 0)
-			play_order_num(fd, playlist.current, 0);
+			play_order_num(playlist.current, 0);
 		else
-			stopPlaylist(fd);
+			stopPlaylist();
 	} else {
 		/* DEBUG(__FILE__": %d\n", __LINE__); */
 		queueNextSongInPlaylist();
@@ -866,7 +863,7 @@ void deleteASongFromPlaylist(Song * song)
 	}
 }
 
-int stopPlaylist(int fd)
+void stopPlaylist(void)
 {
 	DEBUG("playlist: stop\n");
 
@@ -883,10 +880,9 @@ int stopPlaylist(int fd)
 	playlist_state = PLAYLIST_STATE_STOP;
 	if (playlist.random)
 		randomizeOrder(0, playlist.length - 1);
-	return 0;
 }
 
-static int play_order_num(int fd, int order_num, float seek_time)
+static void play_order_num(int order_num, float seek_time)
 {
 	char path[MPD_PATH_MAX];
 	enum dc_action action = seek_time ? DC_ACTION_SEEK : DC_ACTION_START;
@@ -906,8 +902,6 @@ static int play_order_num(int fd, int order_num, float seek_time)
 	dc_trigger_action(action, seek_time);
 	if (dc.seek_where >= 0)
 		playlist.current = order_num;
-
-	return 0;
 }
 
 int playPlaylist(int fd, int song, int stopOnError)
@@ -954,7 +948,8 @@ int playPlaylist(int fd, int song, int stopOnError)
 
 	ERROR(__FILE__ ": %d current:%d\n", __LINE__, playlist.current);
 	ob_trigger_action(OB_ACTION_PAUSE_UNSET);
-	return play_order_num(fd, i, 0);
+	play_order_num(i, 0);
+	return 0;
 }
 
 int playPlaylistById(int fd, int id, int stopOnError)
@@ -1015,20 +1010,21 @@ void syncPlayerAndPlaylist(void)
 	}
 }
 
-int nextSongInPlaylist(int fd)
+void nextSongInPlaylist(void)
 {
 	int next;
 	if (playlist_state != PLAYLIST_STATE_PLAY)
-		return 0;
+		return;
 	playlist_stopOnError = 0;
 	next = next_order_num();
 	if (next < 0) {
 		/* we were already at last song w/o repeat: */
 		incrPlaylistCurrent();
-		return stopPlaylist(fd);
+		stopPlaylist();
+		return;
 	}
 	ob_trigger_action(OB_ACTION_PAUSE_UNSET);
-	return play_order_num(fd, next, 0);
+	play_order_num(next, 0);
 }
 
 int getPlaylistRepeatStatus(void)
@@ -1234,7 +1230,7 @@ int setPlaylistRandomStatus(int fd, int status)
 	return 0;
 }
 
-int previousSongInPlaylist(int fd)
+void previousSongInPlaylist(void)
 {
 	static time_t lastTime;
 	time_t diff = time(NULL) - lastTime;
@@ -1243,7 +1239,7 @@ int previousSongInPlaylist(int fd)
 	lastTime += diff;
 
 	if (playlist_state != PLAYLIST_STATE_PLAY)
-		return 0;
+		return;
 
 	syncPlaylistWithQueue();
 
@@ -1258,10 +1254,10 @@ int previousSongInPlaylist(int fd)
 			prev_order_num = playlist.current;
 	}
 	ob_trigger_action(OB_ACTION_PAUSE_UNSET);
-	return play_order_num(fd, prev_order_num, 0);
+	play_order_num(prev_order_num, 0);
 }
 
-int shufflePlaylist(int fd)
+int shufflePlaylist(mpd_unused int fd)
 {
 	int i;
 	int ri;
@@ -1419,7 +1415,7 @@ int seekSongInPlaylist(int fd, int song, float seek_time)
 	}
 
 	DEBUG("playlist: seek %i:\"%s\"\n", i, get_song_url(path, song_at(i)));
-	play_order_num(fd, i, seek_time);
+	play_order_num(i, seek_time);
 	return 0;
 }
 

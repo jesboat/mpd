@@ -117,7 +117,7 @@ void resetVisitedFlagsInTagTracker(int type)
 	}
 }
 
-void visitInTagTracker(int type, char *str)
+void visitInTagTracker(int type, const char *str)
 {
 	TreeIterator iter;
 

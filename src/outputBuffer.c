@@ -27,6 +27,7 @@
 #include "player_error.h"
 #include "log.h"
 #include "action_status.h"
+#include "decode.h"
 
 /* typically have 2048-4096 of these structs, so pack tightly */
 struct ob_chunk {
@@ -152,7 +153,7 @@ static enum action_status ob_finalize_action(void)
 /* marks all buffered chunks with sequence number matching `seq' as invalid */
 static enum action_status ob_do_drop(void)
 {
-	struct iovec vec[2];
+	struct rbvec vec[2];
 	long i;
 	mpd_uint8 seq_drop;
 
@@ -190,7 +191,7 @@ static enum action_status ob_do_pause(void)
 
 static void reader_reset_buffer(void)
 {
-	struct iovec vec[2];
+	struct rbvec vec[2];
 	size_t nr;
 	long i;
 
@@ -330,15 +331,15 @@ static enum action_status ob_take_action(void)
  * like an infinite, rotating buffer.  The first available chunk
  * is always indexed as `0', the second one as `1', and so on...
  */
-static struct ob_chunk *get_chunk(struct iovec vec[2], size_t i)
+static struct ob_chunk *get_chunk(struct rbvec vec[2], size_t i)
 {
-	if (vec[0].iov_len > i)
-		return &ob.chunks[vec[0].iov_base + i - ob.index->buf];
-	if (i && vec[1].iov_base) {
-		assert(vec[0].iov_len > 0);
-		i -= vec[0].iov_len;
-		if (vec[1].iov_len > i)
-			return &ob.chunks[vec[1].iov_base + i - ob.index->buf];
+	if (vec[0].len > i)
+		return &ob.chunks[vec[0].base + i - ob.index->buf];
+	if (i && vec[1].base) {
+		assert(vec[0].len > 0);
+		i -= vec[0].len;
+		if (vec[1].len > i)
+			return &ob.chunks[vec[1].base + i - ob.index->buf];
 	}
 	return NULL;
 }
@@ -426,7 +427,7 @@ static void send_next_tag(void)
 
 static void play_next_chunk(void)
 {
-	struct iovec vec[2];
+	struct rbvec vec[2];
 	struct ob_chunk *a;
 	size_t nr;
 	static float last_time;
@@ -551,7 +552,7 @@ void ob_seek_finish(void)
  */
 void ob_flush(void)
 {
-	struct iovec vec[2];
+	struct rbvec vec[2];
 
 	assert(pthread_equal(pthread_self(), dc.thread));
 	/* DEBUG(__FILE__":%s %d\n", __func__, __LINE__); */

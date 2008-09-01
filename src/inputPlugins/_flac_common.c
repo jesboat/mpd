@@ -26,12 +26,6 @@
 #include "_flac_common.h"
 
 #include "../log.h"
-#include "../tag.h"
-#include "../inputStream.h"
-#include "../outputBuffer.h"
-#include "../decode.h"
-#include "../replayGain.h"
-#include "../os_compat.h"
 
 #include <FLAC/format.h>
 #include <FLAC/metadata.h>
@@ -180,7 +174,7 @@ void flac_metadata_common_cb(const FLAC__StreamMetadata * block,
 
 void flac_error_common_cb(const char *plugin,
 			  const FLAC__StreamDecoderErrorStatus status,
-			  FlacData * data)
+			  mpd_unused FlacData * data)
 {
 	if (dc_intr())
 		return;
