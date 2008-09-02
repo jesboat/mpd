@@ -90,4 +90,15 @@ void xpthread_mutex_destroy(pthread_mutex_t *mutex);
 
 void xpthread_cond_destroy(pthread_cond_t *cond);
 
+/*
+ * Work-arounds for braindead APIs that require non-const pointers:
+ *   ao_play(), free(), vorbis_comment_add_tag(), iconv()
+ */
+static inline void * deconst_ptr(const void *ptr)
+{
+	union { const void *in; void *out; } u;
+	u.in = ptr;
+	return u.out;
+}
+
 #endif
