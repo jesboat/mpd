@@ -24,6 +24,7 @@
 #include "utils.h"
 #include "ack.h"
 #include "os_compat.h"
+#include "outputBuffer.h"
 
 #include "../config.h"
 
