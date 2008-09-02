@@ -60,26 +60,27 @@ static ListNode *nodeOfStoredPlaylist(List *list, int idx)
 	return NULL;
 }
 
-static int writeStoredPlaylistToPath(int fd, List *list, const char *fspath)
+static int writeStoredPlaylistToPath(int fd, List *list, const char *utf8path)
 {
 	ListNode *node;
 	FILE *file;
 	char *s;
+	char path_max_tmp[MPD_PATH_MAX];
 
-	if (fspath == NULL)
+	if (!utf8path || !valid_playlist_name(fd, utf8path))
 		return -1;
 
-	while (!(file = fopen(fspath, "w")) && errno == EINTR);
+	utf8_to_fs_playlist_path(path_max_tmp, utf8path);
+
+	while (!(file = fopen(path_max_tmp, "w")) && errno == EINTR);
 	if (file == NULL) {
 		commandError(fd, ACK_ERROR_NO_EXIST, "could not open file "
-		             "\"%s\": %s", fspath, strerror(errno));
+		             "\"%s\": %s", path_max_tmp, strerror(errno));
 		return -1;
 	}
 
 	node = list->firstNode;
 	while (node != NULL) {
-		char path_max_tmp[MPD_PATH_MAX];
-
 		s = utf8_to_fs_charset(path_max_tmp, (char *)node->data);
 		if (playlist_saveAbsolutePaths && !isValidRemoteUtf8Url(s))
 			s = rmp2amp_r(path_max_tmp, s);
