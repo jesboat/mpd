@@ -95,22 +95,6 @@ int setCharSetConversion(const char *to, const char *from)
 #endif
 }
 
-#ifdef HAVE_ICONV
-static inline size_t deconst_iconv(iconv_t cd,
-				   const char **inbuf, size_t *inbytesleft,
-				   char **outbuf, size_t *outbytesleft)
-{
-	union {
-		const char **a;
-		char **b;
-	} deconst;
-
-	deconst.a = inbuf;
-
-	return iconv(cd, deconst.b, inbytesleft, outbuf, outbytesleft);
-}
-#endif
-
 char *char_conv_str(char *dest, const char *string)
 {
 	if (!char_conv_to)
@@ -132,11 +116,12 @@ char *char_conv_str(char *dest, const char *string)
 		dest[0] = '\0';
 
 		while (inleft) {
+			char *inbuf = deconst_ptr(string);
+
 			bufferPtr = buffer;
 			outleft = BUFFER_SIZE;
-			err =
-			    deconst_iconv(char_conv_iconv, &string, &inleft,
-					  &bufferPtr, &outleft);
+			err = iconv(char_conv_iconv, &inbuf,
+			            &inleft, &bufferPtr, &outleft);
 			if (outleft == BUFFER_SIZE
 			    || (err == (size_t)-1L && errno != E2BIG)) {
 				return NULL;

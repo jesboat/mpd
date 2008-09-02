@@ -390,11 +390,10 @@ static void myShout_closeDevice(AudioOutput * audioOutput)
 
 static void addTag(ShoutData *sd, const char *name, char *value)
 {
-	if (value) {
-		union const_hack u;
-		u.in = name;
-		vorbis_comment_add_tag(&(sd->vc), u.out, value);
-	}
+	if (value)
+		vorbis_comment_add_tag(&(sd->vc),
+		                       (char *)deconst_ptr(name),
+				       value);
 }
 
 static void copyTagToVorbisComment(ShoutData * sd)
@@ -637,7 +636,8 @@ static int myShout_play(AudioOutput * audioOutput,
 
 	for (i = 0; i < samples; i++) {
 		for (j = 0; j < sd->audioFormat->channels; j++) {
-			vorbbuf[j][i] = (*((mpd_sint16 *) playChunk)) / 32768.0;
+			vorbbuf[j][i] =
+			  (*((mpd_sint16 *)deconst_ptr(playChunk))) / 32768.0;
 			playChunk += bytes;
 		}
 	}
