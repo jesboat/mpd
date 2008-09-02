@@ -199,23 +199,6 @@ static int audioOutputAo_openDevice(AudioOutput * audioOutput)
 	return 0;
 }
 
-/**
- * For whatever reason, libao wants a non-const pointer.  Let's hope
- * it does not write to the buffer, and use the union deconst hack to
- * work around this API misdesign.
- */
-static int ao_play_deconst(ao_device *device, const void *output_samples,
-			   uint_32 num_bytes)
-{
-	union {
-		const void *in;
-		void *out;
-	} u;
-
-	u.in = output_samples;
-	return ao_play(device, u.out, num_bytes);
-}
-
 static int audioOutputAo_play(AudioOutput * audioOutput,
 			      const char *playChunk, size_t size)
 {
@@ -229,7 +212,9 @@ static int audioOutputAo_play(AudioOutput * audioOutput,
 		chunk_size = (size_t)ad->writeSize > size
 			? size : (size_t)ad->writeSize;
 
-		if (ao_play_deconst(ad->device, playChunk, chunk_size) == 0) {
+		if (!ao_play(ad->device,
+		             (char *)deconst_ptr(playChunk),
+			     (uint_32)chunk_size)) {
 			audioOutputAo_error();
 			ERROR("closing audio device due to write error\n");
 			audioOutputAo_closeDevice(audioOutput);
