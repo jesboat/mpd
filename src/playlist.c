@@ -485,6 +485,11 @@ static void swapSongs(int song1, int song2)
 	Song *sTemp;
 	int iTemp;
 
+	assert(song1 < playlist.length);
+	assert(song1 >= 0);
+	assert(song2 < playlist.length);
+	assert(song2 >= 0);
+
 	sTemp = playlist.songs[song1];
 	playlist.songs[song1] = playlist.songs[song2];
 	playlist.songs[song2] = sTemp;
@@ -1171,7 +1176,14 @@ static void orderPlaylist(void)
 
 static void swapOrder(int a, int b)
 {
-	int bak = playlist.order[a];
+	int bak;
+
+	assert(a < playlist.length);
+	assert(a >= 0);
+	assert(b < playlist.length);
+	assert(b >= 0);
+
+	bak = playlist.order[a];
 	playlist.order[a] = playlist.order[b];
 	playlist.order[b] = bak;
 }
@@ -1191,8 +1203,8 @@ static void randomizeOrder(int start, int end)
 	    playlist.queued <= end)
 		clear_queue();
 
-	for (i = start; i <= end; i++) {
-		ri = random() % (end - start + 1) + start;
+	for (i = start; i < end; i++) {
+		ri = random() % (end - i) + start;
 		if (ri == playlist.current)
 			playlist.current = i;
 		else if (i == playlist.current)
@@ -1262,8 +1274,9 @@ int shufflePlaylist(mpd_unused int fd)
 	int i;
 	int ri;
 	int playing_queued = 0;
+	int length = playlist.length;
 
-	if (playlist.length > 1) {
+	if (length > 1) {
 		if (playlist_state == PLAYLIST_STATE_PLAY) {
 			if (playlist.queued == playlist.current)
 				playing_queued = 1;
@@ -1285,8 +1298,8 @@ int shufflePlaylist(mpd_unused int fd)
 			playlist.current = -1;
 		}
 		/* shuffle the rest of the list */
-		for (; i < playlist.length; i++) {
-			ri = random() % (playlist.length - 1) + 1;
+		for (; --length > 0; ++i) {
+			ri = random() % length + 1;
 			swapSongs(i, ri);
 		}
 		incrPlaylistVersion();
