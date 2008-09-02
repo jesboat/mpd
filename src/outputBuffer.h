@@ -106,4 +106,7 @@ void ob_flush(void);
 void config_output_buffer(void);
 void init_output_buffer(void);
 
+mpd_uint8 ob_get_decoder_sequence(void);
+
+mpd_uint8 ob_get_player_sequence(void);
 #endif

@@ -128,4 +128,6 @@ void findSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 
 int valid_playlist_name(int err_fd, const char *utf8path);
 
+MpdTag *playlist_current_tag(void);
+
 #endif

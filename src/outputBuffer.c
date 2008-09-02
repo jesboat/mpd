@@ -28,6 +28,8 @@
 #include "log.h"
 #include "action_status.h"
 #include "decode.h"
+#include "metadata_pipe.h"
+#include "playlist.h"
 
 /* typically have 2048-4096 of these structs, so pack tightly */
 struct ob_chunk {
