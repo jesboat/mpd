@@ -122,7 +122,7 @@ ob_send(void *data, size_t len,
 					start_playback();
 					return dc.action;
 				}
-				data += c_len;
+				data = (unsigned char *)data + c_len;
 			}
 		}
 	}
