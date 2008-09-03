@@ -32,7 +32,7 @@
 
 #include "os_compat.h"
 
-Song *newNullSong(void)
+static Song *newNullSong(void)
 {
 	Song *song = xmalloc(sizeof(Song));
 
@@ -92,7 +92,7 @@ void freeJustSong(Song * song)
 {
 	free(song->url);
 	if (song->tag)
-		freeMpdTag(song->tag);
+		tag_free(song->tag);
 	free(song);
 }
 
@@ -147,7 +147,7 @@ int printSongInfo(int fd, Song * song)
 	printSongUrl(fd, song);
 
 	if (song->tag)
-		printMpdTag(fd, song->tag);
+		tag_print(fd, song->tag);
 
 	return 0;
 }
@@ -200,7 +200,8 @@ static void insertSongIntoList(SongList * list, ListNode ** nextSongNode,
 	} else if (cmpRet == 0) {
 		Song *tempSong = (Song *) ((*nextSongNode)->data);
 		if (tempSong->mtime != song->mtime) {
-			freeMpdTag(tempSong->tag);
+			tag_free(tempSong->tag);
+			tag_end_add(song->tag);
 			tempSong->tag = song->tag;
 			tempSong->mtime = song->mtime;
 			song->tag = NULL;
@@ -239,9 +240,12 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 
 	while (myFgets(buffer, bufferSize, fp) && 0 != strcmp(SONG_END, buffer)) {
 		if (0 == strncmp(SONG_KEY, buffer, strlen(SONG_KEY))) {
-			if (song)
+			if (song) {
 				insertSongIntoList(list, &nextSongNode,
 						   song->url, song);
+				if (song->tag != NULL)
+					tag_end_add(song->tag);
+			}
 
 			song = newNullSong();
 			song->url = xstrdup(buffer + strlen(SONG_KEY));
@@ -256,15 +260,21 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 			   song->url = xstrdup(&(buffer[strlen(SONG_FILE)]));
 			 */
 		} else if (matchesAnMpdTagItemKey(buffer, &itemType)) {
-			if (!song->tag)
-				song->tag = newMpdTag();
-			addItemToMpdTag(song->tag, itemType,
-					&(buffer
-					  [strlen(mpdTagItemKeys[itemType]) +
-					   2]));
+			if (!song->tag) {
+				song->tag = tag_new();
+				tag_begin_add(song->tag);
+			}
+
+			tag_add_item(song->tag, itemType,
+				     &(buffer
+				       [strlen(mpdTagItemKeys[itemType]) +
+					2]));
 		} else if (0 == strncmp(SONG_TIME, buffer, strlen(SONG_TIME))) {
-			if (!song->tag)
-				song->tag = newMpdTag();
+			if (!song->tag) {
+				song->tag = tag_new();
+				tag_begin_add(song->tag);
+			}
+
 			song->tag->time = atoi(&(buffer[strlen(SONG_TIME)]));
 		} else if (0 == strncmp(SONG_MTIME, buffer, strlen(SONG_MTIME))) {
 			song->mtime = atoi(&(buffer[strlen(SONG_MTIME)]));
@@ -273,8 +283,11 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 			FATAL("songinfo: unknown line in db: %s\n", buffer);
 	}
 
-	if (song)
+	if (song) {
 		insertSongIntoList(list, &nextSongNode, song->url, song);
+		if (song->tag != NULL)
+			tag_end_add(song->tag);
+	}
 
 	while (nextSongNode) {
 		nodeTemp = nextSongNode->nextNode;
@@ -295,7 +308,7 @@ int updateSongInfo(Song * song)
 		rmp2amp_r(abs_path, abs_path);
 
 		if (song->tag)
-			freeMpdTag(song->tag);
+			tag_free(song->tag);
 
 		song->tag = NULL;
 

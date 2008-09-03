@@ -1,5 +1,5 @@
 /* the Music Player Daemon (MPD)
- * Copyright (C) 2003-2007 by Warren Dukes (warren.dukes@gmail.com)
+ * Copyright (C) 2008 Max Kellermann <max@duempel.org>
  * This project's homepage is: http://www.musicpd.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,17 +16,18 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef TAG_TRACKER_H
-#define TAG_TRACKER_H
+#ifndef TAG_POOL_H
+#define TAG_POOL_H
 
-int getNumberOfTagItems(int type);
+#include "tag.h"
 
-void printMemorySavedByTagTracker(void);
+struct tag_item;
 
-void resetVisitedFlagsInTagTracker(int type);
+struct tag_item *tag_pool_get_item(enum tag_type type,
+				   const char *value, int length);
 
-void visitInTagTracker(int type, const char *str);
+struct tag_item *tag_pool_dup_item(struct tag_item *item);
 
-void printVisitedInTagTracker(int fd, int type);
+void tag_pool_put_item(struct tag_item *item);
 
 #endif

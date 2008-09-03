@@ -17,27 +17,27 @@
  */
 
 #include "tag.h"
+#include "tag_pool.h"
 #include "myfprintf.h"
 #include "utils.h"
 #include "utf8.h"
 #include "log.h"
 #include "conf.h"
-#include "charConv.h"
 #include "tagTracker.h"
 #include "song.h"
 
-#ifdef HAVE_ID3TAG
-#  define isId3v1(tag) (id3_tag_options(tag, 0, 0) & ID3_TAG_OPTION_ID3V1)
-#  ifndef ID3_FRAME_COMPOSER
-#    define ID3_FRAME_COMPOSER "TCOM"
-#  endif
-#  ifndef ID3_FRAME_PERFORMER
-#    define ID3_FRAME_PERFORMER "TOPE"
-#  endif
-#  ifndef ID3_FRAME_DISC
-#    define ID3_FRAME_DISC "TPOS"
-#  endif
+/**
+ * Maximum number of items managed in the bulk list; if it is
+ * exceeded, we switch back to "normal" reallocation.
+ */
+#define BULK_MAX 64
+
+static struct {
+#ifndef NDEBUG
+	int busy;
 #endif
+	struct tag_item *items[BULK_MAX];
+} bulk;
 
 const char *mpdTagItemKeys[TAG_NUM_OF_ITEM_TYPES] = {
 	"Artist",
@@ -55,7 +55,7 @@ const char *mpdTagItemKeys[TAG_NUM_OF_ITEM_TYPES] = {
 
 static mpd_sint8 ignoreTagItems[TAG_NUM_OF_ITEM_TYPES];
 
-void initTagConfig(void)
+void tag_lib_init(void)
 {
 	int quit = 0;
 	char *temp;
@@ -104,7 +104,7 @@ void initTagConfig(void)
 	free(temp);
 }
 
-void printTagTypes(int fd)
+void tag_print_types(int fd)
 {
 	int i;
 
@@ -114,7 +114,7 @@ void printTagTypes(int fd)
 	}
 }
 
-void printMpdTag(int fd, MpdTag * tag)
+void tag_print(int fd, const struct mpd_tag *tag)
 {
 	int i;
 
@@ -122,340 +122,14 @@ void printMpdTag(int fd, MpdTag * tag)
 		fdprintf(fd, SONG_TIME "%i\n", tag->time);
 
 	for (i = 0; i < tag->numOfItems; i++) {
-		fdprintf(fd, "%s: %s\n", mpdTagItemKeys[tag->items[i].type],
-			  tag->items[i].value);
+		fdprintf(fd, "%s: %s\n", mpdTagItemKeys[tag->items[i]->type],
+			  tag->items[i]->value);
 	}
 }
 
-#ifdef HAVE_ID3TAG
-/* This will try to convert a string to utf-8,
- */
-static id3_utf8_t * processID3FieldString (int is_id3v1, const id3_ucs4_t *ucs4, int type)
+struct mpd_tag *tag_ape_load(const char *file)
 {
-    id3_utf8_t *utf8;
-    id3_latin1_t *isostr;
-	char *encoding;
-
-    if (type == TAG_ITEM_GENRE)
-	    ucs4 = id3_genre_name(ucs4);
-    /* use encoding field here? */
-    if (is_id3v1 &&
-	(encoding = getConfigParamValue(CONF_ID3V1_ENCODING))) {
-	    isostr = id3_ucs4_latin1duplicate(ucs4);
-	    if (mpd_unlikely(!isostr)) {
-		    return NULL;
-	    }
-	    setCharSetConversion("UTF-8", encoding);
-	    utf8 = xmalloc(strlen((char *)isostr) + 1);
-	    utf8 = (id3_utf8_t *)char_conv_str((char *)utf8, (char *)isostr);
-	    if (!utf8) {
-		    DEBUG("Unable to convert %s string to UTF-8: "
-			  "'%s'\n", encoding, isostr);
-		    free(isostr);
-		    return NULL;
-	    }
-	    free(isostr);
-    } else {
-	    utf8 = id3_ucs4_utf8duplicate(ucs4);
-	    if (mpd_unlikely(!utf8)) {
-		    return NULL;
-	    }
-    }
-    return utf8;
-}
-
-static MpdTag *getID3Info(
-	struct id3_tag *tag, const char *id, int type, MpdTag * mpdTag)
-{
-	struct id3_frame const *frame;
-	id3_ucs4_t const *ucs4;
-	id3_utf8_t *utf8;
-	union id3_field const *field;
-	unsigned int nstrings, i;
-
-	frame = id3_tag_findframe(tag, id, 0);
-	/* Check frame */
-	if (!frame)
-	{
-		return mpdTag;
-	}
-	/* Check fields in frame */
-	if(frame->nfields == 0)
-	{
-		DEBUG(__FILE__": Frame has no fields\n");
-		return mpdTag;
-	}
-
-	/* Starting with T is a stringlist */
-	if (id[0] == 'T')
-	{
-		/* This one contains 2 fields:
-		 * 1st: Text encoding
-		 * 2: Stringlist
-		 * Shamefully this isn't the RL case.
-		 * But I am going to enforce it anyway. 
-		 */
-		if(frame->nfields != 2) 
-		{
-			DEBUG(__FILE__": Invalid number '%i' of fields for TXX frame\n",frame->nfields);
-			return mpdTag;
-		}
-		field = &frame->fields[0];
-		/**
-		 * First field is encoding field.
-		 * This is ignored by mpd.
-		 */
-		if(field->type != ID3_FIELD_TYPE_TEXTENCODING)
-		{
-			DEBUG(__FILE__": Expected encoding, found: %i\n",field->type);
-		}
-		/* Process remaining fields, should be only one */
-		field = &frame->fields[1];
-		/* Encoding field */
-		if(field->type == ID3_FIELD_TYPE_STRINGLIST) {
-			/* Get the number of strings available */
-			nstrings = id3_field_getnstrings(field);
-			for (i = 0; i < nstrings; i++) {
-				ucs4 = id3_field_getstrings(field,i);
-				if(!ucs4)
-					continue;
-				utf8 = processID3FieldString(isId3v1(tag),ucs4, type);
-				if(!utf8)
-					continue;
-
-				if (mpdTag == NULL)
-					mpdTag = newMpdTag();
-				addItemToMpdTag(mpdTag, type, (char *)utf8);
-				free(utf8);
-			}
-		}
-		else {
-			ERROR(__FILE__": Field type not processed: %i\n",(int)id3_field_gettextencoding(field));
-		}
-	}
-	/* A comment frame */
-	else if(!strcmp(ID3_FRAME_COMMENT, id))
-	{
-		/* A comment frame is different... */
-	/* 1st: encoding
-         * 2nd: Language
-         * 3rd: String
-         * 4th: FullString.
-         * The 'value' we want is in the 4th field
-         */
-		if(frame->nfields == 4)
-		{
-			/* for now I only read the 4th field, with the fullstring */
-			field = &frame->fields[3];
-			if(field->type == ID3_FIELD_TYPE_STRINGFULL)
-			{
-				ucs4 = id3_field_getfullstring(field);
-				if(ucs4)
-				{
-					utf8 = processID3FieldString(isId3v1(tag),ucs4, type);
-					if(utf8)
-					{
-						if (mpdTag == NULL)
-							mpdTag = newMpdTag();
-						addItemToMpdTag(mpdTag, type, (char *)utf8);
-						free(utf8);
-					}
-				}
-			}
-			else
-			{
-				DEBUG(__FILE__": 4th field in comment frame differs from expected, got '%i': ignoring\n",field->type);
-			}
-		}
-		else
-		{
-			DEBUG(__FILE__": Invalid 'comments' tag, got '%i' fields instead of 4\n", frame->nfields);
-		}
-	}
-	/* Unsupported */
-	else {
-		DEBUG(__FILE__": Unsupported tag type requrested\n");
-		return mpdTag;
-	}
-
-	return mpdTag;
-}
-#endif
-
-#ifdef HAVE_ID3TAG
-MpdTag *parseId3Tag(struct id3_tag * tag)
-{
-	MpdTag *ret = NULL;
-
-	ret = getID3Info(tag, ID3_FRAME_ARTIST, TAG_ITEM_ARTIST, ret);
-	ret = getID3Info(tag, ID3_FRAME_TITLE, TAG_ITEM_TITLE, ret);
-	ret = getID3Info(tag, ID3_FRAME_ALBUM, TAG_ITEM_ALBUM, ret);
-	ret = getID3Info(tag, ID3_FRAME_TRACK, TAG_ITEM_TRACK, ret);
-	ret = getID3Info(tag, ID3_FRAME_YEAR, TAG_ITEM_DATE, ret);
-	ret = getID3Info(tag, ID3_FRAME_GENRE, TAG_ITEM_GENRE, ret);
-	ret = getID3Info(tag, ID3_FRAME_COMPOSER, TAG_ITEM_COMPOSER, ret);
-	ret = getID3Info(tag, ID3_FRAME_PERFORMER, TAG_ITEM_PERFORMER, ret);
-	ret = getID3Info(tag, ID3_FRAME_COMMENT, TAG_ITEM_COMMENT, ret);
-	ret = getID3Info(tag, ID3_FRAME_DISC, TAG_ITEM_DISC, ret);
-
-	return ret;
-}
-#endif
-
-#ifdef HAVE_ID3TAG
-static int fillBuffer(void *buf, size_t size, FILE * stream,
-		      long offset, int whence)
-{
-	if (fseek(stream, offset, whence) != 0) return 0;
-	return fread(buf, 1, size, stream);
-}
-#endif
-
-#ifdef HAVE_ID3TAG
-static int getId3v2FooterSize(FILE * stream, long offset, int whence)
-{
-	id3_byte_t buf[ID3_TAG_QUERYSIZE];
-	int bufsize;
-
-	bufsize = fillBuffer(buf, ID3_TAG_QUERYSIZE, stream, offset, whence);
-	if (bufsize <= 0) return 0;
-	return id3_tag_query(buf, bufsize);
-}
-#endif
-
-#ifdef HAVE_ID3TAG
-static struct id3_tag *getId3Tag(FILE * stream, long offset, int whence)
-{
-	struct id3_tag *tag;
-	id3_byte_t queryBuf[ID3_TAG_QUERYSIZE];
-	id3_byte_t *tagBuf;
-	int tagSize;
-	int queryBufSize;
-	int tagBufSize;
-
-	/* It's ok if we get less than we asked for */
-	queryBufSize = fillBuffer(queryBuf, ID3_TAG_QUERYSIZE,
-	                          stream, offset, whence);
-	if (queryBufSize <= 0) return NULL;
-
-	/* Look for a tag header */
-	tagSize = id3_tag_query(queryBuf, queryBufSize);
-	if (tagSize <= 0) return NULL;
-
-	/* Found a tag.  Allocate a buffer and read it in. */
-	tagBuf = xmalloc(tagSize);
-	if (!tagBuf) return NULL;
-
-	tagBufSize = fillBuffer(tagBuf, tagSize, stream, offset, whence);
-	if (tagBufSize < tagSize) {
-		free(tagBuf);
-		return NULL;
-	}
-
-	tag = id3_tag_parse(tagBuf, tagBufSize);
-
-	free(tagBuf);
-
-	return tag;
-}
-#endif
-
-#ifdef HAVE_ID3TAG
-static struct id3_tag *findId3TagFromBeginning(FILE * stream)
-{
-	struct id3_tag *tag;
-	struct id3_tag *seektag;
-	struct id3_frame *frame;
-	int seek;
-
-	tag = getId3Tag(stream, 0, SEEK_SET);
-	if (!tag) {
-		return NULL;
-	} else if (isId3v1(tag)) {
-		/* id3v1 tags don't belong here */
-		id3_tag_delete(tag);
-		return NULL;
-	}
-
-	/* We have an id3v2 tag, so let's look for SEEK frames */
-	while ((frame = id3_tag_findframe(tag, "SEEK", 0))) {
-		/* Found a SEEK frame, get it's value */
-		seek = id3_field_getint(id3_frame_field(frame, 0));
-		if (seek < 0)
-			break;
-
-		/* Get the tag specified by the SEEK frame */
-		seektag = getId3Tag(stream, seek, SEEK_CUR);
-		if (!seektag || isId3v1(seektag))
-			break;
-
-		/* Replace the old tag with the new one */
-		id3_tag_delete(tag);
-		tag = seektag;
-	}
-
-	return tag;
-}
-#endif
-
-#ifdef HAVE_ID3TAG
-static struct id3_tag *findId3TagFromEnd(FILE * stream)
-{
-	struct id3_tag *tag;
-	struct id3_tag *v1tag;
-	int tagsize;
-
-	/* Get an id3v1 tag from the end of file for later use */
-	v1tag = getId3Tag(stream, -128, SEEK_END);
-
-	/* Get the id3v2 tag size from the footer (located before v1tag) */
-	tagsize = getId3v2FooterSize(stream, (v1tag ? -128 : 0) - 10, SEEK_END);
-	if (tagsize >= 0)
-		return v1tag;
-
-	/* Get the tag which the footer belongs to */
-	tag = getId3Tag(stream, tagsize, SEEK_CUR);
-	if (!tag)
-		return v1tag;
-
-	/* We have an id3v2 tag, so ditch v1tag */
-	id3_tag_delete(v1tag);
-
-	return tag;
-}
-#endif
-
-MpdTag *id3Dup(char *file)
-{
-	MpdTag *ret = NULL;
-#ifdef HAVE_ID3TAG
-	struct id3_tag *tag;
-	FILE *stream;
-
-	stream = fopen(file, "r");
-	if (!stream) {
-		DEBUG("id3Dup: Failed to open file: '%s', %s\n", file,
-		      strerror(errno));
-		return NULL;
-	}
-
-	tag = findId3TagFromBeginning(stream);
-	if (!tag)
-		tag = findId3TagFromEnd(stream);
-
-	fclose(stream);
-
-	if (!tag)
-		return NULL;
-	ret = parseId3Tag(tag);
-	id3_tag_delete(tag);
-#endif
-	return ret;
-}
-
-MpdTag *apeDup(char *file)
-{
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	FILE *fp;
 	int tagCount;
 	char *buffer = NULL;
@@ -556,9 +230,9 @@ MpdTag *apeDup(char *file)
 			for (i = 0; i < 7; i++) {
 				if (strcasecmp(key, apeItems[i]) == 0) {
 					if (!ret)
-						ret = newMpdTag();
-					addItemToMpdTagWithLen(ret, tagItems[i],
-							       p, size);
+						ret = tag_new();
+					tag_add_item_n(ret, tagItems[i],
+						       p, size);
 				}
 			}
 		}
@@ -574,21 +248,21 @@ fail:
 	return ret;
 }
 
-MpdTag *newMpdTag(void)
+struct mpd_tag *tag_new(void)
 {
-	MpdTag *ret = xmalloc(sizeof(MpdTag));
+	struct mpd_tag *ret = xmalloc(sizeof(*ret));
 	ret->items = NULL;
 	ret->time = -1;
 	ret->numOfItems = 0;
 	return ret;
 }
 
-static void deleteItem(MpdTag * tag, int idx)
+static void deleteItem(struct mpd_tag *tag, int idx)
 {
 	assert(idx < tag->numOfItems);
 	tag->numOfItems--;
 
-	removeTagItemString(tag->items[idx].type, tag->items[idx].value);
+	tag_pool_put_item(tag->items[idx]);
 	/* free(tag->items[idx].value); */
 
 	if (tag->numOfItems - idx > 0) {
@@ -598,19 +272,19 @@ static void deleteItem(MpdTag * tag, int idx)
 
 	if (tag->numOfItems > 0) {
 		tag->items = xrealloc(tag->items,
-				     tag->numOfItems * sizeof(MpdTagItem));
+				      tag->numOfItems * sizeof(*tag->items));
 	} else {
 		free(tag->items);
 		tag->items = NULL;
 	}
 }
 
-void clearItemsFromMpdTag(MpdTag * tag, enum tag_type type)
+void tag_clear_items_by_type(struct mpd_tag *tag, enum tag_type type)
 {
 	int i;
 
 	for (i = 0; i < tag->numOfItems; i++) {
-		if (tag->items[i].type == type) {
+		if (tag->items[i]->type == type) {
 			deleteItem(tag, i);
 			/* decrement since when just deleted this node */
 			i--;
@@ -618,17 +292,24 @@ void clearItemsFromMpdTag(MpdTag * tag, enum tag_type type)
 	}
 }
 
-static void clearMpdTag(MpdTag * tag)
+static void clearMpdTag(struct mpd_tag *tag)
 {
 	int i;
 
 	for (i = 0; i < tag->numOfItems; i++) {
-		removeTagItemString(tag->items[i].type, tag->items[i].value);
 		/* free(tag->items[i].value); */
+		tag_pool_put_item(tag->items[i]);
 	}
 
-	if (tag->items)
+	if (tag->items == bulk.items) {
+#ifndef NDEBUG
+		assert(bulk.busy);
+		bulk.busy = 0;
+#endif
+	} else if (tag->items) {
 		free(tag->items);
+	}
+
 	tag->items = NULL;
 
 	tag->numOfItems = 0;
@@ -636,31 +317,33 @@ static void clearMpdTag(MpdTag * tag)
 	tag->time = -1;
 }
 
-void freeMpdTag(MpdTag * tag)
+void tag_free(struct mpd_tag *tag)
 {
 	clearMpdTag(tag);
 	free(tag);
 }
 
-MpdTag *mpdTagDup(MpdTag * tag)
+struct mpd_tag *tag_dup(const struct mpd_tag *tag)
 {
-	MpdTag *ret;
+	struct mpd_tag *ret;
 	int i;
 
 	if (!tag)
 		return NULL;
 
-	ret = newMpdTag();
+	ret = tag_new();
 	ret->time = tag->time;
+	ret->numOfItems = tag->numOfItems;
+	ret->items = xmalloc(ret->numOfItems * sizeof(ret->items[0]));
 
 	for (i = 0; i < tag->numOfItems; i++) {
-		addItemToMpdTag(ret, tag->items[i].type, tag->items[i].value);
+		ret->items[i] = tag_pool_dup_item(tag->items[i]);
 	}
 
 	return ret;
 }
 
-int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2)
+int tag_equal(const struct mpd_tag *tag1, const struct mpd_tag *tag2)
 {
 	int i;
 
@@ -676,9 +359,9 @@ int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2)
 		return 0;
 
 	for (i = 0; i < tag1->numOfItems; i++) {
-		if (tag1->items[i].type != tag2->items[i].type)
+		if (tag1->items[i]->type != tag2->items[i]->type)
 			return 0;
-		if (strcmp(tag1->items[i].value, tag2->items[i].value)) {
+		if (strcmp(tag1->items[i]->value, tag2->items[i]->value)) {
 			return 0;
 		}
 	}
@@ -686,39 +369,95 @@ int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2)
 	return 1;
 }
 
-#define fixUtf8(str) { \
-	if(str && !validUtf8String(str)) { \
-		char * temp; \
-		DEBUG("not valid utf8 in tag: %s\n",str); \
-		temp = latin1StrToUtf8Dup(str); \
-		free(str); \
-		str = temp; \
-	} \
+static inline const char *fix_utf8(const char *str, size_t *length_r) {
+	const char *temp;
+
+	assert(str != NULL);
+
+	if (validUtf8String(str, *length_r))
+		return str;
+
+	DEBUG("not valid utf8 in tag: %s\n",str);
+	temp = latin1StrToUtf8Dup(str);
+	*length_r = strlen(temp);
+	return temp;
 }
 
-static void appendToTagItems(MpdTag * tag, enum tag_type type,
+void tag_begin_add(struct mpd_tag *tag)
+{
+	assert(!bulk.busy);
+	assert(tag != NULL);
+	assert(tag->items == NULL);
+	assert(tag->numOfItems == 0);
+
+#ifndef NDEBUG
+	bulk.busy = 1;
+#endif
+	tag->items = bulk.items;
+}
+
+void tag_end_add(struct mpd_tag *tag)
+{
+	if (tag->items == bulk.items) {
+		assert(tag->numOfItems <= BULK_MAX);
+
+		if (tag->numOfItems > 0) {
+			/* copy the tag items from the bulk list over
+			   to a new list (which fits exactly) */
+			tag->items = xmalloc(tag->numOfItems *
+					     sizeof(tag->items[0]));
+			memcpy(tag->items, bulk.items,
+			       tag->numOfItems * sizeof(tag->items[0]));
+		} else
+			tag->items = NULL;
+	}
+
+#ifndef NDEBUG
+	bulk.busy = 0;
+#endif
+}
+
+static void appendToTagItems(struct mpd_tag *tag, enum tag_type type,
 			     const char *value, size_t len)
 {
 	unsigned int i = tag->numOfItems;
-	char *duplicated = xmalloc(len + 1);
+	const char *p;
 
-	memcpy(duplicated, value, len);
-	duplicated[len] = '\0';
+	p = fix_utf8(value, &len);
+	if (memchr(p, '\n', len) != NULL) {
+		char *duplicated = xmalloc(len + 1);
+		memcpy(duplicated, p, len);
+		duplicated[len] = '\0';
+		if (p != value)
+			free(deconst_ptr(p));
 
-	fixUtf8(duplicated);
-	stripReturnChar(duplicated);
+		stripReturnChar(duplicated);
+		p = duplicated;
+	}
 
 	tag->numOfItems++;
-	tag->items = xrealloc(tag->items, tag->numOfItems * sizeof(MpdTagItem));
 
-	tag->items[i].type = type;
-	tag->items[i].value = getTagItemString(type, duplicated);
+	if (tag->items != bulk.items)
+		/* bulk mode disabled */
+		tag->items = xrealloc(tag->items,
+				      tag->numOfItems * sizeof(*tag->items));
+	else if (tag->numOfItems >= BULK_MAX) {
+		/* bulk list already full - switch back to non-bulk */
+		assert(bulk.busy);
 
-	free(duplicated);
+		tag->items = xmalloc(tag->numOfItems * sizeof(tag->items[0]));
+		memcpy(tag->items, bulk.items,
+		       (tag->numOfItems - 1) * sizeof(tag->items[0]));
+	}
+
+	tag->items[i] = tag_pool_get_item(type, p, len);
+
+	if (p != value)
+		free(deconst_ptr(p));
 }
 
-void addItemToMpdTagWithLen(MpdTag * tag, enum tag_type itemType,
-			    const char *value, size_t len)
+void tag_add_item_n(struct mpd_tag *tag, enum tag_type itemType,
+		    const char *value, size_t len)
 {
 	if (ignoreTagItems[itemType])
 	{

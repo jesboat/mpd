@@ -553,14 +553,14 @@ out:
 	return 0;
 }
 
-static MpdTag *aacTagDup(char *file)
+static struct mpd_tag *aacTagDup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	int file_time = getAacTotalTime(file);
 
 	if (file_time >= 0) {
-		if ((ret = id3Dup(file)) == NULL)
-			ret = newMpdTag();
+		if ((ret = tag_id3_load(file)) == NULL)
+			ret = tag_new();
 		ret->time = file_time;
 	} else {
 		DEBUG("aacTagDup: Failed to get total song time from: %s\n",

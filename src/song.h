@@ -36,14 +36,12 @@
 typedef struct _Song {
 	char *url;
 	mpd_sint8 type;
-	MpdTag *tag;
+	struct mpd_tag *tag;
 	struct _Directory *parentDir;
 	time_t mtime;
 } Song;
 
 typedef List SongList;
-
-Song *newNullSong(void);
 
 Song *newSong(const char *url, int songType, struct _Directory *parentDir);
 

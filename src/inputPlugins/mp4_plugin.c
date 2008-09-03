@@ -284,9 +284,9 @@ static int mp4_decode(InputStream * inStream)
 	return 0;
 }
 
-static MpdTag *mp4DataDup(char *file, int *mp4MetadataFound)
+static struct mpd_tag *mp4DataDup(char *file, int *mp4MetadataFound)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	InputStream inStream;
 	mp4ff_t *mp4fh;
 	mp4ff_callback_t *callback;
@@ -322,14 +322,14 @@ static MpdTag *mp4DataDup(char *file, int *mp4MetadataFound)
 		return NULL;
 	}
 
-	ret = newMpdTag();
+	ret = tag_new();
 	file_time = mp4ff_get_track_duration_use_offsets(mp4fh, track);
 	scale = mp4ff_time_scale(mp4fh, track);
 	if (scale < 0) {
 		mp4ff_close(mp4fh);
 		closeInputStream(&inStream);
 		free(callback);
-		freeMpdTag(ret);
+		tag_free(ret);
 		return NULL;
 	}
 	ret->time = ((float)file_time) / scale + 0.5;
@@ -341,25 +341,25 @@ static MpdTag *mp4DataDup(char *file, int *mp4MetadataFound)
 		mp4ff_meta_get_by_index(mp4fh, i, &item, &value);
 
 		if (0 == strcasecmp("artist", item)) {
-			addItemToMpdTag(ret, TAG_ITEM_ARTIST, value);
+			tag_add_item(ret, TAG_ITEM_ARTIST, value);
 			*mp4MetadataFound = 1;
 		} else if (0 == strcasecmp("title", item)) {
-			addItemToMpdTag(ret, TAG_ITEM_TITLE, value);
+			tag_add_item(ret, TAG_ITEM_TITLE, value);
 			*mp4MetadataFound = 1;
 		} else if (0 == strcasecmp("album", item)) {
-			addItemToMpdTag(ret, TAG_ITEM_ALBUM, value);
+			tag_add_item(ret, TAG_ITEM_ALBUM, value);
 			*mp4MetadataFound = 1;
 		} else if (0 == strcasecmp("track", item)) {
-			addItemToMpdTag(ret, TAG_ITEM_TRACK, value);
+			tag_add_item(ret, TAG_ITEM_TRACK, value);
 			*mp4MetadataFound = 1;
 		} else if (0 == strcasecmp("disc", item)) {	/* Is that the correct id? */
-			addItemToMpdTag(ret, TAG_ITEM_DISC, value);
+			tag_add_item(ret, TAG_ITEM_DISC, value);
 			*mp4MetadataFound = 1;
 		} else if (0 == strcasecmp("genre", item)) {
-			addItemToMpdTag(ret, TAG_ITEM_GENRE, value);
+			tag_add_item(ret, TAG_ITEM_GENRE, value);
 			*mp4MetadataFound = 1;
 		} else if (0 == strcasecmp("date", item)) {
-			addItemToMpdTag(ret, TAG_ITEM_DATE, value);
+			tag_add_item(ret, TAG_ITEM_DATE, value);
 			*mp4MetadataFound = 1;
 		}
 
@@ -373,19 +373,19 @@ static MpdTag *mp4DataDup(char *file, int *mp4MetadataFound)
 	return ret;
 }
 
-static MpdTag *mp4TagDup(char *file)
+static struct mpd_tag *mp4TagDup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	int mp4MetadataFound = 0;
 
 	ret = mp4DataDup(file, &mp4MetadataFound);
 	if (!ret)
 		return NULL;
 	if (!mp4MetadataFound) {
-		MpdTag *temp = id3Dup(file);
+		struct mpd_tag *temp = tag_id3_load(file);
 		if (temp) {
 			temp->time = ret->time;
-			freeMpdTag(ret);
+			tag_free(ret);
 			ret = temp;
 		}
 	}

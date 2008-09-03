@@ -270,10 +270,10 @@ static ReplayGainInfo *wavpack_replaygain(WavpackContext *wpc)
 /*
  * Reads metainfo from the specified file.
  */
-static MpdTag *wavpack_tagdup(char *fname)
+static struct mpd_tag *wavpack_tagdup(char *fname)
 {
 	WavpackContext *wpc;
-	MpdTag *tag;
+	struct mpd_tag *tag;
 	char error[ERRORLEN];
 	char *s;
 	int ssize;
@@ -285,12 +285,7 @@ static MpdTag *wavpack_tagdup(char *fname)
 		return NULL;
 	}
 
-	tag = newMpdTag();
-	if (tag == NULL) {
-		ERROR("failed to newMpdTag()\n");
-		return NULL;
-	}
-
+	tag = tag_new();
 	tag->time =
 		(float)WavpackGetNumSamples(wpc) / WavpackGetSampleRate(wpc);
 
@@ -314,7 +309,7 @@ static MpdTag *wavpack_tagdup(char *fname)
 			}
 
 			WavpackGetTagItem(wpc, tagtypes[i].name, s, j);
-			addItemToMpdTag(tag, tagtypes[i].type, s);
+			tag_add_item(tag, tagtypes[i].type, s);
 		}
 	}
 

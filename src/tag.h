@@ -19,14 +19,9 @@
 #ifndef TAG_H
 #define TAG_H
 
-#include "../config.h"
-
 #include "mpd_types.h"
 #include "os_compat.h"
-
-#ifdef HAVE_ID3TAG
-#include <id3tag.h>
-#endif
+#include "gcc.h"
 
 enum tag_type {
 	TAG_ITEM_ARTIST,
@@ -45,45 +40,56 @@ enum tag_type {
 
 extern const char *mpdTagItemKeys[];
 
-typedef struct _MpdTagItem {
+struct tag_item {
 	enum tag_type type;
-	char *value;
-} MpdTagItem;
+	char value[1];
+} mpd_packed;
 
-typedef struct _MpdTag {
+struct mpd_tag {
 	int time;
-	MpdTagItem *items;
+	struct tag_item **items;
 	mpd_uint8 numOfItems;
-} MpdTag;
+};
 
-#ifdef HAVE_ID3TAG
-MpdTag *parseId3Tag(struct id3_tag *);
-#endif
+struct mpd_tag *tag_ape_load(const char *file);
 
-MpdTag *apeDup(char *file);
+struct mpd_tag *tag_new(void);
 
-MpdTag *id3Dup(char *file);
+void tag_lib_init(void);
 
-MpdTag *newMpdTag(void);
+void tag_clear_items_by_type(struct mpd_tag *tag, enum tag_type itemType);
 
-void initTagConfig(void);
+void tag_free(struct mpd_tag *tag);
 
-void clearItemsFromMpdTag(MpdTag * tag, enum tag_type itemType);
+/**
+ * Gives an optional hint to the tag library that we will now add
+ * several tag items; this is used by the library to optimize memory
+ * allocation.  Only one tag may be in this state, and this tag must
+ * not have any items yet.  You must call tag_end_add() when you are
+ * done.
+ */
+void tag_begin_add(struct mpd_tag *tag);
 
-void freeMpdTag(MpdTag * tag);
+/**
+ * Finishes the operation started with tag_begin_add().
+ */
+void tag_end_add(struct mpd_tag *tag);
 
-void addItemToMpdTagWithLen(MpdTag * tag, enum tag_type itemType,
-			    const char *value, size_t len);
+void tag_add_item_n(struct mpd_tag *tag, enum tag_type itemType,
+		    const char *value, size_t len);
 
-#define addItemToMpdTag(tag, itemType, value) \
-		addItemToMpdTagWithLen(tag, itemType, value, strlen(value))
+static inline void tag_add_item(struct mpd_tag *tag, enum tag_type itemType,
+				const char *value)
+{
+	tag_add_item_n(tag, itemType, value, strlen(value));
+}
 
-void printTagTypes(int fd);
+void tag_print_types(int fd);
 
-void printMpdTag(int fd, MpdTag * tag);
+void tag_print(int fd, const struct mpd_tag *tag);
 
-MpdTag *mpdTagDup(MpdTag * tag);
+struct mpd_tag *tag_dup(const struct mpd_tag *tag);
 
-int mpdTagsAreEqual(MpdTag * tag1, MpdTag * tag2);
+int tag_equal(const struct mpd_tag *tag1, const struct mpd_tag *tag2);
 
 #endif

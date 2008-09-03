@@ -292,9 +292,9 @@ static FLAC__StreamDecoderWriteStatus flacWrite(const flac_decoder *dec,
 	return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
 }
 
-static MpdTag *flacMetadataDup(char *file, int *vorbisCommentFound)
+static struct mpd_tag *flacMetadataDup(char *file, int *vorbisCommentFound)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	FLAC__Metadata_SimpleIterator *it;
 	FLAC__StreamMetadata *block = NULL;
 
@@ -338,7 +338,7 @@ static MpdTag *flacMetadataDup(char *file, int *vorbisCommentFound)
 				*vorbisCommentFound = 1;
 		} else if (block->type == FLAC__METADATA_TYPE_STREAMINFO) {
 			if (!ret)
-				ret = newMpdTag();
+				ret = tag_new();
 			ret->time = ((float)block->data.stream_info.
 				     total_samples) /
 			    block->data.stream_info.sample_rate + 0.5;
@@ -350,9 +350,9 @@ static MpdTag *flacMetadataDup(char *file, int *vorbisCommentFound)
 	return ret;
 }
 
-static MpdTag *flacTagDup(char *file)
+static struct mpd_tag *flacTagDup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	int foundVorbisComment = 0;
 
 	ret = flacMetadataDup(file, &foundVorbisComment);
@@ -362,10 +362,10 @@ static MpdTag *flacTagDup(char *file)
 		return NULL;
 	}
 	if (!foundVorbisComment) {
-		MpdTag *temp = id3Dup(file);
+		struct mpd_tag *temp = tag_id3_load(file);
 		if (temp) {
 			temp->time = ret->time;
-			freeMpdTag(ret);
+			tag_free(ret);
 			ret = temp;
 		}
 	}
@@ -466,9 +466,9 @@ static int flac_decode(InputStream * inStream)
 /* some of this stuff is duplicated from oggflac_plugin.c */
 extern InputPlugin oggflacPlugin;
 
-static MpdTag *oggflac_tag_dup(char *file)
+static struct mpd_tag *oggflac_tag_dup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	FLAC__Metadata_Iterator *it;
 	FLAC__StreamMetadata *block;
 	FLAC__Metadata_Chain *chain = FLAC__metadata_chain_new();
@@ -484,7 +484,7 @@ static MpdTag *oggflac_tag_dup(char *file)
 			ret = copyVorbisCommentBlockToMpdTag(block, ret);
 		} else if (block->type == FLAC__METADATA_TYPE_STREAMINFO) {
 			if (!ret)
-				ret = newMpdTag();
+				ret = tag_new();
 			ret->time = ((float)block->data.stream_info.
 				     total_samples) /
 			    block->data.stream_info.sample_rate + 0.5;

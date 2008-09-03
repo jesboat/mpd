@@ -16,17 +16,18 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef TAG_TRACKER_H
-#define TAG_TRACKER_H
+#ifndef MPD_TAG_ID3_H
+#define MPD_TAG_ID3_H
 
-int getNumberOfTagItems(int type);
+#include "../config.h"
 
-void printMemorySavedByTagTracker(void);
+struct mpd_tag;
 
-void resetVisitedFlagsInTagTracker(int type);
+#ifdef HAVE_ID3TAG
+struct id3_tag;
+struct mpd_tag *tag_id3_import(struct id3_tag *);
+#endif
 
-void visitInTagTracker(int type, const char *str);
-
-void printVisitedInTagTracker(int fd, int type);
+struct mpd_tag *tag_id3_load(const char *file);
 
 #endif

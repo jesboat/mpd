@@ -205,9 +205,9 @@ static int mod_decode(char *path)
 	return 0;
 }
 
-static MpdTag *modTagDup(char *file)
+static struct mpd_tag *modTagDup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	MODULE *moduleHandle;
 	char *title;
 
@@ -224,12 +224,12 @@ static MpdTag *modTagDup(char *file)
 	}
 	Player_Free(moduleHandle);
 
-	ret = newMpdTag();
+	ret = tag_new();
 
 	ret->time = 0;
 	title = xstrdup(Player_LoadTitle(file));
 	if (title)
-		addItemToMpdTag(ret, TAG_ITEM_TITLE, title);
+		tag_add_item(ret, TAG_ITEM_TITLE, title);
 
 	MikMod_Exit();
 

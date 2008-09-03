@@ -145,7 +145,7 @@ static const char *VORBIS_COMMENT_DISC_KEY = "discnumber";
 
 static unsigned int ogg_parseCommentAddToTag(char *comment,
 					     unsigned int itemType,
-					     MpdTag ** tag)
+					     struct mpd_tag ** tag)
 {
 	const char *needle;
 	unsigned int len;
@@ -163,9 +163,9 @@ static unsigned int ogg_parseCommentAddToTag(char *comment,
 
 	if (strncasecmp(comment, needle, len) == 0 && *(comment + len) == '=') {
 		if (!*tag)
-			*tag = newMpdTag();
+			*tag = tag_new();
 
-		addItemToMpdTag(*tag, itemType, comment + len + 1);
+		tag_add_item(*tag, itemType, comment + len + 1);
 
 		return 1;
 	}
@@ -173,9 +173,9 @@ static unsigned int ogg_parseCommentAddToTag(char *comment,
 	return 0;
 }
 
-static MpdTag *oggCommentsParse(char **comments)
+static struct mpd_tag *oggCommentsParse(char **comments)
 {
-	MpdTag *tag = NULL;
+	struct mpd_tag *tag = NULL;
 
 	while (*comments) {
 		int j;
@@ -193,18 +193,18 @@ static void putOggCommentsIntoOutputBuffer(char *streamName,
 					   char **comments,
 					   float cur_time)
 {
-	MpdTag *tag;
+	struct mpd_tag *tag;
 
 	tag = oggCommentsParse(comments);
 	if (!tag && streamName) {
-		tag = newMpdTag();
+		tag = tag_new();
 	}
 	if (!tag)
 		return;
 
 	if (streamName) {
-		clearItemsFromMpdTag(tag, TAG_ITEM_NAME);
-		addItemToMpdTag(tag, TAG_ITEM_NAME, streamName);
+		tag_clear_items_by_type(tag, TAG_ITEM_NAME);
+		tag_add_item(tag, TAG_ITEM_NAME, streamName);
 	}
 
 	metadata_pipe_send(tag, cur_time);
@@ -332,9 +332,9 @@ static int oggvorbis_decode(InputStream * inStream)
 	return 0;
 }
 
-static MpdTag *oggvorbis_TagDup(char *file)
+static struct mpd_tag *oggvorbis_TagDup(char *file)
 {
-	MpdTag *ret;
+	struct mpd_tag *ret;
 	FILE *fp;
 	OggVorbis_File vf;
 
@@ -352,7 +352,7 @@ static MpdTag *oggvorbis_TagDup(char *file)
 	ret = oggCommentsParse(ov_comment(&vf, -1)->user_comments);
 
 	if (!ret)
-		ret = newMpdTag();
+		ret = tag_new();
 	ret->time = (int)(ov_time_total(&vf, -1) + 0.5);
 
 	ov_clear(&vf);

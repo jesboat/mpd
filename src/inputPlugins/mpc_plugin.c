@@ -273,9 +273,9 @@ static float mpcGetTime(char *file)
 	return total_time;
 }
 
-static MpdTag *mpcTagDup(char *file)
+static struct mpd_tag *mpcTagDup(char *file)
 {
-	MpdTag *ret = NULL;
+	struct mpd_tag *ret = NULL;
 	float total_time = mpcGetTime(file);
 
 	if (total_time < 0) {
@@ -284,11 +284,11 @@ static MpdTag *mpcTagDup(char *file)
 		return NULL;
 	}
 
-	ret = apeDup(file);
+	ret = tag_ape_load(file);
 	if (!ret)
-		ret = id3Dup(file);
+		ret = tag_id3_load(file);
 	if (!ret)
-		ret = newMpdTag();
+		ret = tag_new();
 	ret->time = total_time;
 
 	return ret;

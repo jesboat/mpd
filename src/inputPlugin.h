@@ -54,7 +54,7 @@ typedef int (*InputPlugin_fileDecodeFunc) (char *path);
 
 /* file should be the full path!  Returns NULL if a tag cannot be found
  * or read */
-typedef MpdTag *(*InputPlugin_tagDupFunc) (char *file);
+typedef struct mpd_tag *(*InputPlugin_tagDupFunc) (char *file);
 
 typedef struct _InputPlugin {
 	const char *name;

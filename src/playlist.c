@@ -969,7 +969,7 @@ int playPlaylistById(int fd, int id, int stopOnError)
 }
 
 /* This is used when we stream data out to shout while playing static files */
-MpdTag *playlist_current_tag(void)
+struct mpd_tag *playlist_current_tag(void)
 {
 	Song *song = song_at(playlist.current);
 
@@ -981,18 +981,18 @@ MpdTag *playlist_current_tag(void)
 static void sync_metadata(void)
 {
 	Song *song;
-	MpdTag *tag;
+	struct mpd_tag *tag;
 
 	if (!(tag = metadata_pipe_current()))
 		return;
 	song = song_at(playlist.current);
 	if (!song || song->type != SONG_TYPE_URL ||
-	    mpdTagsAreEqual(song->tag, tag)) {
-		freeMpdTag(tag);
+	    tag_equal(song->tag, tag)) {
+		tag_free(tag);
 		return;
 	}
 	if (song->tag)
-		freeMpdTag(song->tag);
+		tag_free(song->tag);
 	song->tag = tag;
 	playlist.songMod[playlist.order[playlist.current]] = playlist.version;
 	incrPlaylistVersion();
