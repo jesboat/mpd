@@ -55,6 +55,11 @@ const char *mpdTagItemKeys[TAG_NUM_OF_ITEM_TYPES] = {
 
 static mpd_sint8 ignoreTagItems[TAG_NUM_OF_ITEM_TYPES];
 
+static size_t items_size(const struct mpd_tag *tag)
+{
+	return (tag->numOfItems * sizeof(struct tag_item));
+}
+
 void tag_lib_init(void)
 {
 	int quit = 0;
@@ -262,8 +267,9 @@ static void deleteItem(struct mpd_tag *tag, int idx)
 	assert(idx < tag->numOfItems);
 	tag->numOfItems--;
 
+	pthread_mutex_lock(&tag_pool_lock);
 	tag_pool_put_item(tag->items[idx]);
-	/* free(tag->items[idx].value); */
+	pthread_mutex_unlock(&tag_pool_lock);
 
 	if (tag->numOfItems - idx > 0) {
 		memmove(tag->items + idx, tag->items + idx + 1,
@@ -271,8 +277,7 @@ static void deleteItem(struct mpd_tag *tag, int idx)
 	}
 
 	if (tag->numOfItems > 0) {
-		tag->items = xrealloc(tag->items,
-				      tag->numOfItems * sizeof(*tag->items));
+		tag->items = xrealloc(tag->items, items_size(tag));
 	} else {
 		free(tag->items);
 		tag->items = NULL;
@@ -296,10 +301,10 @@ static void clearMpdTag(struct mpd_tag *tag)
 {
 	int i;
 
-	for (i = 0; i < tag->numOfItems; i++) {
-		/* free(tag->items[i].value); */
+	pthread_mutex_lock(&tag_pool_lock);
+	for (i = 0; i < tag->numOfItems; i++)
 		tag_pool_put_item(tag->items[i]);
-	}
+	pthread_mutex_unlock(&tag_pool_lock);
 
 	if (tag->items == bulk.items) {
 #ifndef NDEBUG
@@ -334,11 +339,12 @@ struct mpd_tag *tag_dup(const struct mpd_tag *tag)
 	ret = tag_new();
 	ret->time = tag->time;
 	ret->numOfItems = tag->numOfItems;
-	ret->items = xmalloc(ret->numOfItems * sizeof(ret->items[0]));
+	ret->items = ret->numOfItems > 0 ? xmalloc(items_size(tag)) : NULL;
 
-	for (i = 0; i < tag->numOfItems; i++) {
+	pthread_mutex_lock(&tag_pool_lock);
+	for (i = 0; i < tag->numOfItems; i++)
 		ret->items[i] = tag_pool_dup_item(tag->items[i]);
-	}
+	pthread_mutex_unlock(&tag_pool_lock);
 
 	return ret;
 }
@@ -404,10 +410,8 @@ void tag_end_add(struct mpd_tag *tag)
 		if (tag->numOfItems > 0) {
 			/* copy the tag items from the bulk list over
 			   to a new list (which fits exactly) */
-			tag->items = xmalloc(tag->numOfItems *
-					     sizeof(tag->items[0]));
-			memcpy(tag->items, bulk.items,
-			       tag->numOfItems * sizeof(tag->items[0]));
+			tag->items = xmalloc(items_size(tag));
+			memcpy(tag->items, bulk.items, items_size(tag));
 		} else
 			tag->items = NULL;
 	}
@@ -439,18 +443,19 @@ static void appendToTagItems(struct mpd_tag *tag, enum tag_type type,
 
 	if (tag->items != bulk.items)
 		/* bulk mode disabled */
-		tag->items = xrealloc(tag->items,
-				      tag->numOfItems * sizeof(*tag->items));
+		tag->items = xrealloc(tag->items, items_size(tag));
 	else if (tag->numOfItems >= BULK_MAX) {
 		/* bulk list already full - switch back to non-bulk */
 		assert(bulk.busy);
 
-		tag->items = xmalloc(tag->numOfItems * sizeof(tag->items[0]));
+		tag->items = xmalloc(items_size(tag));
 		memcpy(tag->items, bulk.items,
-		       (tag->numOfItems - 1) * sizeof(tag->items[0]));
+		       items_size(tag) - sizeof(struct tag_item));
 	}
 
+	pthread_mutex_lock(&tag_pool_lock);
 	tag->items[i] = tag_pool_get_item(type, p, len);
+	pthread_mutex_unlock(&tag_pool_lock);
 
 	if (p != value)
 		free(deconst_ptr(p));
