@@ -46,7 +46,7 @@ int addToStoredPlaylist(int fd, const char *file, const char *utf8file);
 
 int addSongToPlaylist(int fd, Song * song, int *added_id);
 
-int showPlaylist(int fd);
+void showPlaylist(int fd);
 
 int deleteFromPlaylist(int fd, int song);
 
@@ -74,7 +74,7 @@ void syncPlayerAndPlaylist(void);
 
 void previousSongInPlaylist(void);
 
-int shufflePlaylist(int fd);
+void shufflePlaylist(int fd);
 
 int savePlaylist(int fd, const char *utf8file);
 

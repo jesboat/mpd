@@ -243,7 +243,7 @@ int clearStoredPlaylist(int fd, const char *utf8file)
 	return removeAllFromStoredPlaylistByPath(fd, utf8file);
 }
 
-int showPlaylist(int fd)
+void showPlaylist(int fd)
 {
 	int i;
 	char path_max_tmp[MPD_PATH_MAX];
@@ -252,8 +252,6 @@ int showPlaylist(int fd)
 		fdprintf(fd, "%i:%s\n", i,
 		         get_song_url(path_max_tmp, playlist.songs[i]));
 	}
-
-	return 0;
 }
 
 void savePlaylistState(FILE *fp)
@@ -1256,7 +1254,7 @@ void previousSongInPlaylist(void)
 	play_order_num(prev_order_num, 0);
 }
 
-int shufflePlaylist(mpd_unused int fd)
+void shufflePlaylist(mpd_unused int fd)
 {
 	int i;
 	int ri;
@@ -1293,8 +1291,6 @@ int shufflePlaylist(mpd_unused int fd)
 		if (playlist_state == PLAYLIST_STATE_PLAY)
 			queueNextSongInPlaylist();
 	}
-
-	return 0;
 }
 
 int deletePlaylist(int fd, const char *utf8file)
