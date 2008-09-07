@@ -349,9 +349,9 @@ void readPlaylistState(FILE *fp)
 			if (strcmp
 			    (&(buffer[strlen(PLAYLIST_STATE_FILE_REPEAT)]),
 			     "1") == 0) {
-				setPlaylistRepeatStatus(STDERR_FILENO, 1);
+				setPlaylistRepeatStatus(1);
 			} else
-				setPlaylistRepeatStatus(STDERR_FILENO, 0);
+				setPlaylistRepeatStatus(0);
 		} else
 		    if (strncmp
 			(buffer, PLAYLIST_STATE_FILE_CROSSFADE,
@@ -368,9 +368,9 @@ void readPlaylistState(FILE *fp)
 			     (buffer
 			      [strlen(PLAYLIST_STATE_FILE_RANDOM)]),
 			     "1") == 0) {
-				setPlaylistRandomStatus(STDERR_FILENO, 1);
+				setPlaylistRandomStatus(1);
 			} else
-				setPlaylistRandomStatus(STDERR_FILENO, 0);
+				setPlaylistRandomStatus(0);
 		} else if (strncmp(buffer, PLAYLIST_STATE_FILE_CURRENT,
 				   strlen(PLAYLIST_STATE_FILE_CURRENT))
 			   == 0) {
@@ -1043,21 +1043,14 @@ int getPlaylistRandomStatus(void)
 	return playlist.random;
 }
 
-int setPlaylistRepeatStatus(int fd, int status)
+void setPlaylistRepeatStatus(int status)
 {
-	if (status != 0 && status != 1) {
-		commandError(fd, ACK_ERROR_ARG, "\"%i\" is not 0 or 1", status);
-		return -1;
-	}
-
 	if (playlist_state == PLAYLIST_STATE_PLAY) {
 		if (playlist.repeat && !status && playlist.queued == 0)
 			clear_queue();
 	}
 
 	playlist.repeat = status;
-
-	return 0;
 }
 
 int moveSongInPlaylist(int fd, int from, int to)
@@ -1217,14 +1210,9 @@ static void randomizeOrder(int start, int end)
 	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
 }
 
-int setPlaylistRandomStatus(int fd, int status)
+void setPlaylistRandomStatus(int status)
 {
 	int statusWas = playlist.random;
-
-	if (status != 0 && status != 1) {
-		commandError(fd, ACK_ERROR_ARG, "\"%i\" is not 0 or 1", status);
-		return -1;
-	}
 
 	playlist.random = status;
 
@@ -1239,8 +1227,6 @@ int setPlaylistRandomStatus(int fd, int status)
 			      __func__,__LINE__,playlist.queued);
 		}
 	}
-
-	return 0;
 }
 
 void previousSongInPlaylist(void)

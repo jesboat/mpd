@@ -771,7 +771,15 @@ static int handleRepeat(int fd, mpd_unused int *permission,
 
 	if (check_int(fd, &status, argv[1], need_integer) < 0)
 		return -1;
-	return setPlaylistRepeatStatus(fd, status);
+
+	if (status != 0 && status != 1) {
+		commandError(fd, ACK_ERROR_ARG,
+			     "\"%i\" is not 0 or 1", status);
+		return -1;
+	}
+
+	setPlaylistRepeatStatus(status);
+	return 0;
 }
 
 static int handleRandom(int fd, mpd_unused int *permission,
@@ -781,7 +789,15 @@ static int handleRandom(int fd, mpd_unused int *permission,
 
 	if (check_int(fd, &status, argv[1], need_integer) < 0)
 		return -1;
-	return setPlaylistRandomStatus(fd, status);
+
+	if (status != 0 && status != 1) {
+		commandError(fd, ACK_ERROR_ARG,
+			     "\"%i\" is not 0 or 1", status);
+		return -1;
+	}
+
+	setPlaylistRandomStatus(status);
+	return 0;
 }
 
 static int handleStats(int fd, mpd_unused int *permission,
