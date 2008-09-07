@@ -440,7 +440,13 @@ static int handleAdd(int fd, mpd_unused int *permission,
 	if (isRemoteUrl(path))
 		return addToPlaylist(path, NULL);
 
-	result = addAllIn(fd, path);
+	result = addAllIn(path);
+	if (result == (enum playlist_result)-1) {
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+		return -1;
+	}
+
 	return print_playlist_result(fd, result);
 }
 
@@ -656,6 +662,9 @@ static int handleFind(int fd, mpd_unused int *permission,
 	}
 
 	ret = findSongsIn(fd, NULL, numItems, items);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
 
 	freeLocateTagItemArray(numItems, items);
 
@@ -678,6 +687,9 @@ static int handleSearch(int fd, mpd_unused int *permission,
 	}
 
 	ret = searchForSongsIn(fd, NULL, numItems, items);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
 
 	freeLocateTagItemArray(numItems, items);
 
@@ -700,6 +712,9 @@ static int handleCount(int fd, mpd_unused int *permission,
 	}
 
 	ret = searchStatsForSongsIn(fd, NULL, numItems, items);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
 
 	freeLocateTagItemArray(numItems, items);
 
@@ -838,10 +853,17 @@ static int handleListAll(int fd, mpd_unused int *permission,
 			 mpd_unused int argc, char *argv[])
 {
 	char *directory = NULL;
+	int ret;
 
 	if (argc == 2)
 		directory = argv[1];
-	return printAllIn(fd, directory);
+
+	ret = printAllIn(fd, directory);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+
+	return ret;
 }
 
 static int handleVolume(int fd, mpd_unused int *permission,
@@ -960,6 +982,10 @@ static int handleList(int fd, mpd_unused int *permission,
 	if (conditionals)
 		freeLocateTagItemArray(numConditionals, conditionals);
 
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+
 	return ret;
 }
 
@@ -1053,10 +1079,16 @@ static int handleListAllInfo(int fd, mpd_unused int *permission,
 			     mpd_unused int argc, char *argv[])
 {
 	char *directory = NULL;
+	int ret;
 
 	if (argc == 2)
 		directory = argv[1];
-	return printInfoForAllIn(fd, directory);
+	ret = printInfoForAllIn(fd, directory);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+
+	return ret;
 }
 
 static int handlePing(mpd_unused int fd, mpd_unused int *permission,
@@ -1173,7 +1205,14 @@ static int handlePlaylistAdd(int fd, mpd_unused int *permission,
 	if (isRemoteUrl(path))
 		result = addToStoredPlaylist(path, playlist);
 	else
-		result = addAllInToStoredPlaylist(fd, path, playlist);
+		result = addAllInToStoredPlaylist(path, playlist);
+
+	if (result == (enum playlist_result)-1) {
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+		return -1;
+	}
+
 	return print_playlist_result(fd, result);
 }
 
