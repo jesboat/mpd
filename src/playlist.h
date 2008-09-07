@@ -126,6 +126,8 @@ void searchForSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 
 void findSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 
+int is_valid_playlist_name(const char *utf8path);
+
 int valid_playlist_name(int err_fd, const char *utf8path);
 
 struct mpd_tag *playlist_current_tag(void);
