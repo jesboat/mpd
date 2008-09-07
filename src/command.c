@@ -263,6 +263,7 @@ static int print_playlist_result(int fd, enum playlist_result result)
 	}
 
 	assert(0);
+	return -1;
 }
 
 static void addCommand(const char *name,
