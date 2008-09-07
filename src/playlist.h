@@ -50,11 +50,11 @@ void savePlaylistState(FILE *);
 
 void clearPlaylist(void);
 
-int clearStoredPlaylist(int fd, const char *utf8file);
+int clearStoredPlaylist(const char *utf8file);
 
 enum playlist_result addToPlaylist(const char *file, int *added_id);
 
-int addToStoredPlaylist(int fd, const char *file, const char *utf8file);
+int addToStoredPlaylist(const char *file, const char *utf8file);
 
 enum playlist_result addSongToPlaylist(Song * song, int *added_id);
 
@@ -102,7 +102,7 @@ enum playlist_result swapSongsInPlaylist(int song1, int song2);
 
 enum playlist_result swapSongsInPlaylistById(int id1, int id2);
 
-int loadPlaylist(int fd, const char *utf8file);
+enum playlist_result loadPlaylist(int fd, const char *utf8file);
 
 int getPlaylistRepeatStatus(void);
 
@@ -137,8 +137,6 @@ void searchForSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 void findSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 
 int is_valid_playlist_name(const char *utf8path);
-
-int valid_playlist_name(int err_fd, const char *utf8path);
 
 struct mpd_tag *playlist_current_tag(void);
 
