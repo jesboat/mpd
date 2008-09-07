@@ -307,13 +307,15 @@ fail:
 
 static int alsa_errorRecovery(AlsaData * ad, int err)
 {
+	snd_pcm_state_t state;
+
 	if (err == -EPIPE) {
 		DEBUG("Underrun on alsa device \"%s\"\n", ad->device);
 	} else if (err == -ESTRPIPE) {
 		DEBUG("alsa device \"%s\" was suspended\n", ad->device);
 	}
 
-	switch (snd_pcm_state(ad->pcmHandle)) {
+	switch (state = snd_pcm_state(ad->pcmHandle)) {
 	case SND_PCM_STATE_PAUSED:
 		err = snd_pcm_pause(ad->pcmHandle, /* disable */ 0);
 		break;
@@ -333,10 +335,14 @@ static int alsa_errorRecovery(AlsaData * ad, int err)
 		break;
 	/* this is no error, so just keep running */
 	case SND_PCM_STATE_RUNNING:
-		err = 0;
+		if (mpd_unlikely(err)) {
+			DEBUG("ALSA: ignoring possible error: %s\n",
+			      snd_strerror(-err));
+			err = 0;
+		}
 		break;
 	default:
-		/* unknown state, do nothing */
+		DEBUG("ALSA in unknown state: %s\n", snd_pcm_state_name(state));
 		break;
 	}
 
