@@ -376,44 +376,50 @@ static int commandStatus(mpd_unused int fd, mpd_unused int *permission,
 		break;
 	}
 
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_VOLUME, getVolumeLevel());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_REPEAT,
-		 getPlaylistRepeatStatus());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_RANDOM,
-		 getPlaylistRandomStatus());
-	fdprintf(fd, "%s: %li\n", COMMAND_STATUS_PLAYLIST,
-		 getPlaylistVersion());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_PLAYLIST_LENGTH,
-		 getPlaylistLength());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_CROSSFADE,
-		 (int)(ob_get_xfade() + 0.5));
-
-	fdprintf(fd, "%s: %s\n", COMMAND_STATUS_STATE, state);
+	fdprintf(fd,
+		      COMMAND_STATUS_VOLUME ": %i\n"
+		      COMMAND_STATUS_REPEAT ": %i\n"
+		      COMMAND_STATUS_RANDOM ": %i\n"
+		      COMMAND_STATUS_PLAYLIST ": %li\n"
+		      COMMAND_STATUS_PLAYLIST_LENGTH ": %i\n"
+		      COMMAND_STATUS_CROSSFADE ": %i\n"
+		      COMMAND_STATUS_STATE ": %s\n",
+		      getVolumeLevel(),
+		      getPlaylistRepeatStatus(),
+		      getPlaylistRandomStatus(),
+		      getPlaylistVersion(),
+		      getPlaylistLength(),
+		      (int)(ob_get_xfade() + 0.5),
+		      state);
 
 	song = getPlaylistCurrentSong();
 	if (song >= 0) {
-		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_SONG, song);
-		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_SONGID,
-			 getPlaylistSongId(song));
+		fdprintf(fd,
+			      COMMAND_STATUS_SONG ": %i\n"
+			      COMMAND_STATUS_SONGID ": %i\n",
+			      song, getPlaylistSongId(song));
 	}
 	if (ob_get_state() != OB_STATE_STOP) {
-		fdprintf(fd, "%s: %lu:%lu\n", COMMAND_STATUS_TIME,
-			 ob_get_elapsed_time(), ob_get_total_time());
-		fdprintf(fd, "%s: %u\n", COMMAND_STATUS_BITRATE,
-		         ob_get_bit_rate());
-		fdprintf(fd, "%s: %u:%u:%u\n", COMMAND_STATUS_AUDIO,
-			 ob_get_sample_rate(), ob_get_bits(),
-			 ob_get_channels());
+		fdprintf(fd,
+			      COMMAND_STATUS_TIME ": %lu:%lu\n"
+			      COMMAND_STATUS_BITRATE ": %u\n"
+			      COMMAND_STATUS_AUDIO ": %u:%u:%u\n",
+			      ob_get_elapsed_time(),
+			      ob_get_total_time(),
+			      ob_get_bit_rate(),
+			      ob_get_sample_rate(),
+			      ob_get_bits(),
+			      ob_get_channels());
 	}
 
 	if ((updateJobId = isUpdatingDB())) {
-		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_UPDATING_DB,
-			 updateJobId);
+		fdprintf(fd, COMMAND_STATUS_UPDATING_DB ": %i\n",
+			     updateJobId);
 	}
 
 	if (player_errno != PLAYER_ERROR_NONE) {
-		fdprintf(fd, "%s: %s\n", COMMAND_STATUS_ERROR,
-			 player_strerror());
+		fdprintf(fd, COMMAND_STATUS_ERROR ": %s\n",
+			     player_strerror());
 	}
 
 	return 0;
