@@ -945,6 +945,7 @@ int playPlaylist(int fd, int song, int stopOnError)
 			playlist.current = 0;
 			swapOrder(i, playlist.current);
 			i = playlist.current;
+			randomizeOrder(i + 1, playlist.length - 1);
 		}
 	}
 
