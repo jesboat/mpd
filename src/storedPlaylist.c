@@ -67,7 +67,9 @@ static int writeStoredPlaylistToPath(int fd, List *list, const char *utf8path)
 	char *s;
 	char path_max_tmp[MPD_PATH_MAX];
 
-	if (!utf8path || !valid_playlist_name(fd, utf8path))
+	assert(utf8path);
+
+	if (!valid_playlist_name(fd, utf8path))
 		return -1;
 
 	utf8_to_fs_playlist_path(path_max_tmp, utf8path);
