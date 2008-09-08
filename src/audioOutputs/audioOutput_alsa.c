@@ -23,6 +23,8 @@
 #define ALSA_PCM_NEW_HW_PARAMS_API
 #define ALSA_PCM_NEW_SW_PARAMS_API
 
+static const char default_device[] = "default";
+
 #define MPD_ALSA_BUFFER_TIME_US 500000
 /* the default period time of xmms is 50 ms, so let's use that as well.
  * a user can tweak this parameter via the "period_time" config parameter.
@@ -55,7 +57,7 @@ typedef snd_pcm_sframes_t alsa_writei_t(snd_pcm_t * pcm, const void *buffer,
 					snd_pcm_uframes_t size);
 
 typedef struct _AlsaData {
-	char *device;
+	const char *device;
 	snd_pcm_t *pcmHandle;
 	alsa_writei_t *writei;
 	unsigned int buffer_time;
@@ -68,7 +70,7 @@ static AlsaData *newAlsaData(void)
 {
 	AlsaData *ret = xmalloc(sizeof(AlsaData));
 
-	ret->device = NULL;
+	ret->device = default_device;
 	ret->pcmHandle = NULL;
 	ret->writei = snd_pcm_writei;
 	ret->useMmap = 0;
@@ -80,9 +82,8 @@ static AlsaData *newAlsaData(void)
 
 static void freeAlsaData(AlsaData * ad)
 {
-	if (ad->device)
-		free(ad->device);
-
+	if (ad->device && ad->device != default_device)
+		free(deconst_ptr(ad->device));
 	free(ad);
 }
 
@@ -91,9 +92,10 @@ static int alsa_initDriver(AudioOutput * audioOutput, ConfigParam * param)
 	AlsaData *ad = newAlsaData();
 
 	if (param) {
-		BlockParam *bp = getBlockParam(param, "device");
-		ad->device = bp ? xstrdup(bp->value) : xstrdup("default");
+		BlockParam *bp;
 
+		if ((bp = getBlockParam(param, "device")))
+			ad->device = xstrdup(bp->value);
 		ad->useMmap = getBoolBlockParam(param, "use_mmap", 1);
 		if (ad->useMmap == CONF_BOOL_UNSET)
 			ad->useMmap = 0;
@@ -101,8 +103,7 @@ static int alsa_initDriver(AudioOutput * audioOutput, ConfigParam * param)
 			ad->buffer_time = atoi(bp->value);
 		if ((bp = getBlockParam(param, "period_time")))
 			ad->period_time = atoi(bp->value);
-	} else
-		ad->device = xstrdup("default");
+	}
 	audioOutput->data = ad;
 
 	return 0;
@@ -119,8 +120,8 @@ static int alsa_testDefault(void)
 {
 	snd_pcm_t *handle;
 
-	int ret = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK,
-			       SND_PCM_NONBLOCK);
+	int ret = snd_pcm_open(&handle, default_device,
+	                       SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
 	snd_config_update_free_global();
 
 	if (ret) {
