@@ -36,6 +36,19 @@
 
 #include <alsa/asoundlib.h>
 
+/*
+ * This macro will evaluate both statements, but only returns the result
+ * of the second statement to the reader.  Thus it'll stringify the
+ * command name and assign it to the scoped cmd variable.
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#  define E(command , arg1 , ...) \
+	(err_cmd = #command, command( arg1 , __VA_ARGS__ ))
+#else /* ! C99, this works for gcc 2.95 at least: */
+#  define E(command , arg1 , args...) \
+	(err_cmd = #command, command( arg1 , ##args ))
+#endif /* ! C99 */
+
 typedef snd_pcm_sframes_t alsa_writei_t(snd_pcm_t * pcm, const void *buffer,
 					snd_pcm_uframes_t size);
 
@@ -48,7 +61,6 @@ typedef struct _AlsaData {
 	int sampleSize;
 	int useMmap;
 	int canPause;
-	int canResume;
 } AlsaData;
 
 static AlsaData *newAlsaData(void)
@@ -132,7 +144,7 @@ static int alsa_openDevice(AudioOutput * audioOutput)
 	snd_pcm_uframes_t alsa_buffer_size;
 	snd_pcm_uframes_t alsa_period_size;
 	int err;
-	const char *cmd = NULL;
+	const char *err_cmd = NULL;
 	int retry = MPD_ALSA_RETRY_NR;
 	unsigned int period_time, period_time_ro;
 	unsigned int buffer_time;
@@ -156,57 +168,49 @@ static int alsa_openDevice(AudioOutput * audioOutput)
 		return -1;
 	}
 
-	err = snd_pcm_open(&ad->pcmHandle, ad->device,
-			   SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+	err = E(snd_pcm_open, &ad->pcmHandle, ad->device,
+	        SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
 	snd_config_update_free_global();
 	if (err < 0) {
 		ad->pcmHandle = NULL;
 		goto error;
 	}
 
-	cmd = "snd_pcm_nonblock";
-	err = snd_pcm_nonblock(ad->pcmHandle, 0);
-	if (err < 0)
+	if ((err = E(snd_pcm_nonblock, ad->pcmHandle, 0)) < 0)
 		goto error;
 
 	period_time_ro = period_time = ad->period_time;
 configure_hw:
 	/* configure HW params */
 	snd_pcm_hw_params_alloca(&hwparams);
-
-	cmd = "snd_pcm_hw_params_any";
-	err = snd_pcm_hw_params_any(ad->pcmHandle, hwparams);
-	if (err < 0)
+	if ((err = E(snd_pcm_hw_params_any, ad->pcmHandle, hwparams)) < 0)
 		goto error;
 
 	if (ad->useMmap) {
 		err = snd_pcm_hw_params_set_access(ad->pcmHandle, hwparams,
-						   SND_PCM_ACCESS_MMAP_INTERLEAVED);
+					SND_PCM_ACCESS_MMAP_INTERLEAVED);
 		if (err < 0) {
-			ERROR("Cannot set mmap'ed mode on alsa device \"%s\": "
-			      " %s\n", ad->device, snd_strerror(-err));
-			ERROR("Falling back to direct write mode\n");
+			ERROR("ALSA cannot enable mmap on device \"%s\": %s. "
+			      "Falling back to direct write mode\n",
+			      ad->device, snd_strerror(-err));
 			ad->useMmap = 0;
-		} else
-			ad->writei = snd_pcm_mmap_writei;
+		}
 	}
-
-	if (!ad->useMmap) {
-		cmd = "snd_pcm_hw_params_set_access";
-		err = snd_pcm_hw_params_set_access(ad->pcmHandle, hwparams,
-						   SND_PCM_ACCESS_RW_INTERLEAVED);
-		if (err < 0)
+	if (ad->useMmap) {
+		ad->writei = snd_pcm_mmap_writei;
+	} else {
+		if ((err = E(snd_pcm_hw_params_set_access, ad->pcmHandle,
+		             hwparams, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
 			goto error;
 		ad->writei = snd_pcm_writei;
 	}
 
 	err = snd_pcm_hw_params_set_format(ad->pcmHandle, hwparams, bitformat);
 	if (err < 0) {
-		ERROR("ALSA device \"%s\" does not support %i bit audio: "
-		      "%s\n", ad->device, audioFormat->bits, snd_strerror(-err));
+		ERROR("ALSA device \"%s\" does not support %i bit audio:%s\n",
+		      ad->device, audioFormat->bits, snd_strerror(-err));
 		goto fail;
 	}
-
 	err = snd_pcm_hw_params_set_channels_near(ad->pcmHandle, hwparams,
 						  &channels);
 	if (err < 0) {
@@ -227,21 +231,17 @@ configure_hw:
 	audioFormat->sampleRate = sampleRate;
 
 	buffer_time = ad->buffer_time;
-	cmd = "snd_pcm_hw_params_set_buffer_time_near";
-	err = snd_pcm_hw_params_set_buffer_time_near(ad->pcmHandle, hwparams,
-						     &buffer_time, NULL);
-	if (err < 0)
+	if ((err = E(snd_pcm_hw_params_set_buffer_time_near, ad->pcmHandle,
+	             hwparams, &buffer_time, NULL)) < 0)
 		goto error;
 
 	period_time = period_time_ro;
-	cmd = "snd_pcm_hw_params_set_period_time_near";
-	err = snd_pcm_hw_params_set_period_time_near(ad->pcmHandle, hwparams,
-						     &period_time, NULL);
-	if (err < 0)
+
+	if ((err = E(snd_pcm_hw_params_set_period_time_near,
+	             ad->pcmHandle, hwparams, &period_time, NULL)) < 0)
 		goto error;
 
-	cmd = "snd_pcm_hw_params";
-	err = snd_pcm_hw_params(ad->pcmHandle, hwparams);
+	err = E(snd_pcm_hw_params, ad->pcmHandle, hwparams);
 	if (err == -EPIPE && --retry > 0) {
 		period_time_ro = period_time_ro >> 1;
 		goto configure_hw;
@@ -250,49 +250,31 @@ configure_hw:
 	if (retry != MPD_ALSA_RETRY_NR)
 		DEBUG("ALSA period_time set to %d\n", period_time);
 
-	cmd = "snd_pcm_hw_params_get_buffer_size";
-	err = snd_pcm_hw_params_get_buffer_size(hwparams, &alsa_buffer_size);
-	if (err < 0)
+	if ((err = E(snd_pcm_hw_params_get_buffer_size, hwparams,
+	             &alsa_buffer_size)) < 0)
 		goto error;
 
-	cmd = "snd_pcm_hw_params_get_period_size";
-	err = snd_pcm_hw_params_get_period_size(hwparams, &alsa_period_size,
-						NULL);
-	if (err < 0)
+	if ((err = E(snd_pcm_hw_params_get_period_size, hwparams,
+	             &alsa_period_size, NULL)) < 0)
 		goto error;
 
 	ad->canPause = snd_pcm_hw_params_can_pause(hwparams);
-	ad->canResume = snd_pcm_hw_params_can_resume(hwparams);
 
 	/* configure SW params */
 	snd_pcm_sw_params_alloca(&swparams);
 
-	cmd = "snd_pcm_sw_params_current";
-	err = snd_pcm_sw_params_current(ad->pcmHandle, swparams);
-	if (err < 0)
+	if ((err = E(snd_pcm_sw_params_current, ad->pcmHandle, swparams)) < 0)
 		goto error;
-
-	cmd = "snd_pcm_sw_params_set_start_threshold";
-	err = snd_pcm_sw_params_set_start_threshold(ad->pcmHandle, swparams,
-						    alsa_buffer_size -
-						    alsa_period_size);
-	if (err < 0)
+	if ((err = E(snd_pcm_sw_params_set_start_threshold, ad->pcmHandle,
+	              swparams, alsa_buffer_size - alsa_period_size)) < 0)
 		goto error;
-
-	cmd = "snd_pcm_sw_params_set_avail_min";
-	err = snd_pcm_sw_params_set_avail_min(ad->pcmHandle, swparams,
-					      alsa_period_size);
-	if (err < 0)
+	if ((err = E(snd_pcm_sw_params_set_avail_min, ad->pcmHandle,
+	             swparams, alsa_period_size)) < 0)
 		goto error;
-
-	cmd = "snd_pcm_sw_params_set_xfer_align";
-	err = snd_pcm_sw_params_set_xfer_align(ad->pcmHandle, swparams, 1);
-	if (err < 0)
+	if ((err = E(snd_pcm_sw_params_set_xfer_align, ad->pcmHandle,
+	             swparams, 1)) < 0)
 		goto error;
-
-	cmd = "snd_pcm_sw_params";
-	err = snd_pcm_sw_params(ad->pcmHandle, swparams);
-	if (err < 0)
+	if ((err = E(snd_pcm_sw_params, ad->pcmHandle, swparams)) < 0)
 		goto error;
 
 	ad->sampleSize = (audioFormat->bits / 8) * audioFormat->channels;
@@ -306,9 +288,9 @@ configure_hw:
 	return 0;
 
 error:
-	if (cmd) {
+	if (err_cmd) {
 		ERROR("Error opening alsa device \"%s\" (%s): %s\n",
-		      ad->device, cmd, snd_strerror(-err));
+		      ad->device, err_cmd, snd_strerror(-err));
 	} else {
 		ERROR("Error opening alsa device \"%s\": %s\n", ad->device,
 		      snd_strerror(-err));
@@ -323,24 +305,26 @@ fail:
 
 static int alsa_errorRecovery(AlsaData * ad, int err)
 {
+	snd_pcm_state_t state = snd_pcm_state(ad->pcmHandle);
+	const char *err_cmd = NULL;
+
 	if (err == -EPIPE) {
 		DEBUG("Underrun on alsa device \"%s\"\n", ad->device);
 	} else if (err == -ESTRPIPE) {
 		DEBUG("alsa device \"%s\" was suspended\n", ad->device);
 	}
 
-	switch (snd_pcm_state(ad->pcmHandle)) {
+	switch (state) {
 	case SND_PCM_STATE_PAUSED:
-		err = snd_pcm_pause(ad->pcmHandle, /* disable */ 0);
+		err = E(snd_pcm_pause, ad->pcmHandle, /* disable */ 0);
 		break;
 	case SND_PCM_STATE_SUSPENDED:
-		err = ad->canResume ?
-		    snd_pcm_resume(ad->pcmHandle) :
-		    snd_pcm_prepare(ad->pcmHandle);
-		break;
+		if ((err = E(snd_pcm_resume, ad->pcmHandle)) == -EAGAIN)
+			return 0;
+		/* fall-through to snd_pcm_prepare: */
 	case SND_PCM_STATE_SETUP:
 	case SND_PCM_STATE_XRUN:
-		err = snd_pcm_prepare(ad->pcmHandle);
+		err = E(snd_pcm_prepare, ad->pcmHandle);
 		break;
 	case SND_PCM_STATE_DISCONNECTED:
 		/* so alsa_closeDevice won't try to drain: */
@@ -349,13 +333,20 @@ static int alsa_errorRecovery(AlsaData * ad, int err)
 		break;
 	/* this is no error, so just keep running */
 	case SND_PCM_STATE_RUNNING:
-		err = 0;
+		if (mpd_unlikely(err)) {
+			DEBUG("ALSA: ignoring possible error: %s\n",
+			      snd_strerror(-err));
+			err = 0;
+		}
 		break;
 	default:
-		/* unknown state, do nothing */
+		DEBUG("ALSA in unknown state: %s\n", snd_pcm_state_name(state));
 		break;
 	}
-
+error:
+	if (err && err_cmd)
+		ERROR("ALSA error on device \"%s\" (%s): %s\n",
+		      ad->device, err_cmd, snd_strerror(-err));
 	return err;
 }
 
