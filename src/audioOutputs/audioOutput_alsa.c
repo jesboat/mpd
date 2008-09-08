@@ -62,7 +62,6 @@ typedef struct _AlsaData {
 	unsigned int period_time;
 	int sampleSize;
 	int useMmap;
-	int canPause;
 } AlsaData;
 
 static AlsaData *newAlsaData(void)
@@ -256,8 +255,6 @@ configure_hw:
 	if ((err = E(snd_pcm_hw_params_get_period_size, hwparams,
 	             &alsa_period_size, NULL)) < 0)
 		goto error;
-
-	ad->canPause = snd_pcm_hw_params_can_pause(hwparams);
 
 	/* configure SW params */
 	snd_pcm_sw_params_alloca(&swparams);
