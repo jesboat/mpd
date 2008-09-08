@@ -40,6 +40,8 @@
  * This macro will evaluate both statements, but only returns the result
  * of the second statement to the reader.  Thus it'll stringify the
  * command name and assign it to the scoped cmd variable.
+ * Note that ALSA is strictly for Linux , and anybody compiling
+ * on Linux will have gcc or a gcc-compatible compiler anyways.
  */
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 #  define E(command , arg1 , ...) \
