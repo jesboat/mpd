@@ -189,19 +189,17 @@ configure_hw:
 		goto error;
 
 	if (ad->useMmap) {
-		err = snd_pcm_hw_params_set_access(ad->pcmHandle, hwparams,
-					SND_PCM_ACCESS_MMAP_INTERLEAVED);
-		if (err < 0) {
+		if (!(err = snd_pcm_hw_params_set_access(ad->pcmHandle,
+		                hwparams, SND_PCM_ACCESS_MMAP_INTERLEAVED))) {
+			ad->writei = snd_pcm_mmap_writei;
+		} else {
 			ERROR("ALSA cannot enable mmap on device \"%s\": %s. "
 			      "Falling back to direct write mode\n",
 			      ad->device, snd_strerror(-err));
 			ad->useMmap = 0;
 		}
-	}
-	if (ad->useMmap)
-		ad->writei = snd_pcm_mmap_writei;
-	else if ((err = E(snd_pcm_hw_params_set_access, ad->pcmHandle,
-		          hwparams, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+	} else if ((err = E(snd_pcm_hw_params_set_access, ad->pcmHandle,
+		            hwparams, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
 		goto error;
 
 	err = snd_pcm_hw_params_set_format(ad->pcmHandle, hwparams, bitformat);
