@@ -61,7 +61,6 @@ typedef struct _AlsaData {
 	int sampleSize;
 	int useMmap;
 	int canPause;
-	int canResume;
 } AlsaData;
 
 static AlsaData *newAlsaData(void)
@@ -260,7 +259,6 @@ configure_hw:
 		goto error;
 
 	ad->canPause = snd_pcm_hw_params_can_pause(hwparams);
-	ad->canResume = snd_pcm_hw_params_can_resume(hwparams);
 
 	/* configure SW params */
 	snd_pcm_sw_params_alloca(&swparams);
@@ -307,7 +305,8 @@ fail:
 
 static int alsa_errorRecovery(AlsaData * ad, int err)
 {
-	snd_pcm_state_t state;
+	snd_pcm_state_t state = snd_pcm_state(ad->pcmHandle);
+	const char *err_cmd = NULL;
 
 	if (err == -EPIPE) {
 		DEBUG("Underrun on alsa device \"%s\"\n", ad->device);
@@ -315,18 +314,17 @@ static int alsa_errorRecovery(AlsaData * ad, int err)
 		DEBUG("alsa device \"%s\" was suspended\n", ad->device);
 	}
 
-	switch (state = snd_pcm_state(ad->pcmHandle)) {
+	switch (state) {
 	case SND_PCM_STATE_PAUSED:
-		err = snd_pcm_pause(ad->pcmHandle, /* disable */ 0);
+		err = E(snd_pcm_pause, ad->pcmHandle, /* disable */ 0);
 		break;
 	case SND_PCM_STATE_SUSPENDED:
-		err = ad->canResume ?
-		    snd_pcm_resume(ad->pcmHandle) :
-		    snd_pcm_prepare(ad->pcmHandle);
-		break;
+		if ((err = E(snd_pcm_resume, ad->pcmHandle)) == -EAGAIN)
+			return 0;
+		/* fall-through to snd_pcm_prepare: */
 	case SND_PCM_STATE_SETUP:
 	case SND_PCM_STATE_XRUN:
-		err = snd_pcm_prepare(ad->pcmHandle);
+		err = E(snd_pcm_prepare, ad->pcmHandle);
 		break;
 	case SND_PCM_STATE_DISCONNECTED:
 		/* so alsa_closeDevice won't try to drain: */
@@ -345,7 +343,10 @@ static int alsa_errorRecovery(AlsaData * ad, int err)
 		DEBUG("ALSA in unknown state: %s\n", snd_pcm_state_name(state));
 		break;
 	}
-
+error:
+	if (err && err_cmd)
+		ERROR("ALSA error on device \"%s\" (%s): %s\n",
+		      ad->device, err_cmd, snd_strerror(-err));
 	return err;
 }
 
