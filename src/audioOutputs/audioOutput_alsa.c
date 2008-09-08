@@ -246,9 +246,8 @@ configure_hw:
 		goto configure_hw;
 	} else if (err < 0)
 		goto error;
-	if (retry != MPD_ALSA_RETRY_NR)
-		DEBUG("ALSA period_time set to %d\n", period_time);
 
+	DEBUG("ALSA period_time set to %d\n", period_time);
 	if ((err = E(snd_pcm_hw_params_get_buffer_size, hwparams,
 	             &alsa_buffer_size)) < 0)
 		goto error;
