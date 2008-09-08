@@ -198,14 +198,11 @@ configure_hw:
 			ad->useMmap = 0;
 		}
 	}
-	if (ad->useMmap) {
+	if (ad->useMmap)
 		ad->writei = snd_pcm_mmap_writei;
-	} else {
-		if ((err = E(snd_pcm_hw_params_set_access, ad->pcmHandle,
-		             hwparams, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
-			goto error;
-		ad->writei = snd_pcm_writei;
-	}
+	else if ((err = E(snd_pcm_hw_params_set_access, ad->pcmHandle,
+		          hwparams, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0)
+		goto error;
 
 	err = snd_pcm_hw_params_set_format(ad->pcmHandle, hwparams, bitformat);
 	if (err < 0) {
