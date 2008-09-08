@@ -159,8 +159,8 @@ static int alsa_openDevice(AudioOutput * audioOutput)
 	snd_pcm_sw_params_t *swparams;
 	unsigned int sampleRate = audioFormat->sampleRate;
 	unsigned int channels = audioFormat->channels;
-	snd_pcm_uframes_t alsa_buffer_size;
-	snd_pcm_uframes_t alsa_period_size;
+	snd_pcm_uframes_t buffer_size;
+	snd_pcm_uframes_t period_size;
 	int err;
 	const char *err_cmd = NULL;
 	int retry = MPD_ALSA_RETRY_NR;
@@ -245,14 +245,17 @@ configure_hw:
 	} else if (err < 0)
 		goto error;
 
-	DEBUG("ALSA period_time set to %d\n", period_time);
+	DEBUG("ALSA(%s) period_time: %u, buffer_time: %u\n",
+	      ad->device, period_time, buffer_time);
 	if ((err = E(snd_pcm_hw_params_get_buffer_size, hwparams,
-	             &alsa_buffer_size)) < 0)
+	             &buffer_size)) < 0)
 		goto error;
 
 	if ((err = E(snd_pcm_hw_params_get_period_size, hwparams,
-	             &alsa_period_size, NULL)) < 0)
+	             &period_size, NULL)) < 0)
 		goto error;
+	DEBUG("ALSA(%s) period_size: %lu buffer_size: %lu\n",
+	      ad->device, period_size, buffer_size);
 
 	/* configure SW params */
 	snd_pcm_sw_params_alloca(&swparams);
@@ -260,10 +263,10 @@ configure_hw:
 	if ((err = E(snd_pcm_sw_params_current, ad->pcmHandle, swparams)) < 0)
 		goto error;
 	if ((err = E(snd_pcm_sw_params_set_start_threshold, ad->pcmHandle,
-	              swparams, alsa_buffer_size - alsa_period_size)) < 0)
+	              swparams, buffer_size - period_size)) < 0)
 		goto error;
 	if ((err = E(snd_pcm_sw_params_set_avail_min, ad->pcmHandle,
-	             swparams, alsa_period_size)) < 0)
+	             swparams, period_size)) < 0)
 		goto error;
 	if ((err = E(snd_pcm_sw_params, ad->pcmHandle, swparams)) < 0)
 		goto error;
@@ -319,13 +322,14 @@ static int alsa_errorRecovery(AlsaData * ad, int err)
 	/* this is no error, so just keep running */
 	case SND_PCM_STATE_RUNNING:
 		if (mpd_unlikely(err)) {
-			DEBUG("ALSA: ignoring possible error: %s\n",
-			      snd_strerror(-err));
+			DEBUG("ALSA(%s) ignoring possible error: %s\n",
+			      ad->device, snd_strerror(-err));
 			err = 0;
 		}
 		break;
 	default:
-		DEBUG("ALSA in unknown state: %s\n", snd_pcm_state_name(state));
+		DEBUG("ALSA device \"%s\" in unknown state: %s\n",
+		      ad->device, snd_pcm_state_name(state));
 		break;
 	}
 	if (err && err_cmd)
