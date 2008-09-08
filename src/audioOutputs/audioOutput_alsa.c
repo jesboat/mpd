@@ -267,9 +267,6 @@ configure_hw:
 	if ((err = E(snd_pcm_sw_params_set_avail_min, ad->pcmHandle,
 	             swparams, alsa_period_size)) < 0)
 		goto error;
-	if ((err = E(snd_pcm_sw_params_set_xfer_align, ad->pcmHandle,
-	             swparams, 1)) < 0)
-		goto error;
 	if ((err = E(snd_pcm_sw_params, ad->pcmHandle, swparams)) < 0)
 		goto error;
 
