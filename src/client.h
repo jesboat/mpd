@@ -21,12 +21,13 @@
 
 #include "os_compat.h"
 
-void initInterfaces(void);
-void openAInterface(int fd, const struct sockaddr *addr);
-void freeAllInterfaces(void);
-void closeOldInterfaces(void);
-int interfacePrintWithFD(int fd, const char *buffer, size_t len);
+void client_manager_init(void);
+void client_manager_deinit(void);
+int client_manager_io(void);
+void client_manager_expire(void);
 
-int doIOForInterfaces(void);
+void client_new(int fd, const struct sockaddr *addr);
+
+int client_print(int fd, const char *buffer, size_t len);
 
 #endif
