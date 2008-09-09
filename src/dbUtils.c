@@ -24,7 +24,7 @@
 #include "playlist.h"
 #include "song.h"
 #include "tag.h"
-#include "tagTracker.h"
+#include "strset.h"
 #include "log.h"
 #include "storedPlaylist.h"
 
@@ -278,7 +278,8 @@ static void freeListCommandItem(ListCommandItem * item)
 	free(item);
 }
 
-static void visitTag(int fd, Song * song, enum tag_type tagType)
+static void visitTag(int fd, struct strset *set,
+		     Song * song, enum tag_type tagType)
 {
 	int i;
 	struct mpd_tag *tag = song->tag;
@@ -293,7 +294,7 @@ static void visitTag(int fd, Song * song, enum tag_type tagType)
 
 	for (i = 0; i < tag->numOfItems; i++) {
 		if (tag->items[i]->type == tagType) {
-			visitInTagTracker(tagType, tag->items[i]->value);
+			strset_add(set, tag->items[i]->value);
 		}
 	}
 }
@@ -301,6 +302,7 @@ static void visitTag(int fd, Song * song, enum tag_type tagType)
 struct list_tags_data {
 	int fd;
 	ListCommandItem *item;
+	struct strset *set;
 };
 
 static int listUniqueTagsInDirectory(Song * song, void *_data)
@@ -310,7 +312,7 @@ static int listUniqueTagsInDirectory(Song * song, void *_data)
 
 	if (tagItemsFoundAndMatches(song, item->numConditionals,
 	                            item->conditionals)) {
-		visitTag(data->fd, song, item->tagType);
+		visitTag(data->fd, data->set, song, item->tagType);
 	}
 
 	return 0;
@@ -320,22 +322,26 @@ int listAllUniqueTags(int fd, int type, int numConditionals,
 		      LocateTagItem * conditionals)
 {
 	int ret;
+	struct list_tags_data data;
 	ListCommandItem *item = newListCommandItem(type, numConditionals,
 						   conditionals);
-	struct list_tags_data data = {
-		.fd = fd,
-		.item = item,
-	};
+	data.item = item;
 
 	if (type >= 0 && type <= TAG_NUM_OF_ITEM_TYPES) {
-		resetVisitedFlagsInTagTracker(type);
+		data.set = strset_new();
 	}
 
-	ret = traverseAllIn(NULL, listUniqueTagsInDirectory, NULL,
-			    &data);
+	ret = traverseAllIn(NULL, listUniqueTagsInDirectory, NULL, &data);
 
 	if (type >= 0 && type <= TAG_NUM_OF_ITEM_TYPES) {
-		printVisitedInTagTracker(fd, type);
+		const char *value;
+
+		strset_rewind(data.set);
+
+		while ((value = strset_next(data.set)) != NULL)
+			fdprintf(fd, "%s: %s\n", mpdTagItemKeys[type], value);
+
+		strset_free(data.set);
 	}
 
 	freeListCommandItem(item);
