@@ -111,10 +111,7 @@ retry:
 		tag_free(tc.tag);
 		ringbuf_read_advance(mp, sizeof(struct tag_container));
 		goto retry; /* read and skip packets */
-	} else {
-		DEBUG("metadata_pipe: writer is ahead of reader\n");
-		/* not ready for tag yet */
-	}
+	} /* else not ready for tag yet */
 out:
 	pthread_mutex_unlock(&read_lock);
 	return tag;
