@@ -506,7 +506,7 @@ int client_manager_io(void)
 	fd_set wfds;
 	fd_set efds;
 	struct client *client, *n;
-	int selret;
+	int ret;
 	int fdmax = 0;
 
 	FD_ZERO( &efds );
@@ -515,15 +515,16 @@ int client_manager_io(void)
 
 	registered_IO_add_fds(&fdmax, &rfds, &wfds, &efds);
 
-	selret = select(fdmax + 1, &rfds, &wfds, &efds, NULL);
-	if (selret < 0) {
+	ret = select(fdmax + 1, &rfds, &wfds, &efds, NULL);
+
+	if (ret < 0) {
 		if (errno == EINTR)
 			return 0;
 
 		FATAL("select() failed: %s\n", strerror(errno));
 	}
 
-	registered_IO_consume_fds(&selret, &rfds, &wfds, &efds);
+	registered_IO_consume_fds(&ret, &rfds, &wfds, &efds);
 
 	getConnections(&rfds);
 
