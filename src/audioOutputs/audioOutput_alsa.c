@@ -38,9 +38,6 @@ static const char default_device[] = "default";
 
 #include <alsa/asoundlib.h>
 
-/* #define MPD_SND_PCM_NONBLOCK SND_PCM_NONBLOCK */
-#define MPD_SND_PCM_NONBLOCK 0
-
 /*
  * This macro will evaluate both statements, but only returns the result
  * of the second statement to the reader.  Thus it'll stringify the
@@ -65,6 +62,7 @@ typedef struct _AlsaData {
 	alsa_writei_t *writei;
 	unsigned int buffer_time;
 	unsigned int period_time;
+	unsigned int period_sleep;
 	int sampleSize;
 	int useMmap;
 } AlsaData;
@@ -175,16 +173,14 @@ static int alsa_openDevice(AudioOutput * audioOutput)
 		      ad->device, audioFormat->bits);
 
 	err = E(snd_pcm_open, &ad->pcmHandle, ad->device,
-	        SND_PCM_STREAM_PLAYBACK, MPD_SND_PCM_NONBLOCK);
+	        SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
 	if (err < 0) {
 		ad->pcmHandle = NULL;
 		goto error;
 	}
 
-#if MPD_SND_PCM_NONBLOCK == SND_PCM_NONBLOCK
 	if ((err = E(snd_pcm_nonblock, ad->pcmHandle, 0)) < 0)
 		goto error;
-#endif /* MPD_SND_PCM_NONBLOCK == SND_PCM_NONBLOCK */
 
 	period_time_ro = period_time = ad->period_time;
 configure_hw:
@@ -250,6 +246,7 @@ configure_hw:
 	} else if (err < 0)
 		goto error;
 
+	ad->period_sleep = period_time >> 1;
 	DEBUG("ALSA(%s) period_time: %u, buffer_time: %u\n",
 	      ad->device, period_time, buffer_time);
 	if ((err = E(snd_pcm_hw_params_get_buffer_size, hwparams,
@@ -376,7 +373,12 @@ static int alsa_playAudio(AudioOutput * audioOutput,
 	while (size > 0) {
 		ret = ad->writei(ad->pcmHandle, playChunk, size);
 
-		if (ret == -EAGAIN || ret == -EINTR)
+		if (ret == -EAGAIN) {
+			DEBUG("ALSA busy, sleeping %d\n", ad->period_sleep);
+			my_usleep(ad->period_sleep);
+			continue;
+		}
+		if (ret == -EINTR)
 			continue;
 
 		if (ret < 0) {
