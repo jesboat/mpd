@@ -20,7 +20,7 @@
 
 #include "command.h"
 #include "conf.h"
-#include "interface.h"
+#include "client.h"
 #include "listen.h"
 #include "log.h"
 #include "ls.h"
@@ -177,7 +177,7 @@ int updateInit(int fd, List * pathList)
 
 		finishSigHandlers();
 		closeAllListenSockets();
-		freeAllInterfaces();
+		client_manager_deinit();
 		finishPlaylist();
 		finishVolume();
 
@@ -848,10 +848,8 @@ int printDirectoryInfo(int fd, const char *name)
 {
 	Directory *directory;
 
-	if ((directory = getDirectory(name)) == NULL) {
-		commandError(fd, ACK_ERROR_NO_EXIST, "directory not found");
+	if ((directory = getDirectory(name)) == NULL)
 		return -1;
-	}
 
 	printDirectoryList(fd, directory->subDirectories);
 	printSongInfoFromList(fd, directory->songs);
@@ -1153,8 +1151,8 @@ int readDirectoryDB(void)
 	readDirectoryInfo(fp, mp3rootDirectory);
 	while (fclose(fp) && errno == EINTR) ;
 
-	stats.numberOfSongs = countSongsIn(STDERR_FILENO, NULL);
-	stats.dbPlayTime = sumSongTimesIn(STDERR_FILENO, NULL);
+	stats.numberOfSongs = countSongsIn(NULL);
+	stats.dbPlayTime = sumSongTimesIn(NULL);
 
 	if (stat(dbFile, &st) == 0)
 		directory_dbModTime = st.st_mtime;
@@ -1180,11 +1178,10 @@ void updateMp3Directory(void)
 	return;
 }
 
-static int traverseAllInSubDirectory(int fd, Directory * directory,
-				     int (*forEachSong) (int, Song *,
-							 void *),
-				     int (*forEachDir) (int, Directory *,
-							void *), void *data)
+static int traverseAllInSubDirectory(Directory * directory,
+				     int (*forEachSong) (Song *, void *),
+				     int (*forEachDir) (Directory *, void *),
+				     void *data)
 {
 	ListNode *node = directory->songs->firstNode;
 	Song *song;
@@ -1192,7 +1189,7 @@ static int traverseAllInSubDirectory(int fd, Directory * directory,
 	int errFlag = 0;
 
 	if (forEachDir) {
-		errFlag = forEachDir(fd, directory, data);
+		errFlag = forEachDir(directory, data);
 		if (errFlag)
 			return errFlag;
 	}
@@ -1200,7 +1197,7 @@ static int traverseAllInSubDirectory(int fd, Directory * directory,
 	if (forEachSong) {
 		while (node != NULL && !errFlag) {
 			song = (Song *) node->data;
-			errFlag = forEachSong(fd, song, data);
+			errFlag = forEachSong(song, data);
 			node = node->nextNode;
 		}
 		if (errFlag)
@@ -1211,7 +1208,7 @@ static int traverseAllInSubDirectory(int fd, Directory * directory,
 
 	while (node != NULL && !errFlag) {
 		dir = (Directory *) node->data;
-		errFlag = traverseAllInSubDirectory(fd, dir, forEachSong,
+		errFlag = traverseAllInSubDirectory(dir, forEachSong,
 						    forEachDir, data);
 		node = node->nextNode;
 	}
@@ -1219,23 +1216,21 @@ static int traverseAllInSubDirectory(int fd, Directory * directory,
 	return errFlag;
 }
 
-int traverseAllIn(int fd, char *name,
-		  int (*forEachSong) (int, Song *, void *),
-		  int (*forEachDir) (int, Directory *, void *), void *data)
+int traverseAllIn(const char *name,
+		  int (*forEachSong) (Song *, void *),
+		  int (*forEachDir) (Directory *, void *), void *data)
 {
 	Directory *directory;
 
 	if ((directory = getDirectory(name)) == NULL) {
 		Song *song;
 		if ((song = getSongFromDB(name)) && forEachSong) {
-			return forEachSong(fd, song, data);
+			return forEachSong(song, data);
 		}
-		commandError(fd, ACK_ERROR_NO_EXIST,
-			     "directory or file not found");
 		return -1;
 	}
 
-	return traverseAllInSubDirectory(fd, directory, forEachSong, forEachDir,
+	return traverseAllInSubDirectory(directory, forEachSong, forEachDir,
 					 data);
 }
 
@@ -1256,8 +1251,8 @@ void initMp3Directory(void)
 	mp3rootDirectory = newDirectory(NULL, NULL);
 	exploreDirectory(mp3rootDirectory);
 	freeAllDirectoryStats(mp3rootDirectory);
-	stats.numberOfSongs = countSongsIn(STDERR_FILENO, NULL);
-	stats.dbPlayTime = sumSongTimesIn(STDERR_FILENO, NULL);
+	stats.numberOfSongs = countSongsIn(NULL);
+	stats.dbPlayTime = sumSongTimesIn(NULL);
 }
 
 static Song *getSongDetails(const char *file, const char **shortnameRet,
@@ -1303,7 +1298,7 @@ static Song *getSongDetails(const char *file, const char **shortnameRet,
 	return (Song *) song;
 }
 
-Song *getSongFromDB(char *file)
+Song *getSongFromDB(const char *file)
 {
 	return getSongDetails(file, NULL, NULL);
 }

@@ -40,7 +40,7 @@ struct visit_data {
 	struct strset *set;
 };
 
-static int visit_tag_items(mpd_unused int fd, Song *song, void *_data)
+static int visit_tag_items(Song *song, void *_data)
 {
 	const struct visit_data *data = _data;
 	unsigned i;
@@ -65,7 +65,7 @@ static unsigned int getNumberOfTagItems(int type)
 	data.type = type;
 	data.set = strset_new();
 
-	traverseAllIn(STDERR_FILENO, NULL, visit_tag_items, NULL, &data);
+	traverseAllIn(NULL, visit_tag_items, NULL, &data);
 
 	ret = strset_size(data.set);
 	strset_free(data.set);

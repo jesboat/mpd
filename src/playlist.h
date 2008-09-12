@@ -24,6 +24,18 @@
 #define PLAYLIST_FILE_SUFFIX 	"m3u"
 #define PLAYLIST_COMMENT	'#'
 
+enum playlist_result {
+	PLAYLIST_RESULT_SUCCESS,
+	PLAYLIST_RESULT_ERRNO,
+	PLAYLIST_RESULT_NO_SUCH_SONG,
+	PLAYLIST_RESULT_NO_SUCH_LIST,
+	PLAYLIST_RESULT_LIST_EXISTS,
+	PLAYLIST_RESULT_BAD_NAME,
+	PLAYLIST_RESULT_BAD_RANGE,
+	PLAYLIST_RESULT_NOT_PLAYING,
+	PLAYLIST_RESULT_TOO_LARGE
+};
+
 extern int playlist_saveAbsolutePaths;
 
 extern int playlist_max_length;
@@ -38,23 +50,23 @@ void savePlaylistState(FILE *);
 
 void clearPlaylist(void);
 
-int clearStoredPlaylist(int fd, char *utf8file);
+int clearStoredPlaylist(const char *utf8file);
 
-int addToPlaylist(int fd, char *file, int *added_id);
+enum playlist_result addToPlaylist(const char *file, int *added_id);
 
-int addToStoredPlaylist(int fd, char *file, char *utf8file);
+int addToStoredPlaylist(const char *file, const char *utf8file);
 
-int addSongToPlaylist(int fd, Song * song, int *added_id);
+enum playlist_result addSongToPlaylist(Song * song, int *added_id);
 
-int showPlaylist(int fd);
+void showPlaylist(int fd);
 
-int deleteFromPlaylist(int fd, int song);
+enum playlist_result deleteFromPlaylist(int song);
 
-int deleteFromPlaylistById(int fd, int song);
+enum playlist_result deleteFromPlaylistById(int song);
 
-int playlistInfo(int fd, int song);
+enum playlist_result playlistInfo(int fd, int song);
 
-int playlistId(int fd, int song);
+enum playlist_result playlistId(int fd, int song);
 
 Song *playlist_queued_song(void);
 
@@ -64,9 +76,9 @@ int playlist_playing(void);
 
 void stopPlaylist(void);
 
-int playPlaylist(int fd, int song, int stopOnError);
+enum playlist_result playPlaylist(int song, int stopOnError);
 
-int playPlaylistById(int fd, int song, int stopOnError);
+enum playlist_result playPlaylistById(int song, int stopOnError);
 
 void nextSongInPlaylist(void);
 
@@ -74,33 +86,31 @@ void syncPlayerAndPlaylist(void);
 
 void previousSongInPlaylist(void);
 
-int shufflePlaylist(int fd);
+void shufflePlaylist(void);
 
-int savePlaylist(int fd, char *utf8file);
+enum playlist_result savePlaylist(const char *utf8file);
 
-int deletePlaylist(int fd, char *utf8file);
-
-int deletePlaylistById(int fd, char *utf8file);
+enum playlist_result deletePlaylist(const char *utf8file);
 
 void deleteASongFromPlaylist(Song * song);
 
-int moveSongInPlaylist(int fd, int from, int to);
+enum playlist_result moveSongInPlaylist(int from, int to);
 
-int moveSongInPlaylistById(int fd, int id, int to);
+enum playlist_result moveSongInPlaylistById(int id, int to);
 
-int swapSongsInPlaylist(int fd, int song1, int song2);
+enum playlist_result swapSongsInPlaylist(int song1, int song2);
 
-int swapSongsInPlaylistById(int fd, int id1, int id2);
+enum playlist_result swapSongsInPlaylistById(int id1, int id2);
 
-int loadPlaylist(int fd, char *utf8file);
+enum playlist_result loadPlaylist(int fd, const char *utf8file);
 
 int getPlaylistRepeatStatus(void);
 
-int setPlaylistRepeatStatus(int fd, int status);
+void setPlaylistRepeatStatus(int status);
 
 int getPlaylistRandomStatus(void);
 
-int setPlaylistRandomStatus(int fd, int status);
+void setPlaylistRandomStatus(int status);
 
 int getPlaylistCurrentSong(void);
 
@@ -110,9 +120,9 @@ int getPlaylistLength(void);
 
 unsigned long getPlaylistVersion(void);
 
-int seekSongInPlaylist(int fd, int song, float seek_time);
+enum playlist_result seekSongInPlaylist(int song, float seek_time);
 
-int seekSongInPlaylistById(int fd, int id, float seek_time);
+enum playlist_result seekSongInPlaylistById(int id, float seek_time);
 
 void playlistVersionChange(void);
 
@@ -120,13 +130,13 @@ int playlistChanges(int fd, mpd_uint32 version);
 
 int playlistChangesPosId(int fd, mpd_uint32 version);
 
-int PlaylistInfo(int fd, char *utf8file, int detail);
+int PlaylistInfo(int fd, const char *utf8file, int detail);
 
 void searchForSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 
 void findSongsInPlaylist(int fd, int numItems, LocateTagItem * items);
 
-int valid_playlist_name(int err_fd, const char *utf8path);
+int is_valid_playlist_name(const char *utf8path);
 
 struct mpd_tag *playlist_current_tag(void);
 

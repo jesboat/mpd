@@ -60,13 +60,13 @@ int readDirectoryDB(void);
 
 void updateMp3Directory(void);
 
-Song *getSongFromDB(char *file);
+Song *getSongFromDB(const char *file);
 
 time_t getDbModTime(void);
 
-int traverseAllIn(int fd, char *name,
-		  int (*forEachSong) (int, Song *, void *),
-		  int (*forEachDir) (int, Directory *, void *), void *data);
+int traverseAllIn(const char *name,
+		  int (*forEachSong) (Song *, void *),
+		  int (*forEachDir) (Directory *, void *), void *data);
 
 #define getDirectoryPath(dir) ((dir && dir->path) ? dir->path : "")
 

@@ -1,0 +1,784 @@
+/* the Music Player Daemon (MPD)
+ * Copyright (C) 2003-2007 by Warren Dukes (warren.dukes@gmail.com)
+ * This project's homepage is: http://www.musicpd.org
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
+#include "client.h"
+#include "command.h"
+#include "conf.h"
+#include "log.h"
+#include "listen.h"
+#include "permission.h"
+#include "sllist.h"
+#include "utils.h"
+#include "ioops.h"
+#include "myfprintf.h"
+#include "os_compat.h"
+#include "main_notify.h"
+#include "dlist.h"
+
+#include "../config.h"
+
+#define GREETING				"OK MPD " PROTOCOL_VERSION "\n"
+
+#define CLIENT_MAX_BUFFER_LENGTH			(40960)
+#define CLIENT_LIST_MODE_BEGIN			"command_list_begin"
+#define CLIENT_LIST_OK_MODE_BEGIN			"command_list_ok_begin"
+#define CLIENT_LIST_MODE_END				"command_list_end"
+#define CLIENT_DEFAULT_OUT_BUFFER_SIZE		(4096)
+#define CLIENT_TIMEOUT_DEFAULT			(60)
+#define CLIENT_MAX_CONNECTIONS_DEFAULT		(10)
+#define CLIENT_MAX_COMMAND_LIST_DEFAULT		(2048*1024)
+#define CLIENT_MAX_OUTPUT_BUFFER_SIZE_DEFAULT	(8192*1024)
+
+/* set this to zero to indicate we have no possible clients */
+static unsigned int client_max_connections;	/*CLIENT_MAX_CONNECTIONS_DEFAULT; */
+static int client_timeout = CLIENT_TIMEOUT_DEFAULT;
+static size_t client_max_command_list_size =
+    CLIENT_MAX_COMMAND_LIST_DEFAULT;
+static size_t client_max_output_buffer_size =
+    CLIENT_MAX_OUTPUT_BUFFER_SIZE_DEFAULT;
+
+/* maybe make conf option for this, or... 32 might be good enough */
+static long int client_list_cache_size = 32;
+
+/* shared globally between all clients: */
+static struct strnode *list_cache;
+static struct strnode *list_cache_head;
+static struct strnode *list_cache_tail;
+
+struct client {
+	struct list_head siblings;
+
+	char buffer[CLIENT_MAX_BUFFER_LENGTH];
+	size_t bufferLength;
+	size_t bufferPos;
+	int fd;	/* file descriptor; -1 if expired */
+	int permission;
+	time_t lastTime;
+	struct strnode *cmd_list;	/* for when in list mode */
+	struct strnode *cmd_list_tail;	/* for when in list mode */
+	int cmd_list_OK;	/* print OK after each command execution */
+	size_t cmd_list_size;	/* mem cmd_list consumes */
+	int cmd_list_dup;	/* has the cmd_list been copied to private space? */
+	struct sllnode *deferred_send;	/* for output if client is slow */
+	size_t deferred_bytes;	/* mem deferred_send consumes */
+	unsigned int num;	/* client number */
+
+	char *send_buf;
+	size_t send_buf_used;	/* bytes used this instance */
+	size_t send_buf_size;	/* bytes usable this instance */
+	size_t send_buf_alloc;	/* bytes actually allocated */
+};
+
+static LIST_HEAD(clients);
+static unsigned num_clients;
+
+static void client_write_deferred(struct client *cl);
+
+static void client_write_output(struct client *cl);
+
+#ifdef SO_SNDBUF
+static size_t get_default_snd_buf_size(struct client *cl)
+{
+	int new_size;
+	socklen_t sockOptLen = sizeof(int);
+
+	if (getsockopt(cl->fd, SOL_SOCKET, SO_SNDBUF,
+		       (char *)&new_size, &sockOptLen) < 0) {
+		DEBUG("problem getting sockets send buffer size\n");
+		return CLIENT_DEFAULT_OUT_BUFFER_SIZE;
+	}
+	if (new_size > 0)
+		return (size_t)new_size;
+	DEBUG("sockets send buffer size is not positive\n");
+	return CLIENT_DEFAULT_OUT_BUFFER_SIZE;
+}
+#else /* !SO_SNDBUF */
+static size_t get_default_snd_buf_size(struct client *cl)
+{
+	return CLIENT_DEFAULT_OUT_BUFFER_SIZE;
+}
+#endif /* !SO_SNDBUF */
+
+static void set_send_buf_size(struct client *cl)
+{
+	size_t new_size = get_default_snd_buf_size(cl);
+	if (cl->send_buf_size != new_size) {
+		cl->send_buf_size = new_size;
+		/* don't resize to get smaller, only bigger */
+		if (cl->send_buf_alloc < new_size) {
+			if (cl->send_buf)
+				free(cl->send_buf);
+			cl->send_buf = xmalloc(new_size);
+			cl->send_buf_alloc = new_size;
+		}
+	}
+}
+
+static inline int client_is_expired(const struct client *cl)
+{
+	return cl->fd < 0;
+}
+
+static int global_expired;
+
+static inline void client_set_expired(struct client *cl)
+{
+	if (cl->fd >= 0) {
+		xclose(cl->fd);
+		cl->fd = -1;
+	}
+
+	global_expired = 1;
+}
+
+static void client_init(struct client *cl, int fd)
+{
+	static unsigned int next_client_num;
+
+	assert(fd >= 0);
+
+	cl->cmd_list_size = 0;
+	cl->cmd_list_dup = 0;
+	cl->cmd_list_OK = -1;
+	cl->bufferLength = 0;
+	cl->bufferPos = 0;
+	cl->fd = fd;
+	set_nonblocking(fd);
+	cl->lastTime = time(NULL);
+	cl->cmd_list = NULL;
+	cl->cmd_list_tail = NULL;
+	cl->deferred_send = NULL;
+	cl->deferred_bytes = 0;
+	cl->num = next_client_num++;
+	cl->send_buf_used = 0;
+
+	cl->permission = getDefaultPermissions();
+	set_send_buf_size(cl);
+
+	xwrite(fd, GREETING, strlen(GREETING));
+}
+
+static void free_cmd_list(struct strnode *list)
+{
+	struct strnode *tmp = list;
+
+	while (tmp) {
+		struct strnode *next = tmp->next;
+		if (tmp >= list_cache_head && tmp <= list_cache_tail) {
+			/* inside list_cache[] array */
+			tmp->data = NULL;
+			tmp->next = NULL;
+		} else
+			free(tmp);
+		tmp = next;
+	}
+}
+
+static void cmd_list_clone(struct client *cl)
+{
+	struct strnode *new = dup_strlist(cl->cmd_list);
+	free_cmd_list(cl->cmd_list);
+	cl->cmd_list = new;
+	cl->cmd_list_dup = 1;
+
+	/* new tail */
+	while (new && new->next)
+		new = new->next;
+	cl->cmd_list_tail = new;
+}
+
+static void new_cmd_list_ptr(struct client *cl, char *s, const int size)
+{
+	int i;
+	struct strnode *new;
+
+	if (!cl->cmd_list_dup) {
+		for (i = client_list_cache_size - 1; i >= 0; --i) {
+			if (list_cache[i].data)
+				continue;
+			new = &(list_cache[i]);
+			new->data = s;
+			/* implied in free_cmd_list() and init: */
+			/* last->next->next = NULL; */
+			goto out;
+		}
+	}
+
+	/* allocate from the heap */
+	new = cl->cmd_list_dup ? new_strnode_dup(s, size)
+	                              : new_strnode(s);
+out:
+	if (cl->cmd_list) {
+		cl->cmd_list_tail->next = new;
+		cl->cmd_list_tail = new;
+	} else
+		cl->cmd_list = cl->cmd_list_tail = new;
+}
+
+static void client_close(struct client *cl)
+{
+	struct sllnode *buf;
+
+	assert(num_clients > 0);
+	assert(!list_empty(&clients));
+	list_del(&cl->siblings);
+	--num_clients;
+
+	client_set_expired(cl);
+
+	if (cl->cmd_list) {
+		free_cmd_list(cl->cmd_list);
+		cl->cmd_list = NULL;
+	}
+
+	if ((buf = cl->deferred_send)) {
+		do {
+			struct sllnode *prev = buf;
+			buf = buf->next;
+			free(prev);
+		} while (buf);
+		cl->deferred_send = NULL;
+	}
+
+	if (cl->send_buf)
+		free(cl->send_buf);
+
+	SECURE("client %i: closed\n", cl->num);
+	free(cl);
+}
+
+static const char *
+sockaddr_to_tmp_string(const struct sockaddr *addr)
+{
+	const char *hostname;
+
+	switch (addr->sa_family) {
+#ifdef HAVE_TCP
+	case AF_INET:
+		hostname = (const char *)inet_ntoa(((const struct sockaddr_in *)
+						    addr)->sin_addr);
+		if (!hostname)
+			hostname = "error getting ipv4 address";
+		break;
+#ifdef HAVE_IPV6
+	case AF_INET6:
+		{
+			static char host[INET6_ADDRSTRLEN + 1];
+			memset(host, 0, INET6_ADDRSTRLEN + 1);
+			if (inet_ntop(AF_INET6, (const void *)
+				      &(((const struct sockaddr_in6 *)addr)->
+					sin6_addr), host,
+				      INET6_ADDRSTRLEN)) {
+				hostname = (const char *)host;
+			} else {
+				hostname = "error getting ipv6 address";
+			}
+		}
+		break;
+#endif
+#endif /* HAVE_TCP */
+#ifdef HAVE_UN
+	case AF_UNIX:
+		hostname = "local connection";
+		break;
+#endif /* HAVE_UN */
+	default:
+		hostname = "unknown";
+	}
+
+	return hostname;
+}
+
+void client_new(int fd, const struct sockaddr *addr)
+{
+	struct client *cl;
+
+	if (num_clients >= client_max_connections) {
+		ERROR("Max Connections Reached!\n");
+		xclose(fd);
+		return;
+	}
+
+	cl = xcalloc(1, sizeof(struct client));
+	list_add(&cl->siblings, &clients);
+	++num_clients;
+	client_init(cl, fd);
+	SECURE("client %i: opened from %s\n", cl->num,
+	       sockaddr_to_tmp_string(addr));
+}
+
+static int client_process_line(struct client *cl)
+{
+	int ret = 1;
+	char *line = cl->buffer + cl->bufferPos;
+
+	if (cl->cmd_list_OK >= 0) {
+		if (strcmp(line, CLIENT_LIST_MODE_END) == 0) {
+			DEBUG("client %i: process command "
+			      "list\n", cl->num);
+
+			global_expired = 0;
+			ret = processListOfCommands(cl->fd,
+						    &(cl->permission),
+						    &global_expired,
+						    cl->cmd_list_OK,
+						    cl->cmd_list);
+			DEBUG("client %i: process command "
+			      "list returned %i\n", cl->num, ret);
+
+			if (ret == COMMAND_RETURN_CLOSE ||
+			    client_is_expired(cl))
+				return COMMAND_RETURN_CLOSE;
+
+			if (ret == 0)
+				commandSuccess(cl->fd);
+
+			client_write_output(cl);
+			free_cmd_list(cl->cmd_list);
+			cl->cmd_list = NULL;
+			cl->cmd_list_OK = -1;
+		} else {
+			size_t len = strlen(line) + 1;
+			cl->cmd_list_size += len;
+			if (cl->cmd_list_size >
+			    client_max_command_list_size) {
+				ERROR("client %i: command "
+				      "list size (%lu) is "
+				      "larger than the max "
+				      "(%lu)\n",
+				      cl->num,
+				      (unsigned long)cl->cmd_list_size,
+				      (unsigned long)
+				      client_max_command_list_size);
+				return COMMAND_RETURN_CLOSE;
+			} else
+				new_cmd_list_ptr(cl, line, len);
+		}
+	} else {
+		if (strcmp(line, CLIENT_LIST_MODE_BEGIN) == 0) {
+			cl->cmd_list_OK = 0;
+			ret = 1;
+		} else if (strcmp(line, CLIENT_LIST_OK_MODE_BEGIN) == 0) {
+			cl->cmd_list_OK = 1;
+			ret = 1;
+		} else {
+			DEBUG("client %i: process command \"%s\"\n",
+			      cl->num, line);
+			ret = processCommand(cl->fd,
+					     &(cl->permission), line);
+			DEBUG("client %i: command returned %i\n",
+			      cl->num, ret);
+
+			if (ret == COMMAND_RETURN_CLOSE ||
+			    client_is_expired(cl))
+				return COMMAND_RETURN_CLOSE;
+
+			if (ret == 0)
+				commandSuccess(cl->fd);
+
+			client_write_output(cl);
+		}
+	}
+
+	return ret;
+}
+
+static int client_input_received(struct client *cl, int bytesRead)
+{
+	int ret;
+	char *buf_tail = &(cl->buffer[cl->bufferLength - 1]);
+
+	while (bytesRead > 0) {
+		cl->bufferLength++;
+		bytesRead--;
+		buf_tail++;
+		if (*buf_tail == '\n') {
+			*buf_tail = '\0';
+			if (cl->bufferLength > cl->bufferPos) {
+				if (*(buf_tail - 1) == '\r')
+					*(buf_tail - 1) = '\0';
+			}
+			ret = client_process_line(cl);
+			if (ret == COMMAND_RETURN_KILL ||
+			    ret == COMMAND_RETURN_CLOSE)
+				return ret;
+			assert(!client_is_expired(cl));
+			cl->bufferPos = cl->bufferLength;
+		}
+		if (cl->bufferLength == CLIENT_MAX_BUFFER_LENGTH) {
+			if (cl->bufferPos == 0) {
+				ERROR("client %i: buffer overflow\n",
+				      cl->num);
+				return COMMAND_RETURN_CLOSE;
+			}
+			if (cl->cmd_list_OK >= 0 &&
+			    cl->cmd_list &&
+			    !cl->cmd_list_dup)
+				cmd_list_clone(cl);
+			assert(cl->bufferLength >= cl->bufferPos
+			       && "bufferLength >= bufferPos");
+			cl->bufferLength -= cl->bufferPos;
+			memmove(cl->buffer,
+				cl->buffer + cl->bufferPos,
+				cl->bufferLength);
+			cl->bufferPos = 0;
+		}
+	}
+
+	return 0;
+}
+
+static int client_read(struct client *cl)
+{
+	int bytesRead;
+
+	bytesRead = read(cl->fd,
+			 cl->buffer + cl->bufferLength,
+			 CLIENT_MAX_BUFFER_LENGTH - cl->bufferLength);
+
+	if (bytesRead > 0)
+		return client_input_received(cl, bytesRead);
+	else if (bytesRead < 0 && errno == EINTR)
+		/* try again later, after select() */
+		return 0;
+	else
+		/* peer disconnected or I/O error */
+		return COMMAND_RETURN_CLOSE;
+}
+
+static void client_manager_register_read_fd(fd_set * fds, int *fdmax)
+{
+	struct client *cl;
+
+	FD_ZERO(fds);
+	addListenSocketsToFdSet(fds, fdmax);
+
+	list_for_each_entry(cl, &clients, siblings) {
+		if (!client_is_expired(cl) && !cl->deferred_send) {
+			FD_SET(cl->fd, fds);
+			if (*fdmax < cl->fd)
+				*fdmax = cl->fd;
+		}
+	}
+}
+
+static void client_manager_register_write_fd(fd_set * fds, int *fdmax)
+{
+	struct client *cl;
+
+	FD_ZERO(fds);
+
+	list_for_each_entry(cl, &clients, siblings) {
+		if (cl->fd >= 0 && !client_is_expired(cl)
+		    && cl->deferred_send) {
+			FD_SET(cl->fd, fds);
+			if (*fdmax < cl->fd)
+				*fdmax = cl->fd;
+		}
+	}
+}
+
+int client_manager_io(void)
+{
+	fd_set rfds;
+	fd_set wfds;
+	fd_set efds;
+	struct client *cl, *n;
+	int ret;
+	int fdmax = 0;
+
+	FD_ZERO( &efds );
+	client_manager_register_read_fd(&rfds, &fdmax);
+	client_manager_register_write_fd(&wfds, &fdmax);
+
+	registered_IO_add_fds(&fdmax, &rfds, &wfds, &efds);
+
+	ret = select(fdmax + 1, &rfds, &wfds, &efds, NULL);
+
+	if (ret < 0) {
+		if (errno == EINTR)
+			return 0;
+
+		FATAL("select() failed: %s\n", strerror(errno));
+	}
+
+	registered_IO_consume_fds(&ret, &rfds, &wfds, &efds);
+
+	getConnections(&rfds);
+
+	list_for_each_entry_safe(cl, n, &clients, siblings) {
+		if (FD_ISSET(cl->fd, &rfds)) {
+			ret = client_read(cl);
+			if (ret == COMMAND_RETURN_KILL)
+				return COMMAND_RETURN_KILL;
+			if (ret == COMMAND_RETURN_CLOSE) {
+				client_close(cl);
+				continue;
+			}
+
+			assert(!client_is_expired(cl));
+
+			cl->lastTime = time(NULL);
+		}
+		if (!client_is_expired(cl) &&
+		    FD_ISSET(cl->fd, &wfds)) {
+			client_write_deferred(cl);
+			cl->lastTime = time(NULL);
+		}
+	}
+
+	return 0;
+}
+
+void client_manager_init(void)
+{
+	char *test;
+	ConfigParam *param;
+
+	param = getConfigParam(CONF_CONN_TIMEOUT);
+
+	if (param) {
+		client_timeout = strtol(param->value, &test, 10);
+		if (*test != '\0' || client_timeout <= 0) {
+			FATAL("connection timeout \"%s\" is not a positive "
+			      "integer, line %i\n", CONF_CONN_TIMEOUT,
+			      param->line);
+		}
+	}
+
+	param = getConfigParam(CONF_MAX_CONN);
+
+	if (param) {
+		client_max_connections = strtol(param->value, &test, 10);
+		if (*test != '\0' || client_max_connections <= 0) {
+			FATAL("max connections \"%s\" is not a positive integer"
+			      ", line %i\n", param->value, param->line);
+		}
+	} else
+		client_max_connections = CLIENT_MAX_CONNECTIONS_DEFAULT;
+
+	param = getConfigParam(CONF_MAX_COMMAND_LIST_SIZE);
+
+	if (param) {
+		long tmp = strtol(param->value, &test, 10);
+		if (*test != '\0' || tmp <= 0) {
+			FATAL("max command list size \"%s\" is not a positive "
+			      "integer, line %i\n", param->value, param->line);
+		}
+		client_max_command_list_size = tmp * 1024;
+	}
+
+	param = getConfigParam(CONF_MAX_OUTPUT_BUFFER_SIZE);
+
+	if (param) {
+		long tmp = strtol(param->value, &test, 10);
+		if (*test != '\0' || tmp <= 0) {
+			FATAL("max output buffer size \"%s\" is not a positive "
+			      "integer, line %i\n", param->value, param->line);
+		}
+		client_max_output_buffer_size = tmp * 1024;
+	}
+
+	list_cache = xcalloc(client_list_cache_size, sizeof(struct strnode));
+	list_cache_head = &(list_cache[0]);
+	list_cache_tail = &(list_cache[client_list_cache_size - 1]);
+}
+
+static void client_close_all(void)
+{
+	struct client *cl, *n;
+
+	list_for_each_entry_safe(cl, n, &clients, siblings)
+		client_close(cl);
+	num_clients = 0;
+
+	free(list_cache);
+}
+
+void client_manager_deinit(void)
+{
+	client_close_all();
+
+	client_max_connections = 0;
+}
+
+void client_manager_expire(void)
+{
+	struct client *cl, *n;
+
+	list_for_each_entry_safe(cl, n, &clients, siblings) {
+		if (client_is_expired(cl)) {
+			DEBUG("client %i: expired\n", cl->num);
+			client_close(cl);
+		} else if (time(NULL) - cl->lastTime >
+			   client_timeout) {
+			DEBUG("client %i: timeout\n", cl->num);
+			client_close(cl);
+		}
+	}
+}
+
+static void client_write_deferred(struct client *cl)
+{
+	struct sllnode *buf;
+	ssize_t ret = 0;
+
+	buf = cl->deferred_send;
+	while (buf) {
+		assert(buf->size > 0);
+
+		ret = write(cl->fd, buf->data, buf->size);
+		if (ret < 0)
+			break;
+		else if ((size_t)ret < buf->size) {
+			assert(cl->deferred_bytes >= (size_t)ret);
+			cl->deferred_bytes -= ret;
+			buf->data = (char *)buf->data + ret;
+			buf->size -= ret;
+		} else {
+			struct sllnode *tmp = buf;
+			size_t decr = (buf->size + sizeof(struct sllnode));
+
+			assert(cl->deferred_bytes >= decr);
+			cl->deferred_bytes -= decr;
+			buf = buf->next;
+			free(tmp);
+			cl->deferred_send = buf;
+		}
+		cl->lastTime = time(NULL);
+	}
+
+	if (!cl->deferred_send) {
+		DEBUG("client %i: buffer empty %lu\n", cl->num,
+		      (unsigned long)cl->deferred_bytes);
+		assert(cl->deferred_bytes == 0);
+	} else if (ret < 0 && errno != EAGAIN && errno != EINTR) {
+		/* cause client to close */
+		DEBUG("client %i: problems flushing buffer\n",
+		      cl->num);
+		client_set_expired(cl);
+	}
+}
+
+static struct client * client_by_fd(int fd)
+{
+	struct client *cl;
+
+	list_for_each_entry(cl, &clients, siblings)
+		if (cl->fd == fd)
+			return cl;
+
+	return NULL;
+}
+
+int client_print(int fd, const char *buffer, size_t buflen)
+{
+	size_t copylen;
+	struct client *cl;
+
+	assert(fd >= 0);
+
+	cl = client_by_fd(fd);
+	if (cl == NULL)
+		return -1;
+
+	/* if fd isn't found or client is going to be closed, do nothing */
+	if (client_is_expired(cl))
+		return 0;
+
+	while (buflen > 0 && !client_is_expired(cl)) {
+		size_t left;
+
+		assert(cl->send_buf_size >= cl->send_buf_used);
+		left = cl->send_buf_size - cl->send_buf_used;
+
+		copylen = buflen > left ? left : buflen;
+		memcpy(cl->send_buf + cl->send_buf_used, buffer,
+		       copylen);
+		buflen -= copylen;
+		cl->send_buf_used += copylen;
+		buffer += copylen;
+		if (cl->send_buf_used >= cl->send_buf_size)
+			client_write_output(cl);
+	}
+
+	return 0;
+}
+
+static void client_defer_output(struct client *cl,
+				const void *data, size_t length)
+{
+	struct sllnode **buf_r;
+
+	assert(length > 0);
+
+	cl->deferred_bytes += sizeof(struct sllnode) + length;
+	if (cl->deferred_bytes > client_max_output_buffer_size) {
+		ERROR("client %i: output buffer size (%lu) is "
+		      "larger than the max (%lu)\n",
+		      cl->num,
+		      (unsigned long)cl->deferred_bytes,
+		      (unsigned long)client_max_output_buffer_size);
+		/* cause client to close */
+		client_set_expired(cl);
+		return;
+	}
+
+	buf_r = &cl->deferred_send;
+	while (*buf_r != NULL)
+		buf_r = &(*buf_r)->next;
+	*buf_r = new_sllnode(data, length);
+}
+
+static void client_write(struct client *cl,
+			 const char *data, size_t length)
+{
+	ssize_t ret;
+
+	assert(length > 0);
+	assert(cl->deferred_send == NULL);
+
+	if ((ret = write(cl->fd, data, length)) < 0) {
+		if (errno == EAGAIN || errno == EINTR) {
+			client_defer_output(cl, data, length);
+		} else {
+			DEBUG("client %i: problems writing\n", cl->num);
+			client_set_expired(cl);
+			return;
+		}
+	} else if ((size_t)ret < cl->send_buf_used) {
+		client_defer_output(cl, data + ret, length - ret);
+	}
+
+	if (cl->deferred_send)
+		DEBUG("client %i: buffer created\n", cl->num);
+}
+
+static void client_write_output(struct client *cl)
+{
+	if (client_is_expired(cl) || !cl->send_buf_used)
+		return;
+
+	if (cl->deferred_send != NULL)
+		client_defer_output(cl, cl->send_buf, cl->send_buf_used);
+	else
+		client_write(cl, cl->send_buf, cl->send_buf_used);
+
+	cl->send_buf_used = 0;
+}
+

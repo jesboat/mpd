@@ -218,6 +218,54 @@ static int mpd_fprintf__ check_int(int fd, int *dst,
 	return 0;
 }
 
+static int print_playlist_result(int fd, enum playlist_result result)
+{
+	switch (result) {
+	case PLAYLIST_RESULT_SUCCESS:
+		return 0;
+
+	case PLAYLIST_RESULT_ERRNO:
+		commandError(fd, ACK_ERROR_SYSTEM, strerror(errno));
+		return -1;
+
+	case PLAYLIST_RESULT_NO_SUCH_SONG:
+		commandError(fd, ACK_ERROR_NO_EXIST, "No such song");
+		return -1;
+
+	case PLAYLIST_RESULT_NO_SUCH_LIST:
+		commandError(fd, ACK_ERROR_NO_EXIST, "No such playlist");
+		return -1;
+
+	case PLAYLIST_RESULT_LIST_EXISTS:
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "Playlist already exists");
+		return -1;
+
+	case PLAYLIST_RESULT_BAD_NAME:
+		commandError(fd, ACK_ERROR_ARG,
+			     "playlist name is invalid: "
+			     "playlist names may not contain slashes,"
+			     " newlines or carriage returns");
+		return -1;
+
+	case PLAYLIST_RESULT_BAD_RANGE:
+		commandError(fd, ACK_ERROR_ARG, "Bad song index");
+		return -1;
+
+	case PLAYLIST_RESULT_NOT_PLAYING:
+		commandError(fd, ACK_ERROR_PLAYER_SYNC, "Not playing");
+		return -1;
+
+	case PLAYLIST_RESULT_TOO_LARGE:
+		commandError(fd, ACK_ERROR_PLAYLIST_MAX,
+			     "playlist is at the max size");
+		return -1;
+	}
+
+	assert(0);
+	return -1;
+}
+
 static void addCommand(const char *name,
 		       int reqPermission,
 		       int minargs,
@@ -253,21 +301,25 @@ static int handlePlay(int fd, mpd_unused int *permission,
 		      int argc, char *argv[])
 {
 	int song = -1;
+	enum playlist_result result;
 
 	if (argc == 2 && check_int(fd, &song, argv[1], need_positive) < 0)
 		return -1;
-	return playPlaylist(fd, song, 0);
+	result = playPlaylist(song, 0);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePlayId(int fd, mpd_unused int *permission,
 			int argc, char *argv[])
 {
 	int id = -1;
+	enum playlist_result result;
 
 	if (argc == 2 && check_int(fd, &id, argv[1], need_positive) < 0)
 		return -1;
 
-	return playPlaylistById(fd, id, 0);
+	result = playPlaylistById(id, 0);
+	return print_playlist_result(fd, result);
 }
 
 static int handleStop(mpd_unused int fd, mpd_unused int *permission,
@@ -281,11 +333,13 @@ static int handleCurrentSong(int fd, mpd_unused int *permission,
 			     mpd_unused int argc, mpd_unused char *argv[])
 {
 	int song = getPlaylistCurrentSong();
+	enum playlist_result result;
 
-	if (song >= 0) {
-		return playlistInfo(fd, song);
-	} else
+	if (song < 0)
 		return 0;
+
+	result = playlistInfo(fd, song);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePause(int fd, mpd_unused int *permission,
@@ -323,44 +377,50 @@ static int commandStatus(mpd_unused int fd, mpd_unused int *permission,
 		break;
 	}
 
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_VOLUME, getVolumeLevel());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_REPEAT,
-		 getPlaylistRepeatStatus());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_RANDOM,
-		 getPlaylistRandomStatus());
-	fdprintf(fd, "%s: %li\n", COMMAND_STATUS_PLAYLIST,
-		 getPlaylistVersion());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_PLAYLIST_LENGTH,
-		 getPlaylistLength());
-	fdprintf(fd, "%s: %i\n", COMMAND_STATUS_CROSSFADE,
-		 (int)(ob_get_xfade() + 0.5));
-
-	fdprintf(fd, "%s: %s\n", COMMAND_STATUS_STATE, state);
+	fdprintf(fd,
+		      COMMAND_STATUS_VOLUME ": %i\n"
+		      COMMAND_STATUS_REPEAT ": %i\n"
+		      COMMAND_STATUS_RANDOM ": %i\n"
+		      COMMAND_STATUS_PLAYLIST ": %li\n"
+		      COMMAND_STATUS_PLAYLIST_LENGTH ": %i\n"
+		      COMMAND_STATUS_CROSSFADE ": %i\n"
+		      COMMAND_STATUS_STATE ": %s\n",
+		      getVolumeLevel(),
+		      getPlaylistRepeatStatus(),
+		      getPlaylistRandomStatus(),
+		      getPlaylistVersion(),
+		      getPlaylistLength(),
+		      (int)(ob_get_xfade() + 0.5),
+		      state);
 
 	song = getPlaylistCurrentSong();
 	if (song >= 0) {
-		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_SONG, song);
-		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_SONGID,
-			 getPlaylistSongId(song));
+		fdprintf(fd,
+			      COMMAND_STATUS_SONG ": %i\n"
+			      COMMAND_STATUS_SONGID ": %i\n",
+			      song, getPlaylistSongId(song));
 	}
 	if (ob_get_state() != OB_STATE_STOP) {
-		fdprintf(fd, "%s: %lu:%lu\n", COMMAND_STATUS_TIME,
-			 ob_get_elapsed_time(), ob_get_total_time());
-		fdprintf(fd, "%s: %u\n", COMMAND_STATUS_BITRATE,
-		         ob_get_bit_rate());
-		fdprintf(fd, "%s: %u:%u:%u\n", COMMAND_STATUS_AUDIO,
-			 ob_get_sample_rate(), ob_get_bits(),
-			 ob_get_channels());
+		fdprintf(fd,
+			      COMMAND_STATUS_TIME ": %lu:%lu\n"
+			      COMMAND_STATUS_BITRATE ": %u\n"
+			      COMMAND_STATUS_AUDIO ": %u:%u:%u\n",
+			      ob_get_elapsed_time(),
+			      ob_get_total_time(),
+			      ob_get_bit_rate(),
+			      ob_get_sample_rate(),
+			      ob_get_bits(),
+			      ob_get_channels());
 	}
 
 	if ((updateJobId = isUpdatingDB())) {
-		fdprintf(fd, "%s: %i\n", COMMAND_STATUS_UPDATING_DB,
-			 updateJobId);
+		fdprintf(fd, COMMAND_STATUS_UPDATING_DB ": %i\n",
+			     updateJobId);
 	}
 
 	if (player_errno != PLAYER_ERROR_NONE) {
-		fdprintf(fd, "%s: %s\n", COMMAND_STATUS_ERROR,
-			 player_strerror());
+		fdprintf(fd, COMMAND_STATUS_ERROR ": %s\n",
+			     player_strerror());
 	}
 
 	return 0;
@@ -382,66 +442,85 @@ static int handleAdd(int fd, mpd_unused int *permission,
 		     mpd_unused int argc, char *argv[])
 {
 	char *path = argv[1];
+	enum playlist_result result;
 
 	if (isRemoteUrl(path))
-		return addToPlaylist(fd, path, NULL);
+		return addToPlaylist(path, NULL);
 
-	return addAllIn(fd, path);
+	result = addAllIn(path);
+	if (result == (enum playlist_result)-1) {
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+		return -1;
+	}
+
+	return print_playlist_result(fd, result);
 }
 
 static int handleAddId(int fd, mpd_unused int *permission,
 		       int argc, char *argv[])
 {
 	int added_id;
-	int ret = addToPlaylist(fd, argv[1], &added_id);
+	enum playlist_result result = addToPlaylist(argv[1], &added_id);
 
-	if (!ret) {
-		if (argc == 3) {
-			int to;
-			if (check_int(fd, &to, argv[2],
-			              check_integer, argv[2]) < 0)
-				return -1;
-			ret = moveSongInPlaylistById(fd, added_id, to);
-			if (ret) { /* move failed */
-				deleteFromPlaylistById(fd, added_id);
-				return ret;
-			}
+	if (result == PLAYLIST_RESULT_SUCCESS)
+		return result;
+
+	if (argc == 3) {
+		int to;
+		if (check_int(fd, &to, argv[2],
+			      check_integer, argv[2]) < 0)
+			return -1;
+		result = moveSongInPlaylistById(added_id, to);
+		if (result != PLAYLIST_RESULT_SUCCESS) {
+			int ret = print_playlist_result(fd, result);
+			deleteFromPlaylistById(added_id);
+			return ret;
 		}
-		fdprintf(fd, "Id: %d\n", added_id);
 	}
-	return ret;
+
+	fdprintf(fd, "Id: %d\n", added_id);
+	return result;
 }
 
 static int handleDelete(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
 	int song;
+	enum playlist_result result;
 
 	if (check_int(fd, &song, argv[1], need_positive) < 0)
 		return -1;
-	return deleteFromPlaylist(fd, song);
+
+	result = deleteFromPlaylist(song);
+	return print_playlist_result(fd, result);
 }
 
 static int handleDeleteId(int fd, mpd_unused int *permission,
 			  mpd_unused int argc, char *argv[])
 {
 	int id;
+	enum playlist_result result;
 
 	if (check_int(fd, &id, argv[1], need_positive) < 0)
 		return -1;
-	return deleteFromPlaylistById(fd, id);
+
+	result = deleteFromPlaylistById(id);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePlaylist(int fd, mpd_unused int *permission,
 			  mpd_unused int argc, mpd_unused char *argv[])
 {
-	return showPlaylist(fd);
+	showPlaylist(fd);
+	return 0;
 }
 
-static int handleShuffle(int fd, mpd_unused int *permission,
+static int handleShuffle(mpd_unused int fd, mpd_unused int *permission,
 			 mpd_unused int argc, mpd_unused char *argv[])
 {
-	return shufflePlaylist(fd);
+	shufflePlaylist();
+	return 0;
 }
 
 static int handleClear(mpd_unused int fd, mpd_unused int *permission,
@@ -454,25 +533,43 @@ static int handleClear(mpd_unused int fd, mpd_unused int *permission,
 static int handleSave(int fd, mpd_unused int *permission,
 		      mpd_unused int argc, char *argv[])
 {
-	return savePlaylist(fd, argv[1]);
+	enum playlist_result result;
+
+	result = savePlaylist(argv[1]);
+	return print_playlist_result(fd, result);
 }
 
 static int handleLoad(int fd, mpd_unused int *permission,
 		      mpd_unused int argc, char *argv[])
 {
-	return loadPlaylist(fd, argv[1]);
+	enum playlist_result result;
+
+	result = loadPlaylist(fd, argv[1]);
+	return print_playlist_result(fd, result);
 }
 
 static int handleListPlaylist(int fd, mpd_unused int *permission,
 			      mpd_unused int argc, char *argv[])
 {
-	return PlaylistInfo(fd, argv[1], 0);
+	int ret;
+
+	ret = PlaylistInfo(fd, argv[1], 0);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST, "No such playlist");
+
+	return ret;
 }
 
 static int handleListPlaylistInfo(int fd, mpd_unused int *permission,
 				  mpd_unused int argc, char *argv[])
 {
-	return PlaylistInfo(fd, argv[1], 1);
+	int ret;
+
+	ret = PlaylistInfo(fd, argv[1], 1);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST, "No such playlist");
+
+	return ret;
 }
 
 static int handleLsInfo(int fd, mpd_unused int *permission,
@@ -483,8 +580,10 @@ static int handleLsInfo(int fd, mpd_unused int *permission,
 	if (argc == 2)
 		path = argv[1];
 
-	if (printDirectoryInfo(fd, path) < 0)
+	if (printDirectoryInfo(fd, path) < 0) {
+		commandError(fd, ACK_ERROR_NO_EXIST, "directory not found");
 		return -1;
+	}
 
 	if (isRootDirectory(path))
 		return lsPlaylists(fd, path);
@@ -495,13 +594,19 @@ static int handleLsInfo(int fd, mpd_unused int *permission,
 static int handleRm(int fd, mpd_unused int *permission,
 		    mpd_unused int argc, char *argv[])
 {
-	return deletePlaylist(fd, argv[1]);
+	enum playlist_result result;
+
+	result = deletePlaylist(argv[1]);
+	return print_playlist_result(fd, result);
 }
 
 static int handleRename(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
-	return renameStoredPlaylist(fd, argv[1], argv[2]);
+	enum playlist_result result;
+
+	result = renameStoredPlaylist(argv[1], argv[2]);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePlaylistChanges(int fd, mpd_unused int *permission,
@@ -528,20 +633,26 @@ static int handlePlaylistInfo(int fd, mpd_unused int *permission,
 			      int argc, char *argv[])
 {
 	int song = -1;
+	enum playlist_result result;
 
 	if (argc == 2 && check_int(fd, &song, argv[1], need_positive) < 0)
 		return -1;
-	return playlistInfo(fd, song);
+
+	result = playlistInfo(fd, song);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePlaylistId(int fd, mpd_unused int *permission,
 			    int argc, char *argv[])
 {
 	int id = -1;
+	enum playlist_result result;
 
 	if (argc == 2 && check_int(fd, &id, argv[1], need_positive) < 0)
 		return -1;
-	return playlistId(fd, id);
+
+	result = playlistId(fd, id);
+	return print_playlist_result(fd, result);
 }
 
 static int handleFind(int fd, mpd_unused int *permission,
@@ -560,6 +671,9 @@ static int handleFind(int fd, mpd_unused int *permission,
 	}
 
 	ret = findSongsIn(fd, NULL, numItems, items);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
 
 	freeLocateTagItemArray(numItems, items);
 
@@ -582,6 +696,9 @@ static int handleSearch(int fd, mpd_unused int *permission,
 	}
 
 	ret = searchForSongsIn(fd, NULL, numItems, items);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
 
 	freeLocateTagItemArray(numItems, items);
 
@@ -604,6 +721,9 @@ static int handleCount(int fd, mpd_unused int *permission,
 	}
 
 	ret = searchStatsForSongsIn(fd, NULL, numItems, items);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
 
 	freeLocateTagItemArray(numItems, items);
 
@@ -654,11 +774,13 @@ static int handlePlaylistDelete(int fd, mpd_unused int *permission,
 				mpd_unused int argc, char *argv[]) {
 	char *playlist = argv[1];
 	int from;
+	enum playlist_result result;
 
 	if (check_int(fd, &from, argv[2], check_integer, argv[2]) < 0)
 		return -1;
 
-	return removeOneSongFromStoredPlaylistByPath(fd, playlist, from);
+	result = removeOneSongFromStoredPlaylistByPath(playlist, from);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePlaylistMove(int fd, mpd_unused int *permission,
@@ -666,13 +788,15 @@ static int handlePlaylistMove(int fd, mpd_unused int *permission,
 {
 	char *playlist = argv[1];
 	int from, to;
+	enum playlist_result result;
 
 	if (check_int(fd, &from, argv[2], check_integer, argv[2]) < 0)
 		return -1;
 	if (check_int(fd, &to, argv[3], check_integer, argv[3]) < 0)
 		return -1;
 
-	return moveSongInStoredPlaylistByPath(fd, playlist, from, to);
+	result = moveSongInStoredPlaylistByPath(playlist, from, to);
+	return print_playlist_result(fd, result);
 }
 
 static int listHandleUpdate(int fd,
@@ -738,30 +862,49 @@ static int handleListAll(int fd, mpd_unused int *permission,
 			 mpd_unused int argc, char *argv[])
 {
 	char *directory = NULL;
+	int ret;
 
 	if (argc == 2)
 		directory = argv[1];
-	return printAllIn(fd, directory);
+
+	ret = printAllIn(fd, directory);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+
+	return ret;
 }
 
 static int handleVolume(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
-	int change;
+	int change, ret;
 
 	if (check_int(fd, &change, argv[1], need_integer) < 0)
 		return -1;
-	return changeVolumeLevel(fd, change, 1);
+
+	ret = changeVolumeLevel(change, 1);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_SYSTEM,
+			     "problems setting volume");
+
+	return ret;
 }
 
 static int handleSetVol(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
-	int level;
+	int level, ret;
 
 	if (check_int(fd, &level, argv[1], need_integer) < 0)
 		return -1;
-	return changeVolumeLevel(fd, level, 0);
+
+	ret = changeVolumeLevel(level, 0);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_SYSTEM,
+			     "problems setting volume");
+
+	return ret;
 }
 
 static int handleRepeat(int fd, mpd_unused int *permission,
@@ -771,7 +914,15 @@ static int handleRepeat(int fd, mpd_unused int *permission,
 
 	if (check_int(fd, &status, argv[1], need_integer) < 0)
 		return -1;
-	return setPlaylistRepeatStatus(fd, status);
+
+	if (status != 0 && status != 1) {
+		commandError(fd, ACK_ERROR_ARG,
+			     "\"%i\" is not 0 or 1", status);
+		return -1;
+	}
+
+	setPlaylistRepeatStatus(status);
+	return 0;
 }
 
 static int handleRandom(int fd, mpd_unused int *permission,
@@ -781,7 +932,15 @@ static int handleRandom(int fd, mpd_unused int *permission,
 
 	if (check_int(fd, &status, argv[1], need_integer) < 0)
 		return -1;
-	return setPlaylistRandomStatus(fd, status);
+
+	if (status != 0 && status != 1) {
+		commandError(fd, ACK_ERROR_ARG,
+			     "\"%i\" is not 0 or 1", status);
+		return -1;
+	}
+
+	setPlaylistRandomStatus(status);
+	return 0;
 }
 
 static int handleStats(int fd, mpd_unused int *permission,
@@ -844,6 +1003,10 @@ static int handleList(int fd, mpd_unused int *permission,
 	if (conditionals)
 		freeLocateTagItemArray(numConditionals, conditionals);
 
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+
 	return ret;
 }
 
@@ -851,82 +1014,102 @@ static int handleMove(int fd, mpd_unused int *permission,
 		      mpd_unused int argc, char *argv[])
 {
 	int from, to;
+	enum playlist_result result;
 
 	if (check_int(fd, &from, argv[1], check_integer, argv[1]) < 0)
 		return -1;
 	if (check_int(fd, &to, argv[2], check_integer, argv[2]) < 0)
 		return -1;
-	return moveSongInPlaylist(fd, from, to);
+	result = moveSongInPlaylist(from, to);
+	return print_playlist_result(fd, result);
 }
 
 static int handleMoveId(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
 	int id, to;
+	enum playlist_result result;
 
 	if (check_int(fd, &id, argv[1], check_integer, argv[1]) < 0)
 		return -1;
 	if (check_int(fd, &to, argv[2], check_integer, argv[2]) < 0)
 		return -1;
-	return moveSongInPlaylistById(fd, id, to);
+	result = moveSongInPlaylistById(id, to);
+	return print_playlist_result(fd, result);
 }
 
 static int handleSwap(int fd, mpd_unused int *permission,
 		      mpd_unused int argc, char *argv[])
 {
 	int song1, song2;
+	enum playlist_result result;
 
 	if (check_int(fd, &song1, argv[1], check_integer, argv[1]) < 0)
 		return -1;
 	if (check_int(fd, &song2, argv[2], check_integer, argv[2]) < 0)
 		return -1;
-	return swapSongsInPlaylist(fd, song1, song2);
+	result = swapSongsInPlaylist(song1, song2);
+	return print_playlist_result(fd, result);
 }
 
 static int handleSwapId(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
 	int id1, id2;
+	enum playlist_result result;
 
 	if (check_int(fd, &id1, argv[1], check_integer, argv[1]) < 0)
 		return -1;
 	if (check_int(fd, &id2, argv[2], check_integer, argv[2]) < 0)
 		return -1;
-	return swapSongsInPlaylistById(fd, id1, id2);
+	result = swapSongsInPlaylistById(id1, id2);
+	return print_playlist_result(fd, result);
 }
 
 static int handleSeek(int fd, mpd_unused int *permission,
 		      mpd_unused int argc, char *argv[])
 {
 	int song, seek_time;
+	enum playlist_result result;
 
 	if (check_int(fd, &song, argv[1], check_integer, argv[1]) < 0)
 		return -1;
 	if (check_int(fd, &seek_time, argv[2], check_integer, argv[2]) < 0)
 		return -1;
-	return seekSongInPlaylist(fd, song, seek_time);
+
+	result = seekSongInPlaylist(song, seek_time);
+	return print_playlist_result(fd, result);
 }
 
 static int handleSeekId(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
 	int id, seek_time;
+	enum playlist_result result;
 
 	if (check_int(fd, &id, argv[1], check_integer, argv[1]) < 0)
 		return -1;
 	if (check_int(fd, &seek_time, argv[2], check_integer, argv[2]) < 0)
 		return -1;
-	return seekSongInPlaylistById(fd, id, seek_time);
+
+	result = seekSongInPlaylistById(id, seek_time);
+	return print_playlist_result(fd, result);
 }
 
 static int handleListAllInfo(int fd, mpd_unused int *permission,
 			     mpd_unused int argc, char *argv[])
 {
 	char *directory = NULL;
+	int ret;
 
 	if (argc == 2)
 		directory = argv[1];
-	return printInfoForAllIn(fd, directory);
+	ret = printInfoForAllIn(fd, directory);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+
+	return ret;
 }
 
 static int handlePing(mpd_unused int fd, mpd_unused int *permission,
@@ -961,21 +1144,31 @@ static int handleCrossfade(int fd, mpd_unused int *permission,
 static int handleEnableDevice(int fd, mpd_unused int *permission,
 			      mpd_unused int argc, char *argv[])
 {
-	int device;
+	int device, ret;
 
 	if (check_int(fd, &device, argv[1], check_non_negative, argv[1]) < 0)
 		return -1;
-	return enableAudioDevice(fd, device);
+
+	ret = enableAudioDevice(device);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST, "No such audio output");
+
+	return ret;
 }
 
 static int handleDisableDevice(int fd, mpd_unused int *permission,
 			       mpd_unused int argc, char *argv[])
 {
-	int device;
+	int device, ret;
 
 	if (check_int(fd, &device, argv[1], check_non_negative, argv[1]) < 0)
 		return -1;
-	return disableAudioDevice(fd, device);
+
+	ret = disableAudioDevice(device);
+	if (ret == -1)
+		commandError(fd, ACK_ERROR_NO_EXIST, "No such audio output");
+
+	return ret;
 }
 
 static int handleDevices(int fd, mpd_unused int *permission,
@@ -1027,7 +1220,10 @@ static int handleNotcommands(int fd, mpd_unused int *permission,
 static int handlePlaylistClear(int fd, mpd_unused int *permission,
 			       mpd_unused int argc, char *argv[])
 {
-	return clearStoredPlaylist(fd, argv[1]);
+	enum playlist_result result;
+
+	result = clearStoredPlaylist(argv[1]);
+	return print_playlist_result(fd, result);
 }
 
 static int handlePlaylistAdd(int fd, mpd_unused int *permission,
@@ -1035,11 +1231,20 @@ static int handlePlaylistAdd(int fd, mpd_unused int *permission,
 {
 	char *playlist = argv[1];
 	char *path = argv[2];
+	enum playlist_result result;
 
 	if (isRemoteUrl(path))
-		return addToStoredPlaylist(fd, path, playlist);
+		result = addToStoredPlaylist(path, playlist);
+	else
+		result = addAllInToStoredPlaylist(path, playlist);
 
-	return addAllInToStoredPlaylist(fd, path, playlist);
+	if (result == (enum playlist_result)-1) {
+		commandError(fd, ACK_ERROR_NO_EXIST,
+			     "directory or file not found");
+		return -1;
+	}
+
+	return print_playlist_result(fd, result);
 }
 
 void initCommands(void)
