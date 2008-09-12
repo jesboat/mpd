@@ -87,17 +87,17 @@ struct client {
 static LIST_HEAD(clients);
 static unsigned num_clients;
 
-static void client_write_deferred(struct client *client);
+static void client_write_deferred(struct client *cl);
 
-static void client_write_output(struct client *client);
+static void client_write_output(struct client *cl);
 
 #ifdef SO_SNDBUF
-static size_t get_default_snd_buf_size(struct client *client)
+static size_t get_default_snd_buf_size(struct client *cl)
 {
 	int new_size;
 	socklen_t sockOptLen = sizeof(int);
 
-	if (getsockopt(client->fd, SOL_SOCKET, SO_SNDBUF,
+	if (getsockopt(cl->fd, SOL_SOCKET, SO_SNDBUF,
 		       (char *)&new_size, &sockOptLen) < 0) {
 		DEBUG("problem getting sockets send buffer size\n");
 		return CLIENT_DEFAULT_OUT_BUFFER_SIZE;
@@ -108,67 +108,67 @@ static size_t get_default_snd_buf_size(struct client *client)
 	return CLIENT_DEFAULT_OUT_BUFFER_SIZE;
 }
 #else /* !SO_SNDBUF */
-static size_t get_default_snd_buf_size(struct client *client)
+static size_t get_default_snd_buf_size(struct client *cl)
 {
 	return CLIENT_DEFAULT_OUT_BUFFER_SIZE;
 }
 #endif /* !SO_SNDBUF */
 
-static void set_send_buf_size(struct client *client)
+static void set_send_buf_size(struct client *cl)
 {
-	size_t new_size = get_default_snd_buf_size(client);
-	if (client->send_buf_size != new_size) {
-		client->send_buf_size = new_size;
+	size_t new_size = get_default_snd_buf_size(cl);
+	if (cl->send_buf_size != new_size) {
+		cl->send_buf_size = new_size;
 		/* don't resize to get smaller, only bigger */
-		if (client->send_buf_alloc < new_size) {
-			if (client->send_buf)
-				free(client->send_buf);
-			client->send_buf = xmalloc(new_size);
-			client->send_buf_alloc = new_size;
+		if (cl->send_buf_alloc < new_size) {
+			if (cl->send_buf)
+				free(cl->send_buf);
+			cl->send_buf = xmalloc(new_size);
+			cl->send_buf_alloc = new_size;
 		}
 	}
 }
 
-static inline int client_is_expired(const struct client *client)
+static inline int client_is_expired(const struct client *cl)
 {
-	return client->fd < 0;
+	return cl->fd < 0;
 }
 
 static int global_expired;
 
-static inline void client_set_expired(struct client *client)
+static inline void client_set_expired(struct client *cl)
 {
-	if (client->fd >= 0) {
-		xclose(client->fd);
-		client->fd = -1;
+	if (cl->fd >= 0) {
+		xclose(cl->fd);
+		cl->fd = -1;
 	}
 
 	global_expired = 1;
 }
 
-static void client_init(struct client *client, int fd)
+static void client_init(struct client *cl, int fd)
 {
 	static unsigned int next_client_num;
 
 	assert(fd >= 0);
 
-	client->cmd_list_size = 0;
-	client->cmd_list_dup = 0;
-	client->cmd_list_OK = -1;
-	client->bufferLength = 0;
-	client->bufferPos = 0;
-	client->fd = fd;
+	cl->cmd_list_size = 0;
+	cl->cmd_list_dup = 0;
+	cl->cmd_list_OK = -1;
+	cl->bufferLength = 0;
+	cl->bufferPos = 0;
+	cl->fd = fd;
 	set_nonblocking(fd);
-	client->lastTime = time(NULL);
-	client->cmd_list = NULL;
-	client->cmd_list_tail = NULL;
-	client->deferred_send = NULL;
-	client->deferred_bytes = 0;
-	client->num = next_client_num++;
-	client->send_buf_used = 0;
+	cl->lastTime = time(NULL);
+	cl->cmd_list = NULL;
+	cl->cmd_list_tail = NULL;
+	cl->deferred_send = NULL;
+	cl->deferred_bytes = 0;
+	cl->num = next_client_num++;
+	cl->send_buf_used = 0;
 
-	client->permission = getDefaultPermissions();
-	set_send_buf_size(client);
+	cl->permission = getDefaultPermissions();
+	set_send_buf_size(cl);
 
 	xwrite(fd, GREETING, strlen(GREETING));
 }
@@ -189,25 +189,25 @@ static void free_cmd_list(struct strnode *list)
 	}
 }
 
-static void cmd_list_clone(struct client *client)
+static void cmd_list_clone(struct client *cl)
 {
-	struct strnode *new = dup_strlist(client->cmd_list);
-	free_cmd_list(client->cmd_list);
-	client->cmd_list = new;
-	client->cmd_list_dup = 1;
+	struct strnode *new = dup_strlist(cl->cmd_list);
+	free_cmd_list(cl->cmd_list);
+	cl->cmd_list = new;
+	cl->cmd_list_dup = 1;
 
 	/* new tail */
 	while (new && new->next)
 		new = new->next;
-	client->cmd_list_tail = new;
+	cl->cmd_list_tail = new;
 }
 
-static void new_cmd_list_ptr(struct client *client, char *s, const int size)
+static void new_cmd_list_ptr(struct client *cl, char *s, const int size)
 {
 	int i;
 	struct strnode *new;
 
-	if (!client->cmd_list_dup) {
+	if (!cl->cmd_list_dup) {
 		for (i = client_list_cache_size - 1; i >= 0; --i) {
 			if (list_cache[i].data)
 				continue;
@@ -220,46 +220,46 @@ static void new_cmd_list_ptr(struct client *client, char *s, const int size)
 	}
 
 	/* allocate from the heap */
-	new = client->cmd_list_dup ? new_strnode_dup(s, size)
+	new = cl->cmd_list_dup ? new_strnode_dup(s, size)
 	                              : new_strnode(s);
 out:
-	if (client->cmd_list) {
-		client->cmd_list_tail->next = new;
-		client->cmd_list_tail = new;
+	if (cl->cmd_list) {
+		cl->cmd_list_tail->next = new;
+		cl->cmd_list_tail = new;
 	} else
-		client->cmd_list = client->cmd_list_tail = new;
+		cl->cmd_list = cl->cmd_list_tail = new;
 }
 
-static void client_close(struct client *client)
+static void client_close(struct client *cl)
 {
 	struct sllnode *buf;
 
 	assert(num_clients > 0);
 	assert(!list_empty(&clients));
-	list_del(&client->siblings);
+	list_del(&cl->siblings);
 	--num_clients;
 
-	client_set_expired(client);
+	client_set_expired(cl);
 
-	if (client->cmd_list) {
-		free_cmd_list(client->cmd_list);
-		client->cmd_list = NULL;
+	if (cl->cmd_list) {
+		free_cmd_list(cl->cmd_list);
+		cl->cmd_list = NULL;
 	}
 
-	if ((buf = client->deferred_send)) {
+	if ((buf = cl->deferred_send)) {
 		do {
 			struct sllnode *prev = buf;
 			buf = buf->next;
 			free(prev);
 		} while (buf);
-		client->deferred_send = NULL;
+		cl->deferred_send = NULL;
 	}
 
-	if (client->send_buf)
-		free(client->send_buf);
+	if (cl->send_buf)
+		free(cl->send_buf);
 
-	SECURE("client %i: closed\n", client->num);
-	free(client);
+	SECURE("client %i: closed\n", cl->num);
+	free(cl);
 }
 
 static const char *
@@ -306,7 +306,7 @@ sockaddr_to_tmp_string(const struct sockaddr *addr)
 
 void client_new(int fd, const struct sockaddr *addr)
 {
-	struct client *client;
+	struct client *cl;
 
 	if (num_clients >= client_max_connections) {
 		ERROR("Max Connections Reached!\n");
@@ -314,145 +314,145 @@ void client_new(int fd, const struct sockaddr *addr)
 		return;
 	}
 
-	client = xcalloc(1, sizeof(*client));
-	list_add(&client->siblings, &clients);
+	cl = xcalloc(1, sizeof(struct client));
+	list_add(&cl->siblings, &clients);
 	++num_clients;
-	client_init(client, fd);
-	SECURE("client %i: opened from %s\n", client->num,
+	client_init(cl, fd);
+	SECURE("client %i: opened from %s\n", cl->num,
 	       sockaddr_to_tmp_string(addr));
 }
 
-static int client_process_line(struct client *client)
+static int client_process_line(struct client *cl)
 {
 	int ret = 1;
-	char *line = client->buffer + client->bufferPos;
+	char *line = cl->buffer + cl->bufferPos;
 
-	if (client->cmd_list_OK >= 0) {
+	if (cl->cmd_list_OK >= 0) {
 		if (strcmp(line, CLIENT_LIST_MODE_END) == 0) {
 			DEBUG("client %i: process command "
-			      "list\n", client->num);
+			      "list\n", cl->num);
 
 			global_expired = 0;
-			ret = processListOfCommands(client->fd,
-						    &(client->permission),
+			ret = processListOfCommands(cl->fd,
+						    &(cl->permission),
 						    &global_expired,
-						    client->cmd_list_OK,
-						    client->cmd_list);
+						    cl->cmd_list_OK,
+						    cl->cmd_list);
 			DEBUG("client %i: process command "
-			      "list returned %i\n", client->num, ret);
+			      "list returned %i\n", cl->num, ret);
 
 			if (ret == COMMAND_RETURN_CLOSE ||
-			    client_is_expired(client))
+			    client_is_expired(cl))
 				return COMMAND_RETURN_CLOSE;
 
 			if (ret == 0)
-				commandSuccess(client->fd);
+				commandSuccess(cl->fd);
 
-			client_write_output(client);
-			free_cmd_list(client->cmd_list);
-			client->cmd_list = NULL;
-			client->cmd_list_OK = -1;
+			client_write_output(cl);
+			free_cmd_list(cl->cmd_list);
+			cl->cmd_list = NULL;
+			cl->cmd_list_OK = -1;
 		} else {
 			size_t len = strlen(line) + 1;
-			client->cmd_list_size += len;
-			if (client->cmd_list_size >
+			cl->cmd_list_size += len;
+			if (cl->cmd_list_size >
 			    client_max_command_list_size) {
 				ERROR("client %i: command "
 				      "list size (%lu) is "
 				      "larger than the max "
 				      "(%lu)\n",
-				      client->num,
-				      (unsigned long)client->cmd_list_size,
+				      cl->num,
+				      (unsigned long)cl->cmd_list_size,
 				      (unsigned long)
 				      client_max_command_list_size);
 				return COMMAND_RETURN_CLOSE;
 			} else
-				new_cmd_list_ptr(client, line, len);
+				new_cmd_list_ptr(cl, line, len);
 		}
 	} else {
 		if (strcmp(line, CLIENT_LIST_MODE_BEGIN) == 0) {
-			client->cmd_list_OK = 0;
+			cl->cmd_list_OK = 0;
 			ret = 1;
 		} else if (strcmp(line, CLIENT_LIST_OK_MODE_BEGIN) == 0) {
-			client->cmd_list_OK = 1;
+			cl->cmd_list_OK = 1;
 			ret = 1;
 		} else {
 			DEBUG("client %i: process command \"%s\"\n",
-			      client->num, line);
-			ret = processCommand(client->fd,
-					     &(client->permission), line);
+			      cl->num, line);
+			ret = processCommand(cl->fd,
+					     &(cl->permission), line);
 			DEBUG("client %i: command returned %i\n",
-			      client->num, ret);
+			      cl->num, ret);
 
 			if (ret == COMMAND_RETURN_CLOSE ||
-			    client_is_expired(client))
+			    client_is_expired(cl))
 				return COMMAND_RETURN_CLOSE;
 
 			if (ret == 0)
-				commandSuccess(client->fd);
+				commandSuccess(cl->fd);
 
-			client_write_output(client);
+			client_write_output(cl);
 		}
 	}
 
 	return ret;
 }
 
-static int client_input_received(struct client *client, int bytesRead)
+static int client_input_received(struct client *cl, int bytesRead)
 {
 	int ret;
-	char *buf_tail = &(client->buffer[client->bufferLength - 1]);
+	char *buf_tail = &(cl->buffer[cl->bufferLength - 1]);
 
 	while (bytesRead > 0) {
-		client->bufferLength++;
+		cl->bufferLength++;
 		bytesRead--;
 		buf_tail++;
 		if (*buf_tail == '\n') {
 			*buf_tail = '\0';
-			if (client->bufferLength > client->bufferPos) {
+			if (cl->bufferLength > cl->bufferPos) {
 				if (*(buf_tail - 1) == '\r')
 					*(buf_tail - 1) = '\0';
 			}
-			ret = client_process_line(client);
+			ret = client_process_line(cl);
 			if (ret == COMMAND_RETURN_KILL ||
 			    ret == COMMAND_RETURN_CLOSE)
 				return ret;
-			assert(!client_is_expired(client));
-			client->bufferPos = client->bufferLength;
+			assert(!client_is_expired(cl));
+			cl->bufferPos = cl->bufferLength;
 		}
-		if (client->bufferLength == CLIENT_MAX_BUFFER_LENGTH) {
-			if (client->bufferPos == 0) {
+		if (cl->bufferLength == CLIENT_MAX_BUFFER_LENGTH) {
+			if (cl->bufferPos == 0) {
 				ERROR("client %i: buffer overflow\n",
-				      client->num);
+				      cl->num);
 				return COMMAND_RETURN_CLOSE;
 			}
-			if (client->cmd_list_OK >= 0 &&
-			    client->cmd_list &&
-			    !client->cmd_list_dup)
-				cmd_list_clone(client);
-			assert(client->bufferLength >= client->bufferPos
+			if (cl->cmd_list_OK >= 0 &&
+			    cl->cmd_list &&
+			    !cl->cmd_list_dup)
+				cmd_list_clone(cl);
+			assert(cl->bufferLength >= cl->bufferPos
 			       && "bufferLength >= bufferPos");
-			client->bufferLength -= client->bufferPos;
-			memmove(client->buffer,
-				client->buffer + client->bufferPos,
-				client->bufferLength);
-			client->bufferPos = 0;
+			cl->bufferLength -= cl->bufferPos;
+			memmove(cl->buffer,
+				cl->buffer + cl->bufferPos,
+				cl->bufferLength);
+			cl->bufferPos = 0;
 		}
 	}
 
 	return 0;
 }
 
-static int client_read(struct client *client)
+static int client_read(struct client *cl)
 {
 	int bytesRead;
 
-	bytesRead = read(client->fd,
-			 client->buffer + client->bufferLength,
-			 CLIENT_MAX_BUFFER_LENGTH - client->bufferLength);
+	bytesRead = read(cl->fd,
+			 cl->buffer + cl->bufferLength,
+			 CLIENT_MAX_BUFFER_LENGTH - cl->bufferLength);
 
 	if (bytesRead > 0)
-		return client_input_received(client, bytesRead);
+		return client_input_received(cl, bytesRead);
 	else if (bytesRead < 0 && errno == EINTR)
 		/* try again later, after select() */
 		return 0;
@@ -463,32 +463,32 @@ static int client_read(struct client *client)
 
 static void client_manager_register_read_fd(fd_set * fds, int *fdmax)
 {
-	struct client *client;
+	struct client *cl;
 
 	FD_ZERO(fds);
 	addListenSocketsToFdSet(fds, fdmax);
 
-	list_for_each_entry(client, &clients, siblings) {
-		if (!client_is_expired(client) && !client->deferred_send) {
-			FD_SET(client->fd, fds);
-			if (*fdmax < client->fd)
-				*fdmax = client->fd;
+	list_for_each_entry(cl, &clients, siblings) {
+		if (!client_is_expired(cl) && !cl->deferred_send) {
+			FD_SET(cl->fd, fds);
+			if (*fdmax < cl->fd)
+				*fdmax = cl->fd;
 		}
 	}
 }
 
 static void client_manager_register_write_fd(fd_set * fds, int *fdmax)
 {
-	struct client *client;
+	struct client *cl;
 
 	FD_ZERO(fds);
 
-	list_for_each_entry(client, &clients, siblings) {
-		if (client->fd >= 0 && !client_is_expired(client)
-		    && client->deferred_send) {
-			FD_SET(client->fd, fds);
-			if (*fdmax < client->fd)
-				*fdmax = client->fd;
+	list_for_each_entry(cl, &clients, siblings) {
+		if (cl->fd >= 0 && !client_is_expired(cl)
+		    && cl->deferred_send) {
+			FD_SET(cl->fd, fds);
+			if (*fdmax < cl->fd)
+				*fdmax = cl->fd;
 		}
 	}
 }
@@ -498,7 +498,7 @@ int client_manager_io(void)
 	fd_set rfds;
 	fd_set wfds;
 	fd_set efds;
-	struct client *client, *n;
+	struct client *cl, *n;
 	int ret;
 	int fdmax = 0;
 
@@ -521,24 +521,24 @@ int client_manager_io(void)
 
 	getConnections(&rfds);
 
-	list_for_each_entry_safe(client, n, &clients, siblings) {
-		if (FD_ISSET(client->fd, &rfds)) {
-			ret = client_read(client);
+	list_for_each_entry_safe(cl, n, &clients, siblings) {
+		if (FD_ISSET(cl->fd, &rfds)) {
+			ret = client_read(cl);
 			if (ret == COMMAND_RETURN_KILL)
 				return COMMAND_RETURN_KILL;
 			if (ret == COMMAND_RETURN_CLOSE) {
-				client_close(client);
+				client_close(cl);
 				continue;
 			}
 
-			assert(!client_is_expired(client));
+			assert(!client_is_expired(cl));
 
-			client->lastTime = time(NULL);
+			cl->lastTime = time(NULL);
 		}
-		if (!client_is_expired(client) &&
-		    FD_ISSET(client->fd, &wfds)) {
-			client_write_deferred(client);
-			client->lastTime = time(NULL);
+		if (!client_is_expired(cl) &&
+		    FD_ISSET(cl->fd, &wfds)) {
+			client_write_deferred(cl);
+			cl->lastTime = time(NULL);
 		}
 	}
 
@@ -601,10 +601,10 @@ void client_manager_init(void)
 
 static void client_close_all(void)
 {
-	struct client *client, *n;
+	struct client *cl, *n;
 
-	list_for_each_entry_safe(client, n, &clients, siblings)
-		client_close(client);
+	list_for_each_entry_safe(cl, n, &clients, siblings)
+		client_close(cl);
 	num_clients = 0;
 
 	free(list_cache);
@@ -619,69 +619,69 @@ void client_manager_deinit(void)
 
 void client_manager_expire(void)
 {
-	struct client *client, *n;
+	struct client *cl, *n;
 
-	list_for_each_entry_safe(client, n, &clients, siblings) {
-		if (client_is_expired(client)) {
-			DEBUG("client %i: expired\n", client->num);
-			client_close(client);
-		} else if (time(NULL) - client->lastTime >
+	list_for_each_entry_safe(cl, n, &clients, siblings) {
+		if (client_is_expired(cl)) {
+			DEBUG("client %i: expired\n", cl->num);
+			client_close(cl);
+		} else if (time(NULL) - cl->lastTime >
 			   client_timeout) {
-			DEBUG("client %i: timeout\n", client->num);
-			client_close(client);
+			DEBUG("client %i: timeout\n", cl->num);
+			client_close(cl);
 		}
 	}
 }
 
-static void client_write_deferred(struct client *client)
+static void client_write_deferred(struct client *cl)
 {
 	struct sllnode *buf;
 	ssize_t ret = 0;
 
-	buf = client->deferred_send;
+	buf = cl->deferred_send;
 	while (buf) {
 		assert(buf->size > 0);
 
-		ret = write(client->fd, buf->data, buf->size);
+		ret = write(cl->fd, buf->data, buf->size);
 		if (ret < 0)
 			break;
 		else if ((size_t)ret < buf->size) {
-			assert(client->deferred_bytes >= (size_t)ret);
-			client->deferred_bytes -= ret;
+			assert(cl->deferred_bytes >= (size_t)ret);
+			cl->deferred_bytes -= ret;
 			buf->data = (char *)buf->data + ret;
 			buf->size -= ret;
 		} else {
 			struct sllnode *tmp = buf;
 			size_t decr = (buf->size + sizeof(struct sllnode));
 
-			assert(client->deferred_bytes >= decr);
-			client->deferred_bytes -= decr;
+			assert(cl->deferred_bytes >= decr);
+			cl->deferred_bytes -= decr;
 			buf = buf->next;
 			free(tmp);
-			client->deferred_send = buf;
+			cl->deferred_send = buf;
 		}
-		client->lastTime = time(NULL);
+		cl->lastTime = time(NULL);
 	}
 
-	if (!client->deferred_send) {
-		DEBUG("client %i: buffer empty %lu\n", client->num,
-		      (unsigned long)client->deferred_bytes);
-		assert(client->deferred_bytes == 0);
+	if (!cl->deferred_send) {
+		DEBUG("client %i: buffer empty %lu\n", cl->num,
+		      (unsigned long)cl->deferred_bytes);
+		assert(cl->deferred_bytes == 0);
 	} else if (ret < 0 && errno != EAGAIN && errno != EINTR) {
 		/* cause client to close */
 		DEBUG("client %i: problems flushing buffer\n",
-		      client->num);
-		client_set_expired(client);
+		      cl->num);
+		client_set_expired(cl);
 	}
 }
 
-static struct client *client_by_fd(int fd)
+static struct client * client_by_fd(int fd)
 {
-	struct client *client;
+	struct client *cl;
 
-	list_for_each_entry(client, &clients, siblings)
-		if (client->fd == fd)
-			return client;
+	list_for_each_entry(cl, &clients, siblings)
+		if (cl->fd == fd)
+			return cl;
 
 	return NULL;
 }
@@ -689,97 +689,96 @@ static struct client *client_by_fd(int fd)
 int client_print(int fd, const char *buffer, size_t buflen)
 {
 	size_t copylen;
-	struct client *client;
+	struct client *cl;
 
 	assert(fd >= 0);
 
-	client = client_by_fd(fd);
-	if (client == NULL)
+	cl = client_by_fd(fd);
+	if (cl == NULL)
 		return -1;
 
 	/* if fd isn't found or client is going to be closed, do nothing */
-	if (client_is_expired(client))
+	if (client_is_expired(cl))
 		return 0;
 
-	while (buflen > 0 && !client_is_expired(client)) {
+	while (buflen > 0 && !client_is_expired(cl)) {
 		size_t left;
 
-		assert(client->send_buf_size >= client->send_buf_used);
-		left = client->send_buf_size - client->send_buf_used;
+		assert(cl->send_buf_size >= cl->send_buf_used);
+		left = cl->send_buf_size - cl->send_buf_used;
 
 		copylen = buflen > left ? left : buflen;
-		memcpy(client->send_buf + client->send_buf_used, buffer,
+		memcpy(cl->send_buf + cl->send_buf_used, buffer,
 		       copylen);
 		buflen -= copylen;
-		client->send_buf_used += copylen;
+		cl->send_buf_used += copylen;
 		buffer += copylen;
-		if (client->send_buf_used >= client->send_buf_size)
-			client_write_output(client);
+		if (cl->send_buf_used >= cl->send_buf_size)
+			client_write_output(cl);
 	}
 
 	return 0;
 }
 
-static void client_defer_output(struct client *client,
+static void client_defer_output(struct client *cl,
 				const void *data, size_t length)
 {
 	struct sllnode **buf_r;
 
 	assert(length > 0);
 
-	client->deferred_bytes += sizeof(struct sllnode) + length;
-	if (client->deferred_bytes > client_max_output_buffer_size) {
+	cl->deferred_bytes += sizeof(struct sllnode) + length;
+	if (cl->deferred_bytes > client_max_output_buffer_size) {
 		ERROR("client %i: output buffer size (%lu) is "
 		      "larger than the max (%lu)\n",
-		      client->num,
-		      (unsigned long)client->deferred_bytes,
+		      cl->num,
+		      (unsigned long)cl->deferred_bytes,
 		      (unsigned long)client_max_output_buffer_size);
 		/* cause client to close */
-		client_set_expired(client);
+		client_set_expired(cl);
 		return;
 	}
 
-	buf_r = &client->deferred_send;
+	buf_r = &cl->deferred_send;
 	while (*buf_r != NULL)
 		buf_r = &(*buf_r)->next;
 	*buf_r = new_sllnode(data, length);
 }
 
-static void client_write(struct client *client,
+static void client_write(struct client *cl,
 			 const char *data, size_t length)
 {
 	ssize_t ret;
 
 	assert(length > 0);
-	assert(client->deferred_send == NULL);
+	assert(cl->deferred_send == NULL);
 
-	if ((ret = write(client->fd, data, length)) < 0) {
+	if ((ret = write(cl->fd, data, length)) < 0) {
 		if (errno == EAGAIN || errno == EINTR) {
-			client_defer_output(client, data, length);
+			client_defer_output(cl, data, length);
 		} else {
-			DEBUG("client %i: problems writing\n", client->num);
-			client_set_expired(client);
+			DEBUG("client %i: problems writing\n", cl->num);
+			client_set_expired(cl);
 			return;
 		}
-	} else if ((size_t)ret < client->send_buf_used) {
-		client_defer_output(client, data + ret, length - ret);
+	} else if ((size_t)ret < cl->send_buf_used) {
+		client_defer_output(cl, data + ret, length - ret);
 	}
 
-	if (client->deferred_send)
-		DEBUG("client %i: buffer created\n", client->num);
+	if (cl->deferred_send)
+		DEBUG("client %i: buffer created\n", cl->num);
 }
 
-static void client_write_output(struct client *client)
+static void client_write_output(struct client *cl)
 {
-	if (client_is_expired(client) || !client->send_buf_used)
+	if (client_is_expired(cl) || !cl->send_buf_used)
 		return;
 
-	if (client->deferred_send != NULL)
-		client_defer_output(client, client->send_buf,
-				    client->send_buf_used);
+	if (cl->deferred_send != NULL)
+		client_defer_output(cl, cl->send_buf, cl->send_buf_used);
 	else
-		client_write(client, client->send_buf, client->send_buf_used);
+		client_write(cl, cl->send_buf, cl->send_buf_used);
 
-	client->send_buf_used = 0;
+	cl->send_buf_used = 0;
 }
 
