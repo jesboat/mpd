@@ -417,7 +417,8 @@ static int client_input_received(struct client *cl, int bytesRead)
 			if (ret == COMMAND_RETURN_KILL ||
 			    ret == COMMAND_RETURN_CLOSE)
 				return ret;
-			assert(!client_is_expired(cl));
+			if (client_is_expired(cl))
+				return COMMAND_RETURN_CLOSE;
 			cl->bufferPos = cl->bufferLength;
 		}
 		if (cl->bufferLength == CLIENT_MAX_BUFFER_LENGTH) {
