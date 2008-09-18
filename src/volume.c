@@ -33,7 +33,6 @@
 #ifdef HAVE_ALSA
 #include <alsa/asoundlib.h>
 #endif
-#include <alloca.h>
 
 #define VOLUME_MIXER_TYPE_SOFTWARE		0
 #define VOLUME_MIXER_TYPE_OSS			1
