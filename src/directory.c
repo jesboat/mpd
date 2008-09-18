@@ -845,14 +845,14 @@ int printDirectoryInfo(int fd, const char *name)
 	return 0;
 }
 
-static void writeDirectoryInfo(FILE * fp, Directory * directory)
+static void writeDirectoryInfo(int fd, Directory * directory)
 {
 	ListNode *node = (directory->subDirectories)->firstNode;
 	Directory *subDirectory;
 	int retv;
 
 	if (directory->path) {
-		retv = fprintf(fp, "%s%s\n", DIRECTORY_BEGIN,
+		retv = fdprintf(fd, DIRECTORY_BEGIN "%s\n",
 			  getDirectoryPath(directory));
 		if (retv < 0) {
 			ERROR("Failed to write data to database file: %s\n",strerror(errno));
@@ -862,19 +862,19 @@ static void writeDirectoryInfo(FILE * fp, Directory * directory)
 
 	while (node != NULL) {
 		subDirectory = (Directory *) node->data;
-		retv = fprintf(fp, "%s%s\n", DIRECTORY_DIR, node->key);
+		retv = fdprintf(fd, DIRECTORY_DIR "%s\n", node->key);
 		if (retv < 0) {
 			ERROR("Failed to write data to database file: %s\n",strerror(errno));
 			return;
 		}
-		writeDirectoryInfo(fp, subDirectory);
+		writeDirectoryInfo(fd, subDirectory);
 		node = node->nextNode;
 	}
 
-	writeSongInfoFromList(fp, directory->songs);
+	writeSongInfoFromList(fd, directory->songs);
 
 	if (directory->path) {
-		retv = fprintf(fp, "%s%s\n", DIRECTORY_END,
+		retv = fdprintf(fd, DIRECTORY_END "%s\n",
 			  getDirectoryPath(directory));
 		if (retv < 0) {
 			ERROR("Failed to write data to database file: %s\n",strerror(errno));
@@ -1029,7 +1029,7 @@ int checkDirectoryDB(void)
 
 int writeDirectoryDB(void)
 {
-	FILE *fp;
+	int fd;
 	char *dbFile = getDbFile();
 	struct stat st;
 
@@ -1042,22 +1042,27 @@ int writeDirectoryDB(void)
 
 	DEBUG("writing DB\n");
 
-	while (!(fp = fopen(dbFile, "w")) && errno == EINTR);
-	if (!fp) {
+	while (((fd = open(dbFile, O_WRONLY|O_TRUNC|O_CREAT)) < 0) &&
+	       errno == EINTR);
+	if (fd < 0) {
 		ERROR("unable to write to db file \"%s\": %s\n",
 		      dbFile, strerror(errno));
 		return -1;
 	}
 
-	/* block signals when writing the db so we don't get a corrupted db */
-	fprintf(fp, "%s\n", DIRECTORY_INFO_BEGIN);
-	fprintf(fp, "%s%s\n", DIRECTORY_MPD_VERSION, VERSION);
-	fprintf(fp, "%s%s\n", DIRECTORY_FS_CHARSET, getFsCharset());
-	fprintf(fp, "%s\n", DIRECTORY_INFO_END);
+	/*
+	 * TODO: block signals when writing the db so we don't get a corrupted
+	 * db (or unexpected failures).  fdprintf() needs better error handling
+	 */
+	fdprintf(fd,
+	         DIRECTORY_INFO_BEGIN "\n"
+	         DIRECTORY_MPD_VERSION VERSION "\n"
+	         DIRECTORY_FS_CHARSET "%s\n"
+	         DIRECTORY_INFO_END "\n", getFsCharset());
 
-	writeDirectoryInfo(fp, mp3rootDirectory);
+	writeDirectoryInfo(fd, mp3rootDirectory);
 
-	while (fclose(fp) && errno == EINTR);
+	xclose(fd);
 
 	if (stat(dbFile, &st) == 0)
 		directory_dbModTime = st.st_mtime;

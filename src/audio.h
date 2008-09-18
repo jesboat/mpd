@@ -67,7 +67,7 @@ void printAudioDevices(int fd);
 
 void readAudioDevicesState(FILE *fp);
 
-void saveAudioDevicesState(FILE *fp);
+void saveAudioDevicesState(int fd);
 
 void loadAudioDrivers(void);
 #endif

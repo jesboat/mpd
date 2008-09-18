@@ -461,13 +461,13 @@ void printAudioDevices(int fd)
 	}
 }
 
-void saveAudioDevicesState(FILE *fp)
+void saveAudioDevicesState(int fd)
 {
 	unsigned int i;
 
 	assert(audioOutputArraySize != 0);
 	for (i = 0; i < audioOutputArraySize; i++) {
-		fprintf(fp, AUDIO_DEVICE_STATE "%d:%s\n",
+		fdprintf(fd, AUDIO_DEVICE_STATE "%d:%s\n",
 			audioDeviceStates[i] & 0x01,
 		        audioOutputArray[i].name);
 	}

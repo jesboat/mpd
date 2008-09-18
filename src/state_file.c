@@ -29,7 +29,7 @@
 
 static struct _sf_cb {
 	void (*reader)(FILE *);
-	void (*writer)(FILE *);
+	void (*writer)(int);
 } sf_callbacks [] = {
 	{ read_sw_volume_state, save_sw_volume_state },
 	{ readAudioDevicesState, saveAudioDevicesState },
@@ -51,22 +51,22 @@ static void get_state_file_path(void)
 void write_state_file(void)
 {
 	unsigned int i;
-	FILE *fp;
+	int fd;
 
 	if (!sfpath)
 		return;
-	while (!(fp = fopen(sfpath, "w")) && errno == EINTR);
-
-	if (mpd_unlikely(!fp)) {
+	while (((fd = open(sfpath, O_WRONLY|O_TRUNC|O_CREAT)) < 0) &&
+	       errno == EINTR);
+	if (fd < 0) {
 		ERROR("problems opening state file \"%s\" for writing: %s\n",
 		      sfpath, strerror(errno));
 		return;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(sf_callbacks); i++)
-		sf_callbacks[i].writer(fp);
+		sf_callbacks[i].writer(fd);
 
-	while(fclose(fp) && errno == EINTR) /* nothing */;
+	xclose(fd);
 }
 
 void read_state_file(void)

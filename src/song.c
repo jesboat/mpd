@@ -164,22 +164,21 @@ int printSongInfoFromList(int fd, SongList * list)
 	return 0;
 }
 
-void writeSongInfoFromList(FILE * fp, SongList * list)
+void writeSongInfoFromList(int fd, SongList * list)
 {
 	ListNode *tempNode = list->firstNode;
 
-	fprintf(fp, "%s\n", SONG_BEGIN);
+	fdprintf(fd, SONG_BEGIN "\n");
 
 	while (tempNode != NULL) {
-		fprintf(fp, "%s%s\n", SONG_KEY, tempNode->key);
-		fflush(fp);
-		printSongInfo(fileno(fp), (Song *) tempNode->data);
-		fprintf(fp, "%s%li\n", SONG_MTIME,
+		fdprintf(fd, SONG_KEY "%s\n", tempNode->key);
+		printSongInfo(fd, (Song *) tempNode->data);
+		fdprintf(fd, SONG_MTIME "%li\n",
 			  (long)((Song *) tempNode->data)->mtime);
 		tempNode = tempNode->nextNode;
 	}
 
-	fprintf(fp, "%s\n", SONG_END);
+	fdprintf(fd, SONG_END "\n");
 }
 
 static void insertSongIntoList(SongList * list, ListNode ** nextSongNode,

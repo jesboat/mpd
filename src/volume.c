@@ -23,6 +23,7 @@
 #include "utils.h"
 #include "os_compat.h"
 #include "outputBuffer.h"
+#include "myfprintf.h"
 
 #include "../config.h"
 
@@ -532,9 +533,9 @@ void read_sw_volume_state(FILE *fp)
 	#undef bufsize
 }
 
-void save_sw_volume_state(FILE *fp)
+void save_sw_volume_state(int fd)
 {
 	if (volume_mixerType == VOLUME_MIXER_TYPE_SOFTWARE)
-		fprintf(fp, SW_VOLUME_STATE "%d\n", volume_softwareSet);
+		fdprintf(fd, SW_VOLUME_STATE "%d\n", volume_softwareSet);
 }
 

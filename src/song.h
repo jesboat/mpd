@@ -60,7 +60,7 @@ int printSongInfo(int fd, Song * song);
 
 int printSongInfoFromList(int fd, SongList * list);
 
-void writeSongInfoFromList(FILE * fp, SongList * list);
+void writeSongInfoFromList(int fd, SongList * list);
 
 void readSongInfoIntoList(FILE * fp, SongList * list,
 			  struct _Directory *parent);

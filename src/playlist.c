@@ -254,35 +254,35 @@ void showPlaylist(int fd)
 	}
 }
 
-void savePlaylistState(FILE *fp)
+void savePlaylistState(int fd)
 {
-	fprintf(fp, "%s", PLAYLIST_STATE_FILE_STATE);
+	fdprintf(fd, PLAYLIST_STATE_FILE_STATE);
 	switch (playlist_state) {
 	case PLAYLIST_STATE_PLAY:
 		switch (ob_get_state()) {
 		case OB_STATE_PAUSE:
-			fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_STATE_PAUSE);
+			fdprintf(fd, PLAYLIST_STATE_FILE_STATE_PAUSE "\n");
 			break;
 		default:
-			fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_STATE_PLAY);
+			fdprintf(fd, PLAYLIST_STATE_FILE_STATE_PLAY "\n");
 		}
-		fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_CURRENT,
-		        playlist.order[playlist.current]);
-		fprintf(fp, "%s%lu\n", PLAYLIST_STATE_FILE_TIME,
-		        ob_get_elapsed_time());
+		fdprintf(fd, PLAYLIST_STATE_FILE_CURRENT "%i\n"
+		         PLAYLIST_STATE_FILE_TIME "%lu\n",
+		         playlist.order[playlist.current],
+		         ob_get_elapsed_time());
 		break;
 	default:
-		fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_STATE_STOP);
+		fdprintf(fd, PLAYLIST_STATE_FILE_STATE_STOP "\n");
 		break;
 	}
-	fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_RANDOM, playlist.random);
-	fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_REPEAT, playlist.repeat);
-	fprintf(fp, "%s%i\n", PLAYLIST_STATE_FILE_CROSSFADE,
-	        (int)(ob_get_xfade()));
-	fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_PLAYLIST_BEGIN);
-	fflush(fp);
-	showPlaylist(fileno(fp));
-	fprintf(fp, "%s\n", PLAYLIST_STATE_FILE_PLAYLIST_END);
+	fdprintf(fd,
+		PLAYLIST_STATE_FILE_RANDOM "%i\n"
+		PLAYLIST_STATE_FILE_REPEAT "%i\n"
+		PLAYLIST_STATE_FILE_CROSSFADE "%i\n"
+		PLAYLIST_STATE_FILE_PLAYLIST_BEGIN "\n",
+		playlist.random, playlist.repeat, (int)(ob_get_xfade()));
+	showPlaylist(fd);
+	fdprintf(fd, PLAYLIST_STATE_FILE_PLAYLIST_END "\n");
 }
 
 static void loadPlaylistFromStateFile(FILE *fp, char *buffer,

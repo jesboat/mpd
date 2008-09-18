@@ -46,7 +46,7 @@ void finishPlaylist(void);
 
 void readPlaylistState(FILE *);
 
-void savePlaylistState(FILE *);
+void savePlaylistState(int fd);
 
 void clearPlaylist(void);
 
