@@ -22,7 +22,7 @@
 #include "gcc.h"
 #include "os_compat.h"
 
-mpd_fprintf void fdprintf(const int fd, const char *fmt, ...);
-void vfdprintf(const int fd, const char *fmt, va_list arglist);
+mpd_fprintf ssize_t fdprintf(const int fd, const char *fmt, ...);
+ssize_t vfdprintf(const int fd, const char *fmt, va_list arglist);
 
 #endif

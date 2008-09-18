@@ -24,22 +24,25 @@
 
 #define BUFFER_LENGTH	MPD_PATH_MAX+1024
 
-static void blockingWrite(const int fd, const char *string, size_t len)
+static ssize_t blocking_write(int fd, const char *string, size_t len)
 {
+	const char *base = string;
+
 	while (len) {
 		ssize_t ret = xwrite(fd, string, len);
-		if (ret == (ssize_t)len)
-			return;
-		if (ret >= 0) {
-			len -= ret;
-			string += ret;
-			continue;
+		if (ret < 0)
+			return -1;
+		if (!ret) {
+			errno = ENOSPC;
+			return -1;
 		}
-		return; /* error */
+		len -= ret;
+		string += ret;
 	}
+	return string - base;
 }
 
-void vfdprintf(const int fd, const char *fmt, va_list args)
+ssize_t vfdprintf(const int fd, const char *fmt, va_list args)
 {
 	char buffer[BUFFER_LENGTH];
 	char *buf = buffer;
@@ -50,14 +53,19 @@ void vfdprintf(const int fd, const char *fmt, va_list args)
 	if (fd == STDERR_FILENO ||
 	    fd == STDOUT_FILENO ||
 	    client_print(fd, buf, len) < 0)
-		blockingWrite(fd, buf, len);
+		return blocking_write(fd, buf, len);
+	return len;
 }
 
-mpd_fprintf void fdprintf(const int fd, const char *fmt, ...)
+mpd_fprintf ssize_t fdprintf(const int fd, const char *fmt, ...)
 {
 	va_list args;
+	ssize_t ret;
+
 	va_start(args, fmt);
-	vfdprintf(fd, fmt, args);
+	ret = vfdprintf(fd, fmt, args);
 	va_end(args);
+
+	return ret;
 }
 
