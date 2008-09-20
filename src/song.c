@@ -218,8 +218,7 @@ static int matchesAnMpdTagItemKey(char *buffer, int *itemType)
 	int i;
 
 	for (i = 0; i < TAG_NUM_OF_ITEM_TYPES; i++) {
-		if (0 == strncmp(mpdTagItemKeys[i], buffer,
-				 strlen(mpdTagItemKeys[i]))) {
+		if (!prefixcmp(buffer, mpdTagItemKeys[i])) {
 			*itemType = i;
 			return 1;
 		}
@@ -238,7 +237,7 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 	int itemType;
 
 	while (myFgets(buffer, bufferSize, fp) && 0 != strcmp(SONG_END, buffer)) {
-		if (0 == strncmp(SONG_KEY, buffer, strlen(SONG_KEY))) {
+		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song) {
 				insertSongIntoList(list, &nextSongNode,
 						   song->url, song);
@@ -254,7 +253,7 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
 			FATAL("Problems reading song info\n");
-		} else if (0 == strncmp(SONG_FILE, buffer, strlen(SONG_FILE))) {
+		} else if (!prefixcmp(buffer, SONG_FILE)) {
 			/* we don't need this info anymore
 			   song->url = xstrdup(&(buffer[strlen(SONG_FILE)]));
 			 */
@@ -268,14 +267,14 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 				     &(buffer
 				       [strlen(mpdTagItemKeys[itemType]) +
 					2]));
-		} else if (0 == strncmp(SONG_TIME, buffer, strlen(SONG_TIME))) {
+		} else if (!prefixcmp(buffer, SONG_TIME)) {
 			if (!song->tag) {
 				song->tag = tag_new();
 				tag_begin_add(song->tag);
 			}
 
 			song->tag->time = atoi(&(buffer[strlen(SONG_TIME)]));
-		} else if (0 == strncmp(SONG_MTIME, buffer, strlen(SONG_MTIME))) {
+		} else if (!prefixcmp(buffer, SONG_MTIME)) {
 			song->mtime = atoi(&(buffer[strlen(SONG_MTIME)]));
 		}
 		else
