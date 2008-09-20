@@ -90,6 +90,8 @@ void xpthread_mutex_destroy(pthread_mutex_t *mutex);
 
 void xpthread_cond_destroy(pthread_cond_t *cond);
 
+int prefixcmp(const char *str, const char *prefix);
+
 /*
  * Work-arounds for braindead APIs that require non-const pointers:
  *   ao_play(), free(), vorbis_comment_add_tag(), iconv()
