@@ -55,8 +55,6 @@ int writeDirectoryDB(void);
 
 int readDirectoryDB(void);
 
-void updateMp3Directory(void);
-
 Song *getSongFromDB(const char *file);
 
 time_t getDbModTime(void);
