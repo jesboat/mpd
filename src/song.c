@@ -27,9 +27,6 @@
 #include "inputPlugin.h"
 #include "myfprintf.h"
 
-#define SONG_KEY	"key: "
-#define SONG_MTIME	"mtime: "
-
 #include "os_compat.h"
 
 static Song *newNullSong(void)
@@ -152,64 +149,24 @@ int printSongInfo(int fd, Song * song)
 	return 0;
 }
 
-int printSongInfoFromList(int fd, SongList * list)
+static void insertSongIntoList(struct songvec *sv, Song *newsong)
 {
-	ListNode *tempNode = list->firstNode;
+	Song *existing = songvec_find(sv, newsong->url);
 
-	while (tempNode != NULL) {
-		printSongInfo(fd, (Song *) tempNode->data);
-		tempNode = tempNode->nextNode;
-	}
-
-	return 0;
-}
-
-void writeSongInfoFromList(int fd, SongList * list)
-{
-	ListNode *tempNode = list->firstNode;
-
-	fdprintf(fd, SONG_BEGIN "\n");
-
-	while (tempNode != NULL) {
-		fdprintf(fd, SONG_KEY "%s\n", tempNode->key);
-		printSongInfo(fd, (Song *) tempNode->data);
-		fdprintf(fd, SONG_MTIME "%li\n",
-			  (long)((Song *) tempNode->data)->mtime);
-		tempNode = tempNode->nextNode;
-	}
-
-	fdprintf(fd, SONG_END "\n");
-}
-
-static void insertSongIntoList(SongList * list, ListNode ** nextSongNode,
-			       char *key, Song * song)
-{
-	ListNode *nodeTemp;
-	int cmpRet = 0;
-
-	while (*nextSongNode
-	       && (cmpRet = strcmp(key, (*nextSongNode)->key)) > 0) {
-		nodeTemp = (*nextSongNode)->nextNode;
-		deleteNodeFromList(list, *nextSongNode);
-		*nextSongNode = nodeTemp;
-	}
-
-	if (!(*nextSongNode)) {
-		insertInList(list, song->url, (void *)song);
-	} else if (cmpRet == 0) {
-		Song *tempSong = (Song *) ((*nextSongNode)->data);
-		if (tempSong->mtime != song->mtime) {
-			tag_free(tempSong->tag);
-			tag_end_add(song->tag);
-			tempSong->tag = song->tag;
-			tempSong->mtime = song->mtime;
-			song->tag = NULL;
+	if (!existing) {
+		songvec_add(sv, newsong);
+		if (newsong->tag)
+			tag_end_add(newsong->tag);
+	} else { /* prevent dupes, just update the existing song info */
+		if (existing->mtime != newsong->mtime) {
+			tag_free(existing->tag);
+			if (newsong->tag)
+				tag_end_add(newsong->tag);
+			existing->tag = newsong->tag;
+			existing->mtime = newsong->mtime;
+			newsong->tag = NULL;
 		}
-		freeJustSong(song);
-		*nextSongNode = (*nextSongNode)->nextNode;
-	} else {
-		insertInListBeforeNode(list, *nextSongNode, -1, song->url,
-				       (void *)song);
+		freeJustSong(newsong);
 	}
 }
 
@@ -218,8 +175,7 @@ static int matchesAnMpdTagItemKey(char *buffer, int *itemType)
 	int i;
 
 	for (i = 0; i < TAG_NUM_OF_ITEM_TYPES; i++) {
-		if (0 == strncmp(mpdTagItemKeys[i], buffer,
-				 strlen(mpdTagItemKeys[i]))) {
+		if (!prefixcmp(buffer, mpdTagItemKeys[i])) {
 			*itemType = i;
 			return 1;
 		}
@@ -228,24 +184,18 @@ static int matchesAnMpdTagItemKey(char *buffer, int *itemType)
 	return 0;
 }
 
-void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
+void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 {
 	char buffer[MPD_PATH_MAX + 1024];
 	int bufferSize = MPD_PATH_MAX + 1024;
 	Song *song = NULL;
-	ListNode *nextSongNode = list->firstNode;
-	ListNode *nodeTemp;
+	struct songvec *sv = &parentDir->songs;
 	int itemType;
 
 	while (myFgets(buffer, bufferSize, fp) && 0 != strcmp(SONG_END, buffer)) {
-		if (0 == strncmp(SONG_KEY, buffer, strlen(SONG_KEY))) {
-			if (song) {
-				insertSongIntoList(list, &nextSongNode,
-						   song->url, song);
-				if (song->tag != NULL)
-					tag_end_add(song->tag);
-			}
-
+		if (!prefixcmp(buffer, SONG_KEY)) {
+			if (song)
+				insertSongIntoList(sv, song);
 			song = newNullSong();
 			song->url = xstrdup(buffer + strlen(SONG_KEY));
 			song->type = SONG_TYPE_FILE;
@@ -254,7 +204,7 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
 			FATAL("Problems reading song info\n");
-		} else if (0 == strncmp(SONG_FILE, buffer, strlen(SONG_FILE))) {
+		} else if (!prefixcmp(buffer, SONG_FILE)) {
 			/* we don't need this info anymore
 			   song->url = xstrdup(&(buffer[strlen(SONG_FILE)]));
 			 */
@@ -268,31 +218,24 @@ void readSongInfoIntoList(FILE * fp, SongList * list, Directory * parentDir)
 				     &(buffer
 				       [strlen(mpdTagItemKeys[itemType]) +
 					2]));
-		} else if (0 == strncmp(SONG_TIME, buffer, strlen(SONG_TIME))) {
+		} else if (!prefixcmp(buffer, SONG_TIME)) {
 			if (!song->tag) {
 				song->tag = tag_new();
 				tag_begin_add(song->tag);
 			}
 
 			song->tag->time = atoi(&(buffer[strlen(SONG_TIME)]));
-		} else if (0 == strncmp(SONG_MTIME, buffer, strlen(SONG_MTIME))) {
+		} else if (!prefixcmp(buffer, SONG_MTIME)) {
 			song->mtime = atoi(&(buffer[strlen(SONG_MTIME)]));
 		}
 		else
 			FATAL("songinfo: unknown line in db: %s\n", buffer);
 	}
 
-	if (song) {
-		insertSongIntoList(list, &nextSongNode, song->url, song);
-		if (song->tag != NULL)
-			tag_end_add(song->tag);
-	}
-
-	while (nextSongNode) {
-		nodeTemp = nextSongNode->nextNode;
-		deleteNodeFromList(list, nextSongNode);
-		nextSongNode = nodeTemp;
-	}
+	if (song)
+		insertSongIntoList(sv, song);
+	if (isUpdatingDB()) /* only needed until we get rid of forked update */
+		songvec_prune(sv);
 }
 
 int updateSongInfo(Song * song)

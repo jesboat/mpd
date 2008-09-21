@@ -24,6 +24,8 @@
 #include "tag.h"
 #include "list.h"
 
+#define SONG_KEY	"key: "
+#define SONG_MTIME	"mtime: "
 #define SONG_BEGIN	"songList begin"
 #define SONG_END	"songList end"
 
@@ -58,12 +60,7 @@ Song *addSongToList(SongList * list, const char *url, const char *utf8path,
 
 int printSongInfo(int fd, Song * song);
 
-int printSongInfoFromList(int fd, SongList * list);
-
-void writeSongInfoFromList(int fd, SongList * list);
-
-void readSongInfoIntoList(FILE * fp, SongList * list,
-			  struct _Directory *parent);
+void readSongInfoIntoList(FILE * fp, struct _Directory *parent);
 
 int updateSongInfo(Song * song);
 

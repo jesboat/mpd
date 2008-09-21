@@ -79,6 +79,7 @@ mpd_headers = \
 	sig_handlers.h \
 	sllist.h \
 	song.h \
+	songvec.h \
 	state_file.h \
 	stats.h \
 	tag.h \
@@ -137,6 +138,7 @@ mpd_SOURCES = \
 	signal_check.c \
 	sllist.c \
 	song.c \
+	songvec.c \
 	state_file.c \
 	stats.c \
 	tag.c \

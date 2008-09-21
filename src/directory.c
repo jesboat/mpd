@@ -33,6 +33,7 @@
 #include "ack.h"
 #include "myfprintf.h"
 #include "dbUtils.h"
+#include "main_notify.h"
 
 #define DIRECTORY_DIR		"directory: "
 #define DIRECTORY_MTIME		"mtime: "
@@ -55,11 +56,13 @@ static Directory *mp3rootDirectory;
 
 static time_t directory_dbModTime;
 
-static volatile int directory_updatePid;
+static sig_atomic_t directory_updatePid;
 
-static volatile int directory_reReadDB;
+static sig_atomic_t update_exited;
 
-static volatile mpd_uint16 directory_updateJobId;
+static sig_atomic_t update_status;
+
+static sig_atomic_t directory_updateJobId;
 
 static DirectoryList *newDirectoryList(void);
 
@@ -109,53 +112,48 @@ static char *getDbFile(void)
 	return param->value;
 }
 
-static void clearUpdatePid(void)
-{
-	directory_updatePid = 0;
-}
-
 int isUpdatingDB(void)
 {
-	if (directory_updatePid > 0 || directory_reReadDB) {
-		return directory_updateJobId;
-	}
-	return 0;
+	return directory_updatePid > 0 ? directory_updateJobId : 0;
 }
 
 void directory_sigChldHandler(int pid, int status)
 {
 	if (directory_updatePid == pid) {
-		if (WIFSIGNALED(status) && WTERMSIG(status) != SIGTERM) {
-			/* ERROR("update process died from a "
-			      "non-TERM signal: %i\n", WTERMSIG(status)); */
-		} else if (!WIFSIGNALED(status)) {
-			switch (WEXITSTATUS(status)) {
-			case DIRECTORY_UPDATE_EXIT_UPDATE:
-				directory_reReadDB = 1;
-				/* DEBUG("directory_sigChldHandler: "
-				      "updated db\n"); */
-			case DIRECTORY_UPDATE_EXIT_NOUPDATE:
-				/* DEBUG("directory_sigChldHandler: "
-				      "update exited succesffully\n"); */
-				break;
-			/*
-			default:
-				ERROR("error updating db\n");
-			*/
-			}
-		}
-		clearUpdatePid();
+		update_status = status;
+		update_exited = 1;
+		wakeup_main_task();
 	}
 }
 
 void readDirectoryDBIfUpdateIsFinished(void)
 {
-	if (directory_reReadDB && 0 == directory_updatePid) {
-		DEBUG("readDirectoryDB since update finished successfully\n");
-		readDirectoryDB();
-		playlistVersionChange();
-		directory_reReadDB = 0;
+	int status;
+
+	if (!update_exited)
+		return;
+
+	status = update_status;
+
+	if (WIFSIGNALED(status) && WTERMSIG(status) != SIGTERM) {
+		ERROR("update process died from a non-TERM signal: %d\n",
+		      WTERMSIG(status));
+	} else if (!WIFSIGNALED(status)) {
+		switch (WEXITSTATUS(status)) {
+		case DIRECTORY_UPDATE_EXIT_UPDATE:
+			DEBUG("update finished successfully with changes\n");
+			readDirectoryDB();
+			DEBUG("update changes read into memory\n");
+			playlistVersionChange();
+		case DIRECTORY_UPDATE_EXIT_NOUPDATE:
+			DEBUG("update exited successfully with no changes\n");
+			break;
+		default:
+			ERROR("error updating db\n");
+		}
 	}
+	update_exited = 0;
+	directory_updatePid = 0;
 }
 
 int updateInit(int fd, List * pathList)
@@ -165,8 +163,14 @@ int updateInit(int fd, List * pathList)
 		return -1;
 	}
 
-	/* need to block CHLD signal, cause it can exit before we
-	   even get a chance to assign directory_updatePID */
+	/*
+	 * need to block CHLD signal, cause it can exit before we
+	 * even get a chance to assign directory_updatePID
+	 *
+	 * Update: our signal blocking is is utterly broken by
+	 * pthreads(); goal will be to remove dependency on signals;
+	 * but for now use the my_usleep hack below.
+	 */
 	blockSignals();
 	directory_updatePid = fork();
 	if (directory_updatePid == 0) {
@@ -180,6 +184,13 @@ int updateInit(int fd, List * pathList)
 		client_manager_deinit();
 		finishPlaylist();
 		finishVolume();
+
+		/*
+		 * XXX HACK to workaround race condition where
+		 * directory_updatePid is still zero in the parent even upon
+		 * entry of directory_sigChldHandler.
+		 */
+		my_usleep(100000);
 
 		if (pathList) {
 			ListNode *node = pathList->firstNode;
@@ -247,14 +258,14 @@ static Directory *newDirectory(const char *dirname, Directory * parent)
 {
 	Directory *directory;
 
-	directory = xmalloc(sizeof(Directory));
+	directory = xcalloc(1, sizeof(Directory));
 
 	if (dirname && strlen(dirname))
 		directory->path = xstrdup(dirname);
 	else
 		directory->path = NULL;
 	directory->subDirectories = newDirectoryList();
-	directory->songs = newSongList();
+	assert(!directory->songs.base);
 	directory->stat = 0;
 	directory->inode = 0;
 	directory->device = 0;
@@ -266,7 +277,7 @@ static Directory *newDirectory(const char *dirname, Directory * parent)
 static void freeDirectory(Directory * directory)
 {
 	freeDirectoryList(directory->subDirectories);
-	freeSongList(directory->songs);
+	songvec_free(&directory->songs);
 	if (directory->path)
 		free(directory->path);
 	free(directory);
@@ -281,13 +292,13 @@ static void freeDirectoryList(DirectoryList * directoryList)
 
 static void removeSongFromDirectory(Directory * directory, const char *shortname)
 {
-	void *song;
+	Song *song = songvec_find(&directory->songs, shortname);
 
-	if (findInList(directory->songs, shortname, &song)) {
+	if (song) {
 		char path_max_tmp[MPD_PATH_MAX]; /* wasteful */
-		LOG("removing: %s\n",
-		    get_song_url(path_max_tmp, (Song *) song));
-		deleteFromList(directory->songs, shortname);
+		LOG("removing: %s\n", get_song_url(path_max_tmp, song));
+		songvec_delete(&directory->songs, song);
+		freeSong(song);
 	}
 }
 
@@ -302,7 +313,7 @@ static void deleteEmptyDirectoriesInDirectory(Directory * directory)
 		deleteEmptyDirectoriesInDirectory(subDir);
 		nextNode = node->nextNode;
 		if (subDir->subDirectories->numberOfNodes == 0 &&
-		    subDir->songs->numberOfNodes == 0) {
+		    subDir->songs.nr == 0) {
 			deleteNodeFromList(directory->subDirectories, node);
 		}
 		node = nextNode;
@@ -317,7 +328,7 @@ static void deleteEmptyDirectoriesInDirectory(Directory * directory)
 static int updateInDirectory(Directory * directory,
 			     const char *shortname, const char *name)
 {
-	void *song;
+	Song *song;
 	void *subDir;
 	struct stat st;
 
@@ -325,14 +336,13 @@ static int updateInDirectory(Directory * directory,
 		return -1;
 
 	if (S_ISREG(st.st_mode) && hasMusicSuffix(name, 0)) {
-		if (0 == findInList(directory->songs, shortname, &song)) {
+		if (!(song = songvec_find(&directory->songs, shortname))) {
 			addToDirectory(directory, shortname, name);
 			return DIRECTORY_RETURN_UPDATE;
-		} else if (st.st_mtime != ((Song *) song)->mtime) {
+		} else if (st.st_mtime != song->mtime) {
 			LOG("updating %s\n", name);
-			if (updateSongInfo((Song *) song) < 0) {
+			if (updateSongInfo(song) < 0)
 				removeSongFromDirectory(directory, shortname);
-			}
 			return 1;
 		}
 	} else if (S_ISDIR(st.st_mode)) {
@@ -367,6 +377,8 @@ static int removeDeletedFromDirectory(char *path_max_tmp, Directory * directory)
 	ListNode *node, *tmpNode;
 	DirectoryList *subdirs = directory->subDirectories;
 	int ret = 0;
+	int i;
+	struct songvec *sv = &directory->songs;
 
 	node = subdirs->firstNode;
 	while (node) {
@@ -387,22 +399,20 @@ static int removeDeletedFromDirectory(char *path_max_tmp, Directory * directory)
 		node = tmpNode;
 	}
 
-	node = directory->songs->firstNode;
-	while (node) {
-		tmpNode = node->nextNode;
-		if (node->key) {
-			if (dirname)
-				sprintf(path_max_tmp, "%s/%s", dirname,
-					node->key);
-			else
-				strcpy(path_max_tmp, node->key);
+	for (i = sv->nr; --i >= 0; ) { /* cleaner deletes if we go backwards */
+		Song *song = sv->base[i];
+		if (!song || !song->url)
+			continue; /* does this happen?, perhaps assert() */
 
-			if (!isFile(path_max_tmp, NULL)) {
-				removeSongFromDirectory(directory, node->key);
-				ret = 1;
-			}
+		if (dirname)
+			sprintf(path_max_tmp, "%s/%s", dirname, song->url);
+		else
+			strcpy(path_max_tmp, song->url);
+
+		if (!isFile(path_max_tmp, NULL)) {
+			removeSongFromDirectory(directory, song->url);
+			ret = 1;
 		}
-		node = tmpNode;
 	}
 
 	return ret;
@@ -727,12 +737,12 @@ static int addToDirectory(Directory * directory,
 		return -1;
 	}
 
-	if (S_ISREG(st.st_mode) && hasMusicSuffix(name, 0)) {
-		Song *song;
-		song = addSongToList(directory->songs, shortname, name,
-				     SONG_TYPE_FILE, directory);
+	if (S_ISREG(st.st_mode) &&
+	    hasMusicSuffix(name, 0) && isMusic(name, NULL, 0)) {
+		Song *song = newSong(shortname, SONG_TYPE_FILE, directory);
 		if (!song)
 			return -1;
+		songvec_add(&directory->songs, song);
 		LOG("added %s\n", name);
 		return 1;
 	} else if (S_ISDIR(st.st_mode)) {
@@ -840,7 +850,7 @@ int printDirectoryInfo(int fd, const char *name)
 		return -1;
 
 	printDirectoryList(fd, directory->subDirectories);
-	printSongInfoFromList(fd, directory->songs);
+	songvec_write(&directory->songs, fd, 0);
 
 	return 0;
 }
@@ -871,7 +881,7 @@ static void writeDirectoryInfo(int fd, Directory * directory)
 		node = node->nextNode;
 	}
 
-	writeSongInfoFromList(fd, directory->songs);
+	songvec_write(&directory->songs, fd, 1);
 
 	if (directory->path) {
 		retv = fdprintf(fd, DIRECTORY_END "%s\n",
@@ -895,22 +905,18 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 	ListNode *nodeTemp;
 
 	while (myFgets(buffer, bufferSize, fp)
-	       && 0 != strncmp(DIRECTORY_END, buffer, strlen(DIRECTORY_END))) {
-		if (0 == strncmp(DIRECTORY_DIR, buffer, strlen(DIRECTORY_DIR))) {
+	       && prefixcmp(buffer, DIRECTORY_END)) {
+		if (!prefixcmp(buffer, DIRECTORY_DIR)) {
 			strcpy(key, &(buffer[strlen(DIRECTORY_DIR)]));
 			if (!myFgets(buffer, bufferSize, fp))
 				FATAL("Error reading db, fgets\n");
 			/* for compatibility with db's prior to 0.11 */
-			if (0 == strncmp(DIRECTORY_MTIME, buffer,
-					 strlen(DIRECTORY_MTIME))) {
+			if (!prefixcmp(buffer, DIRECTORY_MTIME)) {
 				if (!myFgets(buffer, bufferSize, fp))
 					FATAL("Error reading db, fgets\n");
 			}
-			if (strncmp
-			    (DIRECTORY_BEGIN, buffer,
-			     strlen(DIRECTORY_BEGIN))) {
+			if (prefixcmp(buffer, DIRECTORY_BEGIN))
 				FATAL("Error reading db at line: %s\n", buffer);
-			}
 			name = &(buffer[strlen(DIRECTORY_BEGIN)]);
 
 			while (nextDirNode && (strcmpRet =
@@ -938,8 +944,8 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 			}
 
 			readDirectoryInfo(fp, subDirectory);
-		} else if (0 == strncmp(SONG_BEGIN, buffer, strlen(SONG_BEGIN))) {
-			readSongInfoIntoList(fp, directory->songs, directory);
+		} else if (!prefixcmp(buffer, SONG_BEGIN)) {
+			readSongInfoIntoList(fp, directory);
 		} else {
 			FATAL("Unknown line in db: %s\n", buffer);
 		}
@@ -958,7 +964,7 @@ static void sortDirectory(Directory * directory)
 	Directory *subDir;
 
 	sortList(directory->subDirectories);
-	sortList(directory->songs);
+	songvec_sort(&directory->songs);
 
 	while (node != NULL) {
 		subDir = (Directory *) node->data;
@@ -1097,16 +1103,13 @@ int readDirectoryDB(void)
 		if (0 == strcmp(DIRECTORY_INFO_BEGIN, buffer)) {
 			while (myFgets(buffer, bufferSize, fp) &&
 			       0 != strcmp(DIRECTORY_INFO_END, buffer)) {
-				if (0 == strncmp(DIRECTORY_MPD_VERSION, buffer,
-						 strlen(DIRECTORY_MPD_VERSION)))
+				if (!prefixcmp(buffer, DIRECTORY_MPD_VERSION))
 				{
 					if (foundVersion)
 						FATAL("already found version in db\n");
 					foundVersion = 1;
-				} else if (0 ==
-					   strncmp(DIRECTORY_FS_CHARSET, buffer,
-						   strlen
-						   (DIRECTORY_FS_CHARSET))) {
+				} else if (!prefixcmp(buffer,
+				                      DIRECTORY_FS_CHARSET)) {
 					char *fsCharset;
 					char *tempCharset;
 
@@ -1153,31 +1156,12 @@ int readDirectoryDB(void)
 	return 0;
 }
 
-void updateMp3Directory(void)
-{
-	switch (updateDirectory(mp3rootDirectory)) {
-	case 0:
-		/* nothing updated */
-		return;
-	case 1:
-		if (writeDirectoryDB() < 0)
-			exit(EXIT_FAILURE);
-		break;
-	default:
-		/* something was updated and db should be written */
-		FATAL("problems updating music db\n");
-	}
-
-	return;
-}
-
 static int traverseAllInSubDirectory(Directory * directory,
 				     int (*forEachSong) (Song *, void *),
 				     int (*forEachDir) (Directory *, void *),
 				     void *data)
 {
-	ListNode *node = directory->songs->firstNode;
-	Song *song;
+	ListNode *node;
 	Directory *dir;
 	int errFlag = 0;
 
@@ -1188,13 +1172,15 @@ static int traverseAllInSubDirectory(Directory * directory,
 	}
 
 	if (forEachSong) {
-		while (node != NULL && !errFlag) {
-			song = (Song *) node->data;
-			errFlag = forEachSong(song, data);
-			node = node->nextNode;
+		int i;
+		struct songvec *sv = &directory->songs;
+		Song **sp = sv->base;
+
+		for (i = sv->nr; --i >= 0; ) {
+			Song *song = *sp++;
+			if ((errFlag = forEachSong(song, data)))
+				return errFlag;
 		}
-		if (errFlag)
-			return errFlag;
 	}
 
 	node = directory->subDirectories->firstNode;
@@ -1238,7 +1224,7 @@ void initMp3Directory(void)
 static Song *getSongDetails(const char *file, const char **shortnameRet,
 			    Directory ** directoryRet)
 {
-	void *song = NULL;
+	Song *song;
 	Directory *directory;
 	char *dir = NULL;
 	char *duplicated = xstrdup(file);
@@ -1265,7 +1251,7 @@ static Song *getSongDetails(const char *file, const char **shortnameRet,
 		return NULL;
 	}
 
-	if (!findInList(directory->songs, shortname, &song)) {
+	if (!(song = songvec_find(&directory->songs, shortname))) {
 		free(duplicated);
 		return NULL;
 	}
@@ -1275,7 +1261,7 @@ static Song *getSongDetails(const char *file, const char **shortnameRet,
 		*shortnameRet = shortname;
 	if (directoryRet)
 		*directoryRet = directory;
-	return (Song *) song;
+	return song;
 }
 
 Song *getSongFromDB(const char *file)
