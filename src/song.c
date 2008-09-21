@@ -234,7 +234,8 @@ void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 
 	if (song)
 		insertSongIntoList(sv, song);
-	songvec_prune(sv);
+	if (isUpdatingDB()) /* only needed until we get rid of forked update */
+		songvec_prune(sv);
 }
 
 int updateSongInfo(Song * song)
