@@ -805,12 +805,9 @@ static int listHandleUpdate(int fd,
 			    char *argv[],
 			    struct strnode *cmdnode, CommandEntry * cmd)
 {
-	static List *pathList;
+	List *pathList = makeList(NULL, 1);
 	CommandEntry *nextCmd = NULL;
 	struct strnode *next = cmdnode->next;
-
-	if (!pathList)
-		pathList = makeList(NULL, 1);
 
 	if (argc == 2)
 		insertInList(pathList, argv[1], NULL);
@@ -820,12 +817,8 @@ static int listHandleUpdate(int fd,
 	if (next)
 		nextCmd = getCommandEntryFromString(next->data, permission);
 
-	if (cmd != nextCmd) {
-		int ret = updateInit(fd, pathList);
-		freeList(pathList);
-		pathList = NULL;
-		return ret;
-	}
+	if (cmd != nextCmd)
+		return updateInit(fd, pathList);
 
 	return 0;
 }
@@ -834,12 +827,9 @@ static int handleUpdate(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
 	if (argc == 2) {
-		int ret;
 		List *pathList = makeList(NULL, 1);
 		insertInList(pathList, argv[1], NULL);
-		ret = updateInit(fd, pathList);
-		freeList(pathList);
-		return ret;
+		return updateInit(fd, pathList);
 	}
 	return updateInit(fd, NULL);
 }

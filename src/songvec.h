@@ -21,6 +21,4 @@ void songvec_free(struct songvec *sv);
 
 int songvec_write(struct songvec *sv, int fd, int extra);
 
-void songvec_prune(struct songvec *sv);
-
 #endif /* SONGVEC_H */
