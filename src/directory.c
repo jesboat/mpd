@@ -967,8 +967,7 @@ int writeDirectoryDB(void)
 
 	DEBUG("writing DB\n");
 
-	while (((fd = open(dbFile, O_WRONLY|O_TRUNC|O_CREAT, 0666)) < 0) &&
-	       errno == EINTR);
+	fd = open(dbFile, O_WRONLY|O_TRUNC|O_CREAT, 0666);
 	if (fd < 0) {
 		ERROR("unable to write to db file \"%s\": %s\n",
 		      dbFile, strerror(errno));

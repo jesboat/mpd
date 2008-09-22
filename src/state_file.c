@@ -55,8 +55,7 @@ void write_state_file(void)
 
 	if (!sfpath)
 		return;
-	while (((fd = open(sfpath, O_WRONLY|O_TRUNC|O_CREAT, 0666)) < 0) &&
-	       errno == EINTR);
+	fd = open(sfpath, O_WRONLY|O_TRUNC|O_CREAT, 0666);
 	if (fd < 0) {
 		ERROR("problems opening state file \"%s\" for writing: %s\n",
 		      sfpath, strerror(errno));
