@@ -215,8 +215,6 @@ mpd_printf mpd_noreturn void FATAL(const char *fmt, ...)
 
 int cycle_log_files(void)
 {
-	mode_t prev;
-
 	if (stdout_mode)
 		return 0;
 	assert(out_filename);
@@ -225,21 +223,17 @@ int cycle_log_files(void)
 	DEBUG("Cycling log files...\n");
 	close_log_files();
 
-	prev = umask(0066);
-
-	out_fd = open(out_filename, O_CREAT | O_WRONLY | O_APPEND, 0666);
+	out_fd = open(out_filename, O_CREAT | O_WRONLY | O_APPEND, 0600);
 	if (out_fd < 0) {
 		ERROR("error re-opening log file: %s\n", out_filename);
 		return -1;
 	}
 
-	err_fd = open(err_filename, O_CREAT | O_WRONLY | O_APPEND, 0666);
+	err_fd = open(err_filename, O_CREAT | O_WRONLY | O_APPEND, 0600);
 	if (err_fd < 0) {
 		ERROR("error re-opening error file: %s\n", err_filename);
 		return -1;
 	}
-
-	umask(prev);
 
 	redirect_logs();
 	DEBUG("Done cycling log files\n");
