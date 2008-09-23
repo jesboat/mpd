@@ -160,15 +160,9 @@ void flac_error_common_cb(const char *plugin,
 struct mpd_tag *copyVorbisCommentBlockToMpdTag(const FLAC__StreamMetadata * block,
 					   struct mpd_tag *tag);
 
-/* keep this inlined, this is just macro but prettier :) */
-static inline enum dc_action flacSendChunk(FlacData * data)
-{
-	enum dc_action ret = ob_send(data->chunk, data->chunk_length,
-	                             data->time, data->bitRate,
-	                             data->replayGainInfo);
-	data->chunk_length = 0;
-	return ret;
-}
+FLAC__StreamDecoderWriteStatus
+flac_common_write(FlacData *data, const FLAC__Frame * frame,
+		  const FLAC__int32 *const buf[]);
 
 #endif /* HAVE_FLAC || HAVE_OGGFLAC */
 
