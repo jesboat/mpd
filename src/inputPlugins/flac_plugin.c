@@ -359,7 +359,6 @@ static int flac_decode_internal(InputStream * inStream, int is_ogg)
 				data.time = ((float)sampleToSeek) /
 				    dc.audio_format.sampleRate;
 				data.position = 0;
-				data.chunk_length = 0;
 			} else {
 				dc.seek_where = DC_SEEK_ERROR;
 			}

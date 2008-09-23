@@ -328,7 +328,6 @@ static int oggflac_decode(InputStream * inStream)
 				data.time = ((float)sampleToSeek) /
 				    dc.audio_format.sampleRate;
 				data.position = 0;
-				data.chunk_length = 0;
 			} else {
 				dc.seek_where = DC_SEEK_ERROR;
 			}
