@@ -68,8 +68,6 @@ static pthread_t update_thr;
 
 static int directory_updateJobId;
 
-static struct songvec reap_songs;
-
 static DirectoryList *newDirectoryList(void);
 
 static int addToDirectory(Directory * directory,
@@ -127,12 +125,6 @@ void reap_update_task(void)
 {
 	if (progress != UPDATE_PROGRESS_DONE)
 		return;
-	if (reap_songs.base) {
-		int i;
-		for (i = reap_songs.nr; --i >= 0; )
-			freeSong(reap_songs.base[i]);
-		songvec_free(&reap_songs);
-	}
 	pthread_join(update_thr, NULL);
 	progress = UPDATE_PROGRESS_IDLE;
 }
@@ -249,7 +241,7 @@ static void removeSongFromDirectory(Directory * directory, const char *shortname
 		char path_max_tmp[MPD_PATH_MAX]; /* wasteful */
 		LOG("removing: %s\n", get_song_url(path_max_tmp, song));
 		songvec_delete(&directory->songs, song);
-		songvec_add(&reap_songs, song);
+		freeSong(song); /* FIXME racy */
 	}
 }
 
