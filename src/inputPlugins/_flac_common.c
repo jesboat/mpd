@@ -194,16 +194,6 @@ void flac_error_common_cb(const char *plugin,
 	}
 }
 
-/* keep this inlined, this is just macro but prettier :) */
-static inline enum dc_action flacSendChunk(FlacData * data)
-{
-	enum dc_action ret = ob_send(data->chunk, data->chunk_length,
-	                             data->time, data->bitRate,
-	                             data->replayGainInfo);
-	data->chunk_length = 0;
-	return ret;
-}
-
 static void flac_convert_stereo16(int16_t *dest,
 				  const FLAC__int32 * const buf[],
 				  unsigned int position, unsigned int end)
@@ -295,6 +285,7 @@ flac_common_write(FlacData *data, const FLAC__Frame * frame,
 		bytes_per_sample * frame->header.channels;
 	const unsigned int max_samples = FLAC_CHUNK_SIZE / bytes_per_channel;
 	unsigned int num_samples;
+	enum dc_action action;
 
 	assert(dc.audio_format.bits > 0);
 
@@ -315,7 +306,11 @@ flac_common_write(FlacData *data, const FLAC__Frame * frame,
 
 		data->chunk_length = num_samples * bytes_per_channel;
 
-		switch (flacSendChunk(data)) {
+		action = ob_send(data->chunk, data->chunk_length,
+		                 data->time, data->bitRate,
+			      data->replayGainInfo);
+		data->chunk_length = 0;
+		switch (action) {
 		case DC_ACTION_STOP:
 			return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
 		case DC_ACTION_SEEK:
