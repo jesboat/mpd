@@ -131,8 +131,7 @@ void reap_update_task(void)
 		int i;
 		for (i = reap_songs.nr; --i >= 0; )
 			freeSong(reap_songs.base[i]);
-		reap_songs.nr = 0;
-		reap_songs.base = NULL;
+		songvec_free(&reap_songs);
 	}
 	pthread_join(update_thr, NULL);
 	progress = UPDATE_PROGRESS_IDLE;
