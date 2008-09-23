@@ -271,11 +271,11 @@ static FLAC__StreamDecoderWriteStatus flacWrite(const flac_decoder *dec,
 			num_samples = max_samples;
 
 		if (num_channels == 2 && bytes_per_sample == 2)
-			flac_convert_stereo16(data->chunk + data->chunk_length,
+			flac_convert_stereo16(data->chunk,
 					      buf, c_samp,
 					      c_samp + num_samples);
 		else
-			flac_convert(data->chunk + data->chunk_length,
+			flac_convert(data->chunk,
 				     num_channels, bytes_per_sample, buf,
 				     c_samp, c_samp + num_samples);
 		data->chunk_length = num_samples * bytes_per_channel;
@@ -437,10 +437,6 @@ static int flac_decode_internal(InputStream * inStream, int is_ogg)
 		flacPrintErroredState(flac_get_state(flacDec));
 		flac_finish(flacDec);
 	}
-	/* send last little bit */
-	if (data.chunk_length > 0 && !dc_intr())
-		flacSendChunk(&data);
-
 fail:
 	if (data.replayGainInfo)
 		freeReplayGainInfo(data.replayGainInfo);
