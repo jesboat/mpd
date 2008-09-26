@@ -43,20 +43,11 @@ typedef struct _Song {
 	time_t mtime;
 } Song;
 
-typedef List SongList;
-
 Song *newSong(const char *url, int songType, struct _Directory *parentDir);
 
 void freeSong(Song *);
 
 void freeJustSong(Song *);
-
-SongList *newSongList(void);
-
-void freeSongList(SongList * list);
-
-Song *addSongToList(SongList * list, const char *url, const char *utf8path,
-		    int songType, struct _Directory *parentDir);
 
 int printSongInfo(int fd, Song * song);
 
