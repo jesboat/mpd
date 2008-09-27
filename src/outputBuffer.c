@@ -115,7 +115,8 @@ void ob_trigger_action(enum ob_action action)
 	if (pthread_equal(pthread_self(), dc.thread))
 		assert(action == OB_ACTION_PLAY ||
 		       action == OB_ACTION_SEEK_START ||
-		       action == OB_ACTION_SEEK_FINISH);
+		       action == OB_ACTION_SEEK_FINISH ||
+		       action == OB_ACTION_RESET);
 	else
 		assert(action != OB_ACTION_PLAY &&
 		       action != OB_ACTION_SEEK_START &&

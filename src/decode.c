@@ -166,7 +166,7 @@ static void finalize_per_track_actions(void)
 	/* DEBUG(":%s dc.action(%d): %d\n", __func__,__LINE__, dc.action); */
 }
 
-static void decode_start(void)
+static int decode_start(void)
 {
 	int err = -1;
 	int close_instream = 1;
@@ -203,7 +203,7 @@ static void decode_start(void)
 	if (openInputStream(&is, path_max_fs) < 0) {
 		DEBUG("couldn't open song: %s\n", path_max_fs);
 		player_seterror(PLAYER_ERROR_FILENOTFOUND, dc.current_song);
-		return;
+		return err;
 	}
 
 	if (isRemoteUrl(path_max_utf8)) {
@@ -281,6 +281,7 @@ static void decode_start(void)
 		ERROR("player_error: %s\n", player_strerror());
 	if (close_instream)
 		closeInputStream(&is);
+	return err;
 }
 
 static void * decoder_task(mpd_unused void *arg)
@@ -300,12 +301,17 @@ static void * decoder_task(mpd_unused void *arg)
 			/* DEBUG("dc.action: %d\n", (int)dc.action); */
 			if ((dc.current_song = playlist_queued_song())) {
 				char p[MPD_PATH_MAX];
+				int err;
+
 				ob_advance_sequence();
 				get_song_url(p, dc.current_song);
 				DEBUG("decoding song: %s\n", p);
-				decode_start();
+				err = decode_start();
 				DEBUG("DONE decoding song: %s\n", p);
-				ob_flush();
+				if (err)
+					ob_trigger_action(OB_ACTION_RESET);
+				else
+					ob_flush();
 				dc.current_song = NULL;
 			}
 			finalize_per_track_actions();

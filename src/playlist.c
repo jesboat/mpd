@@ -528,7 +528,11 @@ static void syncPlaylistWithQueue(void)
 	if (!ob_synced())
 		return;
 
-	if (playlist.queued >= 0 &&
+	if (player_errno != PLAYER_ERROR_NONE) {
+		DEBUG("playlist: error: %s\n", player_strerror());
+		playlist.current = playlist.queued;
+		player_clearerror();
+	} else if (playlist.queued >= 0 &&
 	    playlist.current != playlist.queued) {
 		DEBUG("playlist: now playing queued song\n");
 		DEBUG("%s:%d queued: %d\n",__func__,__LINE__,playlist.queued);
