@@ -30,6 +30,7 @@
 #include "myfprintf.h"
 #include "dbUtils.h"
 #include "main_notify.h"
+#include "dirvec.h"
 
 #define DIRECTORY_DIR		"directory: "
 #define DIRECTORY_MTIME		"mtime: "
@@ -60,12 +61,8 @@ static pthread_t update_thr;
 
 static int directory_updateJobId;
 
-static DirectoryList *newDirectoryList(void);
-
 static int addToDirectory(Directory * directory,
 			  const char *shortname, const char *name);
-
-static void freeDirectoryList(DirectoryList * list);
 
 static void freeDirectory(Directory * directory);
 
@@ -189,11 +186,6 @@ static void directory_set_stat(Directory * dir, const struct stat *st)
 	dir->stat = 1;
 }
 
-static DirectoryList *newDirectoryList(void)
-{
-	return makeList((ListFreeDataFunc *) freeDirectory, 1);
-}
-
 static Directory *newDirectory(const char *dirname, Directory * parent)
 {
 	Directory *directory;
@@ -202,13 +194,6 @@ static Directory *newDirectory(const char *dirname, Directory * parent)
 
 	if (dirname && strlen(dirname))
 		directory->path = xstrdup(dirname);
-	else
-		directory->path = NULL;
-	directory->subDirectories = newDirectoryList();
-	assert(!directory->songs.base);
-	directory->stat = 0;
-	directory->inode = 0;
-	directory->device = 0;
 	directory->parent = parent;
 
 	return directory;
@@ -216,18 +201,13 @@ static Directory *newDirectory(const char *dirname, Directory * parent)
 
 static void freeDirectory(Directory * directory)
 {
-	freeDirectoryList(directory->subDirectories);
+	dirvec_destroy(&directory->children);
 	songvec_destroy(&directory->songs);
 	if (directory->path)
 		free(directory->path);
 	free(directory);
 	/* this resets last dir returned */
 	/*getDirectoryPath(NULL); */
-}
-
-static void freeDirectoryList(DirectoryList * directoryList)
-{
-	freeList(directoryList);
 }
 
 static void removeSongFromDirectory(Directory * directory, const char *shortname)
@@ -244,27 +224,22 @@ static void removeSongFromDirectory(Directory * directory, const char *shortname
 
 static void deleteEmptyDirectoriesInDirectory(Directory * directory)
 {
-	ListNode *node = directory->subDirectories->firstNode;
-	ListNode *nextNode;
-	Directory *subDir;
+	int i;
+	struct dirvec *dv = &directory->children;
 
-	while (node) {
-		subDir = (Directory *) node->data;
-		deleteEmptyDirectoriesInDirectory(subDir);
-		nextNode = node->nextNode;
-		if (subDir->subDirectories->numberOfNodes == 0 &&
-		    subDir->songs.nr == 0) {
-			deleteNodeFromList(directory->subDirectories, node);
-		}
-		node = nextNode;
+	for (i = dv->nr; --i >= 0; ) {
+		deleteEmptyDirectoriesInDirectory(dv->base[i]);
+		if (!dv->base[i]->children.nr && !dv->base[i]->songs.nr)
+			dirvec_delete(dv, dv->base[i]);
 	}
+	if (!dv->nr)
+		dirvec_destroy(dv);
 }
 
 static enum update_return updateInDirectory(Directory * directory,
 			     const char *shortname, const char *name)
 {
 	Song *song;
-	void *subDir;
 	struct stat st;
 
 	if (myStat(name, &st))
@@ -281,10 +256,10 @@ static enum update_return updateInDirectory(Directory * directory,
 			return UPDATE_RETURN_UPDATED;
 		}
 	} else if (S_ISDIR(st.st_mode)) {
-		if (findInList
-		    (directory->subDirectories, shortname, (void **)&subDir)) {
-			directory_set_stat((Directory *)subDir, &st);
-			return updateDirectory((Directory *) subDir);
+		Directory *subdir = dirvec_find(&directory->children, name);
+		if (subdir) {
+			directory_set_stat(subdir, &st);
+			return updateDirectory(subdir);
 		} else {
 			return addSubDirectoryToDirectory(directory, shortname,
 							  name, &st);
@@ -305,29 +280,17 @@ removeDeletedFromDirectory(char *path_max_tmp, Directory * directory)
 {
 	const char *dirname = (directory && directory->path) ?
 	    directory->path : NULL;
-	ListNode *node, *tmpNode;
-	DirectoryList *subdirs = directory->subDirectories;
 	enum update_return ret = UPDATE_RETURN_NOUPDATE;
 	int i;
 	struct songvec *sv = &directory->songs;
+	struct dirvec *dv = &directory->children;
 
-	node = subdirs->firstNode;
-	while (node) {
-		tmpNode = node->nextNode;
-		if (node->key) {
-			if (dirname)
-				sprintf(path_max_tmp, "%s/%s", dirname,
-					node->key);
-			else
-				strcpy(path_max_tmp, node->key);
-
-			if (!isDir(path_max_tmp)) {
-				LOG("removing directory: %s\n", path_max_tmp);
-				deleteFromList(subdirs, node->key);
-				ret = UPDATE_RETURN_UPDATED;
-			}
-		}
-		node = tmpNode;
+	for (i = dv->nr; --i >= 0; ) {
+		if (isDir(dv->base[i]->path))
+			continue;
+		LOG("removing directory: %s\n", dv->base[i]->path);
+		dirvec_delete(dv, dv->base[i]);
+		ret = UPDATE_RETURN_UPDATED;
 	}
 
 	for (i = sv->nr; --i >= 0; ) { /* cleaner deletes if we go backwards */
@@ -355,7 +318,7 @@ static Directory *addDirectoryPathToDB(const char *utf8path,
 	char path_max_tmp[MPD_PATH_MAX];
 	char *parent;
 	Directory *parentDirectory;
-	void *directory;
+	Directory *directory;
 
 	parent = parent_path(path_max_tmp, utf8path);
 
@@ -371,16 +334,14 @@ static Directory *addDirectoryPathToDB(const char *utf8path,
 	while (*(*shortname) && *(*shortname) == '/')
 		(*shortname)++;
 
-	if (!findInList
-	    (parentDirectory->subDirectories, *shortname, &directory)) {
+	if (!(directory = dirvec_find(&parentDirectory->children, utf8path))) {
 		struct stat st;
 		if (myStat(utf8path, &st) < 0 ||
 		    inodeFoundInParent(parentDirectory, st.st_ino, st.st_dev))
 			return NULL;
 		else {
 			directory = newDirectory(utf8path, parentDirectory);
-			insertInList(parentDirectory->subDirectories,
-				     *shortname, directory);
+			dirvec_add(&parentDirectory->children, directory);
 		}
 	}
 
@@ -388,7 +349,7 @@ static Directory *addDirectoryPathToDB(const char *utf8path,
 	   with potentially the same name */
 	removeSongFromDirectory(parentDirectory, *shortname);
 
-	return (Directory *) directory;
+	return directory;
 }
 
 static Directory *addParentPathToDB(const char *utf8path, const char **shortname)
@@ -446,8 +407,7 @@ static enum update_return updatePath(const char *utf8path)
 		/* if updateDirectory fails, means we should delete it */
 		else {
 			LOG("removing directory: %s\n", path);
-			deleteFromList(parentDirectory->subDirectories,
-				       shortname);
+			dirvec_delete(&parentDirectory->children, directory);
 			ret = UPDATE_RETURN_UPDATED;
 			/* don't return, path maybe a song now */
 		}
@@ -638,7 +598,7 @@ static enum update_return addSubDirectoryToDirectory(Directory * directory,
 		return UPDATE_RETURN_NOUPDATE;
 	}
 
-	insertInList(directory->subDirectories, shortname, subDirectory);
+	dirvec_add(&directory->children, subDirectory);
 
 	return UPDATE_RETURN_UPDATED;
 }
@@ -676,27 +636,6 @@ void closeMp3Directory(void)
 	freeDirectory(mp3rootDirectory);
 }
 
-static Directory *findSubDirectory(Directory * directory, const char *name)
-{
-	void *subDirectory;
-	char *duplicated = xstrdup(name);
-	char *key;
-
-	key = strtok(duplicated, "/");
-	if (!key) {
-		free(duplicated);
-		return NULL;
-	}
-
-	if (findInList(directory->subDirectories, key, &subDirectory)) {
-		free(duplicated);
-		return (Directory *) subDirectory;
-	}
-
-	free(duplicated);
-	return NULL;
-}
-
 int isRootDirectory(const char *name)
 {
 	if (name == NULL || name[0] == '\0' || strcmp(name, "/") == 0) {
@@ -708,25 +647,34 @@ int isRootDirectory(const char *name)
 static Directory *getSubDirectory(Directory * directory, const char *name,
 				  const char **shortname)
 {
-	Directory *subDirectory;
-	int len;
+	Directory *cur = directory;
+	Directory *found = NULL;
+	char *duplicated;
+	char *locate;
 
-	if (isRootDirectory(name)) {
+	if (isRootDirectory(name))
 		return directory;
+
+	duplicated = xstrdup(name);
+	locate = strchr(duplicated, '/');
+	while (1) {
+		if (locate)
+			*locate = '\0';
+		if (!(found = dirvec_find(&cur->children, duplicated)))
+			break;
+		cur = found;
+		if (!locate)
+			break;
+		*locate = '/';
+		locate = strchr(locate + 1, '/');
 	}
 
-	if ((subDirectory = findSubDirectory(directory, name)) == NULL)
-		return NULL;
+	free(duplicated);
 
-	*shortname = name;
+	if (found && (!(*shortname = strrchr(found->path, '/'))))
+		*shortname = found->path;
 
-	len = 0;
-	while (name[len] != '/' && name[len] != '\0')
-		len++;
-	while (name[len] == '/')
-		len++;
-
-	return getSubDirectory(subDirectory, &(name[len]), shortname);
+	return found;
 }
 
 static Directory *getDirectoryDetails(const char *name, const char **shortname)
@@ -743,16 +691,14 @@ static Directory *getDirectory(const char *name)
 	return getSubDirectory(mp3rootDirectory, name, &shortname);
 }
 
-static int printDirectoryList(int fd, DirectoryList * directoryList)
+static int printDirectoryList(int fd, struct dirvec *dv)
 {
-	ListNode *node = directoryList->firstNode;
-	Directory *directory;
+	size_t i;
 
-	while (node != NULL) {
-		directory = (Directory *) node->data;
-		fdprintf(fd, "%s%s\n", DIRECTORY_DIR,
-			 getDirectoryPath(directory));
-		node = node->nextNode;
+	for (i = 0; i < dv->nr; ++i) {
+		if (fdprintf(fd, DIRECTORY_DIR "%s\n",
+		             getDirectoryPath(dv->base[i])) < 0)
+			return -1;
 	}
 
 	return 0;
@@ -765,16 +711,17 @@ int printDirectoryInfo(int fd, const char *name)
 	if ((directory = getDirectory(name)) == NULL)
 		return -1;
 
-	printDirectoryList(fd, directory->subDirectories);
+	printDirectoryList(fd, &directory->children);
 	songvec_write(&directory->songs, fd, 0);
 
 	return 0;
 }
 
+/* TODO error checking */
 static void writeDirectoryInfo(int fd, Directory * directory)
 {
-	ListNode *node = (directory->subDirectories)->firstNode;
-	Directory *subDirectory;
+	struct dirvec *children = &directory->children;
+	size_t i;
 	int retv;
 
 	if (directory->path) {
@@ -786,17 +733,21 @@ static void writeDirectoryInfo(int fd, Directory * directory)
 		}
 	}
 
-	while (node != NULL) {
-		subDirectory = (Directory *) node->data;
-		retv = fdprintf(fd, DIRECTORY_DIR "%s\n", node->key);
+	for (i = 0; i < children->nr; ++i) {
+		Directory *cur = children->base[i];
+		const char *base = strrchr(cur->path, '/');
+
+		base = base ? base + 1 : cur->path;
+		assert(*base);
+
+		retv = fdprintf(fd, DIRECTORY_DIR "%s\n", base);
 		if (retv < 0) {
-			ERROR("Failed to write data to database file: %s\n",strerror(errno));
+			ERROR("Failed to write data to database file: %s\n",
+			      strerror(errno));
 			return;
 		}
-		writeDirectoryInfo(fd, subDirectory);
-		node = node->nextNode;
+		writeDirectoryInfo(fd, cur);
 	}
-
 	songvec_write(&directory->songs, fd, 1);
 
 	if (directory->path) {
@@ -815,10 +766,7 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 	int bufferSize = MPD_PATH_MAX * 2;
 	char key[MPD_PATH_MAX * 2];
 	Directory *subDirectory;
-	int strcmpRet;
 	char *name;
-	ListNode *nextDirNode = directory->subDirectories->firstNode;
-	ListNode *nodeTemp;
 
 	while (myFgets(buffer, bufferSize, fp)
 	       && prefixcmp(buffer, DIRECTORY_END)) {
@@ -834,31 +782,8 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 			if (prefixcmp(buffer, DIRECTORY_BEGIN))
 				FATAL("Error reading db at line: %s\n", buffer);
 			name = &(buffer[strlen(DIRECTORY_BEGIN)]);
-
-			while (nextDirNode && (strcmpRet =
-					       strcmp(key,
-						      nextDirNode->key)) > 0) {
-				nodeTemp = nextDirNode->nextNode;
-				deleteNodeFromList(directory->subDirectories,
-						   nextDirNode);
-				nextDirNode = nodeTemp;
-			}
-
-			if (NULL == nextDirNode) {
-				subDirectory = newDirectory(name, directory);
-				insertInList(directory->subDirectories,
-					     key, (void *)subDirectory);
-			} else if (strcmpRet == 0) {
-				subDirectory = (Directory *) nextDirNode->data;
-				nextDirNode = nextDirNode->nextNode;
-			} else {
-				subDirectory = newDirectory(name, directory);
-				insertInListBeforeNode(directory->
-						       subDirectories,
-						       nextDirNode, -1, key,
-						       (void *)subDirectory);
-			}
-
+			subDirectory = newDirectory(name, directory);
+			dirvec_add(&directory->children, subDirectory);
 			readDirectoryInfo(fp, subDirectory);
 		} else if (!prefixcmp(buffer, SONG_BEGIN)) {
 			readSongInfoIntoList(fp, directory);
@@ -866,27 +791,18 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 			FATAL("Unknown line in db: %s\n", buffer);
 		}
 	}
-
-	while (nextDirNode) {
-		nodeTemp = nextDirNode->nextNode;
-		deleteNodeFromList(directory->subDirectories, nextDirNode);
-		nextDirNode = nodeTemp;
-	}
 }
 
 static void sortDirectory(Directory * directory)
 {
-	ListNode *node = directory->subDirectories->firstNode;
-	Directory *subDir;
+	int i;
+	struct dirvec *dv = &directory->children;
 
-	sortList(directory->subDirectories);
+	dirvec_sort(dv);
 	songvec_sort(&directory->songs);
 
-	while (node != NULL) {
-		subDir = (Directory *) node->data;
-		sortDirectory(subDir);
-		node = node->nextNode;
-	}
+	for (i = dv->nr; --i >= 0; )
+		sortDirectory(dv->base[i]);
 }
 
 int checkDirectoryDB(void)
@@ -1076,9 +992,9 @@ static int traverseAllInSubDirectory(Directory * directory,
 				     int (*forEachDir) (Directory *, void *),
 				     void *data)
 {
-	ListNode *node;
-	Directory *dir;
+	struct dirvec *dv = &directory->children;
 	int errFlag = 0;
+	size_t j;
 
 	if (forEachDir) {
 		errFlag = forEachDir(directory, data);
@@ -1098,14 +1014,9 @@ static int traverseAllInSubDirectory(Directory * directory,
 		}
 	}
 
-	node = directory->subDirectories->firstNode;
-
-	while (node != NULL && !errFlag) {
-		dir = (Directory *) node->data;
-		errFlag = traverseAllInSubDirectory(dir, forEachSong,
+	for (j = 0; !errFlag && j < dv->nr; ++j)
+		errFlag = traverseAllInSubDirectory(dv->base[j], forEachSong,
 						    forEachDir, data);
-		node = node->nextNode;
-	}
 
 	return errFlag;
 }
@@ -1139,43 +1050,33 @@ void initMp3Directory(void)
 static Song *getSongDetails(const char *file, const char **shortnameRet,
 			    Directory ** directoryRet)
 {
-	Song *song;
+	Song *song = NULL;
 	Directory *directory;
 	char *dir = NULL;
 	char *duplicated = xstrdup(file);
-	char *shortname = duplicated;
-	char *c = strtok(duplicated, "/");
+	char *shortname = strrchr(duplicated, '/');
 
 	DEBUG("get song: %s\n", file);
 
-	while (c) {
-		shortname = c;
-		c = strtok(NULL, "/");
-	}
-
-	if (shortname != duplicated) {
-		for (c = duplicated; c < shortname - 1; c++) {
-			if (*c == '\0')
-				*c = '/';
-		}
+	if (!shortname) {
+		shortname = duplicated;
+	} else {
+		*shortname = '\0';
+		++shortname;
 		dir = duplicated;
 	}
 
-	if (!(directory = getDirectory(dir))) {
-		free(duplicated);
-		return NULL;
-	}
+	if (!(directory = getDirectory(dir)))
+		goto out;
+	if (!(song = songvec_find(&directory->songs, shortname)))
+		goto out;
 
-	if (!(song = songvec_find(&directory->songs, shortname))) {
-		free(duplicated);
-		return NULL;
-	}
-
-	free(duplicated);
 	if (shortnameRet)
-		*shortnameRet = shortname;
+		*shortnameRet = song->url;
 	if (directoryRet)
 		*directoryRet = directory;
+out:
+	free(duplicated);
 	return song;
 }
 
