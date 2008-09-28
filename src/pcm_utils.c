@@ -30,6 +30,20 @@ pcm_dither(void)
 	return (rand() & 511) - (rand() & 511);
 }
 
+/**
+ * Check if the value is within the range of the provided bit size,
+ * and caps it if necessary.
+ */
+static mpd_sint32
+pcm_range(mpd_sint32 sample, unsigned bits)
+{
+	if (mpd_unlikely(sample < (-1 << (bits - 1))))
+		return -1 << (bits - 1);
+	if (mpd_unlikely(sample >= (1 << (bits - 1))))
+		return (1 << (bits - 1)) - 1;
+	return sample;
+}
+
 void pcm_volumeChange(char *buffer, int bufferSize, const AudioFormat * format,
                       int volume)
 {
@@ -53,8 +67,7 @@ void pcm_volumeChange(char *buffer, int bufferSize, const AudioFormat * format,
 			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
-			*buffer16 = temp32 > 32767 ? 32767 :
-			    (temp32 < -32768 ? -32768 : temp32);
+			*buffer16 = pcm_range(temp32, 16);
 			buffer16++;
 			bufferSize -= 2;
 		}
@@ -66,8 +79,7 @@ void pcm_volumeChange(char *buffer, int bufferSize, const AudioFormat * format,
 			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
-			*buffer8 = temp32 > 127 ? 127 :
-			    (temp32 < -128 ? -128 : temp32);
+			*buffer8 = pcm_range(temp32, 8);
 			buffer8++;
 			bufferSize--;
 		}
@@ -97,9 +109,7 @@ static void pcm_add(char *buffer1, const char *buffer2, size_t bufferSize1,
 			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
-			*buffer16_1 =
-			    temp32 > 32767 ? 32767 : (temp32 <
-						      -32768 ? -32768 : temp32);
+			*buffer16_1 = pcm_range(temp32, 16);
 			buffer16_1++;
 			buffer16_2++;
 			bufferSize1 -= 2;
@@ -115,9 +125,7 @@ static void pcm_add(char *buffer1, const char *buffer2, size_t bufferSize1,
 			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
-			*buffer8_1 =
-			    temp32 > 127 ? 127 : (temp32 <
-						  -128 ? -128 : temp32);
+			*buffer8_1 = pcm_range(temp32, 8);
 			buffer8_1++;
 			buffer8_2++;
 			bufferSize1--;
