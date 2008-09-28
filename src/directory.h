@@ -42,8 +42,6 @@ void reap_update_task(void);
 
 int isUpdatingDB(void);
 
-void directory_sigChldHandler(int pid, int status);
-
 int updateInit(int fd, List * pathList);
 
 void initMp3Directory(void);
