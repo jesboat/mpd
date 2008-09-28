@@ -677,6 +677,7 @@ enum playlist_result swapSongsInPlaylist(int song1, int song2)
 {
 	int queuedSong = -1;
 	int currentSong;
+	int queued_is_current = (playlist.queued == playlist.current);
 
 	if (song1 < 0 || song1 >= playlist.length ||
 	    song2 < 0 || song2 >= playlist.length)
@@ -714,8 +715,11 @@ enum playlist_result swapSongsInPlaylist(int song1, int song2)
 			playlist.current = song2;
 		else if (playlist.current == song2)
 			playlist.current = song1;
+		if (queued_is_current)
+			playlist.queued = playlist.current;
 	}
 
+	queueNextSongInPlaylist();
 	incrPlaylistVersion();
 
 	return PLAYLIST_RESULT_SUCCESS;
