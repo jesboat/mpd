@@ -24,6 +24,12 @@
 #include "conf.h"
 #include "os_compat.h"
 
+static inline int
+pcm_dither(void)
+{
+	return (rand() & 511) - (rand() & 511);
+}
+
 void pcm_volumeChange(char *buffer, int bufferSize, const AudioFormat * format,
                       int volume)
 {
@@ -44,8 +50,7 @@ void pcm_volumeChange(char *buffer, int bufferSize, const AudioFormat * format,
 		while (bufferSize > 0) {
 			temp32 = *buffer16;
 			temp32 *= volume;
-			temp32 += rand() & 511;
-			temp32 -= rand() & 511;
+			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
 			*buffer16 = temp32 > 32767 ? 32767 :
@@ -58,8 +63,7 @@ void pcm_volumeChange(char *buffer, int bufferSize, const AudioFormat * format,
 		while (bufferSize > 0) {
 			temp32 = *buffer8;
 			temp32 *= volume;
-			temp32 += rand() & 511;
-			temp32 -= rand() & 511;
+			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
 			*buffer8 = temp32 > 127 ? 127 :
@@ -90,8 +94,7 @@ static void pcm_add(char *buffer1, const char *buffer2, size_t bufferSize1,
 			temp32 =
 			    (vol1 * (*buffer16_1) +
 			     vol2 * (*buffer16_2));
-			temp32 += rand() & 511;
-			temp32 -= rand() & 511;
+			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
 			*buffer16_1 =
@@ -109,8 +112,7 @@ static void pcm_add(char *buffer1, const char *buffer2, size_t bufferSize1,
 		while (bufferSize1 > 0 && bufferSize2 > 0) {
 			temp32 =
 			    (vol1 * (*buffer8_1) + vol2 * (*buffer8_2));
-			temp32 += rand() & 511;
-			temp32 -= rand() & 511;
+			temp32 += pcm_dither();
 			temp32 += 500;
 			temp32 /= 1000;
 			*buffer8_1 =
