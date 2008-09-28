@@ -515,6 +515,12 @@ static void queueNextSongInPlaylist(void)
 	pthread_mutex_unlock(&queue_lock);
 	if (playlist.queued < 0) {
 		playlist_state = PLAYLIST_STATE_STOP;
+		if (playlist.length > 0) {
+			if (playlist.random)
+				randomizeOrder(0, playlist.length - 1);
+			else
+				playlist.current = -1;
+		}
 	} else if (dc.state == DC_STATE_STOP) {
 		/* DEBUG("%s:%d (%d)\n", __func__, __LINE__, playlist.queued);*/
 		dc_trigger_action(DC_ACTION_START, 0);
