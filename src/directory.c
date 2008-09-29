@@ -377,41 +377,36 @@ static enum update_return updatePath(const char *utf8path)
 	Directory *directory;
 	Directory *parentDirectory;
 	Song *song;
-	char *path = sanitizePathDup(utf8path);
 	time_t mtime;
 	enum update_return ret = UPDATE_RETURN_NOUPDATE;
 	char path_max_tmp[MPD_PATH_MAX];
 
-	if (NULL == path)
-		return UPDATE_RETURN_ERROR;
+	assert(utf8path);
 
 	/* if path is in the DB try to update it, or else delete it */
-	if ((directory = getDirectory(path))) {
+	if ((directory = getDirectory(utf8path))) {
 		parentDirectory = directory->parent;
 
 		/* if this update directory is successfull, we are done */
 		if ((ret = updateDirectory(directory)) >= 0) {
-			free(path);
 			sortDirectory(directory);
 			return ret;
 		}
 		/* we don't want to delete the root directory */
 		else if (directory == music_root) {
-			free(path);
 			return UPDATE_RETURN_NOUPDATE;
 		}
 		/* if updateDirectory fails, means we should delete it */
 		else {
-			LOG("removing directory: %s\n", path);
+			LOG("removing directory: %s\n", utf8path);
 			dirvec_delete(&parentDirectory->children, directory);
 			ret = UPDATE_RETURN_UPDATED;
 			/* don't return, path maybe a song now */
 		}
-	} else if ((song = getSongFromDB(path))) {
+	} else if ((song = getSongFromDB(utf8path))) {
 		parentDirectory = song->parentDir;
 		if (!parentDirectory->stat
 		    && statDirectory(parentDirectory) < 0) {
-			free(path);
 			return UPDATE_RETURN_NOUPDATE;
 		}
 		/* if this song update is successful, we are done */
@@ -419,7 +414,6 @@ static enum update_return updatePath(const char *utf8path)
 						 parentDirectory->inode,
 						 parentDirectory->device) &&
 			 isMusic(get_song_url(path_max_tmp, song), &mtime, 0)) {
-			free(path);
 			if (song->mtime == mtime)
 				return UPDATE_RETURN_NOUPDATE;
 			else if (updateSongInfo(song) == 0)
@@ -442,20 +436,18 @@ static enum update_return updatePath(const char *utf8path)
 	 * Also, if by chance a directory was replaced by a file of the same
 	 * name or vice versa, we need to add it to the db
 	 */
-	if (isDir(path) || isMusic(path, NULL, 0)) {
-		parentDirectory = addParentPathToDB(path);
+	if (isDir(utf8path) || isMusic(utf8path, NULL, 0)) {
+		parentDirectory = addParentPathToDB(utf8path);
 		if (!parentDirectory || (!parentDirectory->stat &&
 					 statDirectory(parentDirectory) < 0)) {
 		} else if (0 == inodeFoundInParent(parentDirectory->parent,
 						   parentDirectory->inode,
 						   parentDirectory->device)
-			   && addToDirectory(parentDirectory, path)
+			   && addToDirectory(parentDirectory, utf8path)
 			   > 0) {
 			ret = UPDATE_RETURN_UPDATED;
 		}
 	}
-
-	free(path);
 
 	return ret;
 }
