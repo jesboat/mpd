@@ -126,9 +126,9 @@ enum playlist_result seekSongInPlaylistById(int id, float seek_time);
 
 void playlistVersionChange(void);
 
-int playlistChanges(int fd, mpd_uint32 version);
+int playlistChanges(int fd, uint32_t version);
 
-int playlistChangesPosId(int fd, mpd_uint32 version);
+int playlistChangesPosId(int fd, uint32_t version);
 
 int PlaylistInfo(int fd, const char *utf8file, int detail);
 

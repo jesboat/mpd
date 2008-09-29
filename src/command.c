@@ -185,7 +185,7 @@ static void command_error_va(int fd, int error, const char *fmt, va_list args)
 	}
 }
 
-static int mpd_fprintf__ check_uint32(int fd, mpd_uint32 *dst,
+static int mpd_fprintf__ check_uint32(int fd, uint32_t *dst,
                                       const char *s, const char *fmt, ...)
 {
 	char *test;
@@ -613,7 +613,7 @@ static int handleRename(int fd, mpd_unused int *permission,
 static int handlePlaylistChanges(int fd, mpd_unused int *permission,
 				 mpd_unused int argc, char *argv[])
 {
-	mpd_uint32 version;
+	uint32_t version;
 
 	if (check_uint32(fd, &version, argv[1], need_positive) < 0)
 		return -1;
@@ -623,7 +623,7 @@ static int handlePlaylistChanges(int fd, mpd_unused int *permission,
 static int handlePlaylistChangesPosId(int fd, mpd_unused int *permission,
 				      mpd_unused int argc, char *argv[])
 {
-	mpd_uint32 version;
+	uint32_t version;
 
 	if (check_uint32(fd, &version, argv[1], need_positive) < 0)
 		return -1;

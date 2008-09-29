@@ -52,7 +52,7 @@ const char *mpdTagItemKeys[TAG_NUM_OF_ITEM_TYPES] = {
 	"Disc"
 };
 
-static mpd_sint8 ignoreTagItems[TAG_NUM_OF_ITEM_TYPES];
+static int8_t ignoreTagItems[TAG_NUM_OF_ITEM_TYPES];
 
 static size_t items_size(const struct mpd_tag *tag)
 {

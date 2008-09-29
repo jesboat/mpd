@@ -67,7 +67,7 @@ int ob_synced(void);
  *   	vec = ob_getv(); decode_to(&vec, ...); ob_vmsplice(&vec, ...);
  */
 enum dc_action ob_send(void *data, size_t len, float time,
-                       mpd_uint16 bit_rate, ReplayGainInfo *rgi);
+                       uint16_t bit_rate, ReplayGainInfo *rgi);
 
 /* synchronous and blocking (the only way it should be) */
 void ob_trigger_action(enum ob_action action);
@@ -106,7 +106,7 @@ void ob_flush(void);
 void config_output_buffer(void);
 void init_output_buffer(void);
 
-mpd_uint8 ob_get_decoder_sequence(void);
+uint8_t ob_get_decoder_sequence(void);
 
-mpd_uint8 ob_get_player_sequence(void);
+uint8_t ob_get_player_sequence(void);
 #endif

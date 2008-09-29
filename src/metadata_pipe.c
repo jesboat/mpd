@@ -29,7 +29,7 @@ static struct ringbuf *mp;
 /* Each one of these is a packet inside the metadata pipe */
 struct tag_container {
 	float metadata_time;
-	mpd_uint8 seq; /* ob.seq_decoder at time of metadata_pipe_send() */
+	uint8_t seq; /* ob.seq_decoder at time of metadata_pipe_send() */
 	struct mpd_tag *tag; /* our payload */
 };
 
@@ -79,8 +79,8 @@ struct mpd_tag * metadata_pipe_recv(void)
 {
 	struct tag_container tc;
 	size_t r;
-	static const size_t mpd_uint8_max = 255; /* XXX CLEANUP */
-	mpd_uint8 expect_seq = ob_get_player_sequence();
+	static const size_t uint8_t_max = 255; /* XXX CLEANUP */
+	uint8_t expect_seq = ob_get_player_sequence();
 	unsigned long current_time = ob_get_elapsed_time();
 	struct mpd_tag *tag = NULL;
 
@@ -106,7 +106,7 @@ retry:
 		current_tag = tc.tag;
 		ringbuf_read_advance(mp, sizeof(struct tag_container));
 	} else if (expect_seq > tc.seq ||
-	           (!expect_seq && tc.seq == mpd_uint8_max)) {
+	           (!expect_seq && tc.seq == uint8_t_max)) {
 		DEBUG("metadata_pipe: reader is ahead of writer\n");
 		tag_free(tc.tag);
 		ringbuf_read_advance(mp, sizeof(struct tag_container));

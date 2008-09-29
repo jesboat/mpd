@@ -313,7 +313,7 @@ static int aac_stream_decode(InputStream *inStream)
 	unsigned int sampleCount;
 	char *sampleBuffer;
 	size_t sampleBufferLen;
-	mpd_uint16 bitRate = 0;
+	uint16_t bitRate = 0;
 	AacBuffer b;
 
 	initAacBuffer(inStream, &b);
@@ -442,7 +442,7 @@ static int aac_decode(char *path)
 	/*float * seekTable;
 	   long seekTableEnd = -1;
 	   int seekPositionFound = 0; */
-	mpd_uint16 bitRate = 0;
+	uint16_t bitRate = 0;
 	AacBuffer b;
 	InputStream inStream;
 

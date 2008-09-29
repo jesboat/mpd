@@ -37,7 +37,7 @@ static void do_audio_conversion(void **data, size_t *len)
 
 static void ensure_audio_format_sanity(void **data, size_t *len)
 {
-	static mpd_uint8 seq_last;
+	static uint8_t seq_last;
 
 	assert(pthread_equal(pthread_self(), dc.thread));
 	if (mpd_unlikely(seq_last != ob.seq_decoder)) {
@@ -61,7 +61,7 @@ static void start_playback(void)
 
 enum dc_action
 ob_send(void *data, size_t len,
-        float decode_time, mpd_uint16 bit_rate, ReplayGainInfo * rgi)
+        float decode_time, uint16_t bit_rate, ReplayGainInfo * rgi)
 {
 	struct rbvec vec[2];
 	struct ob_chunk *c;
@@ -97,7 +97,7 @@ ob_send(void *data, size_t len,
 					c->bit_rate = bit_rate;
 					c_len = len > CHUNK_SIZE ? CHUNK_SIZE
 					                         : len;
-					c->len = (mpd_uint16)c_len;
+					c->len = (uint16_t)c_len;
 					memcpy(c->data, data, c_len);
 				} else { /* partially filled chunk */
 					size_t max = CHUNK_SIZE - c->len;

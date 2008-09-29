@@ -486,9 +486,9 @@ static int oss_openDevice(AudioOutput * audioOutput)
 	OssData *od = audioOutput->data;
 	AudioFormat *audioFormat = &audioOutput->outAudioFormat;
 
-	od->channels = (mpd_sint8)audioFormat->channels;
+	od->channels = (int8_t)audioFormat->channels;
 	od->sampleRate = audioFormat->sampleRate;
-	od->bits = (mpd_sint8)audioFormat->bits;
+	od->bits = (int8_t)audioFormat->bits;
 
 	if ((ret = oss_open(audioOutput)) < 0)
 		return ret;

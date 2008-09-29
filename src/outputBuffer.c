@@ -33,10 +33,10 @@
 
 /* typically have 2048-4096 of these structs, so pack tightly */
 struct ob_chunk {
-	mpd_uint16 len; /* 0: skip this chunk */
-	mpd_uint16 bit_rate;
+	uint16_t len; /* 0: skip this chunk */
+	uint16_t bit_rate;
 	float time;
-	mpd_uint8 seq; /* see seq_ok() for explanation */
+	uint8_t seq; /* see seq_ok() for explanation */
 	char data[CHUNK_SIZE];
 };
 
@@ -73,12 +73,12 @@ struct output_buffer {
 	size_t conv_buf_len;
 	pthread_t thread;
 	ConvState conv_state;
-	mpd_uint8 seq_drop;
-	mpd_uint8 seq_player; /* only gets changed by ob.thread */
-	mpd_uint8 seq_decoder; /* only gets changed by dc.thread */
+	uint8_t seq_drop;
+	uint8_t seq_player; /* only gets changed by ob.thread */
+	uint8_t seq_decoder; /* only gets changed by dc.thread */
 	struct ringbuf preseek_index;
 	enum ob_state preseek_state;
-	mpd_uint16 *preseek_len;
+	uint16_t *preseek_len;
 };
 
 static struct output_buffer ob;
@@ -158,7 +158,7 @@ static enum action_status ob_do_drop(void)
 {
 	struct rbvec vec[2];
 	long i;
-	mpd_uint8 seq_drop;
+	uint8_t seq_drop;
 
 	cond_enter(&ob_seq_cond);
 	seq_drop = ob.seq_drop;
@@ -209,7 +209,7 @@ static void reader_reset_buffer(void)
 	metadata_pipe_clear();
 }
 
-static void ob_seq_player_set(mpd_uint8 seq_num)
+static void ob_seq_player_set(uint8_t seq_num)
 {
 	cond_enter(&ob_seq_cond);
 	ob.seq_player = seq_num;

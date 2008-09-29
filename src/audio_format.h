@@ -22,9 +22,9 @@
 #include "mpd_types.h"
 
 typedef struct _AudioFormat {
-	mpd_sint8 channels;
-	mpd_uint32 sampleRate;
-	mpd_sint8 bits;
+	int8_t channels;
+	uint32_t sampleRate;
+	int8_t bits;
 } AudioFormat;
 
 static inline double audio_format_time_to_size(const AudioFormat * af)

@@ -44,7 +44,7 @@ enum ad_state {
    and enable in playAudio() routine */
 static enum ad_state *audioDeviceStates;
 
-static mpd_uint8 audioOpened;
+static uint8_t audioOpened;
 
 static size_t audioBufferSize;
 static char *audioBuffer;
@@ -195,7 +195,7 @@ int parseAudioConfig(AudioFormat * audioFormat, char *conf)
 		return -1;
 	}
 
-	audioFormat->bits = (mpd_sint8)strtol(test + 1, &test, 10);
+	audioFormat->bits = (int8_t)strtol(test + 1, &test, 10);
 
 	if (*test != ':') {
 		ERROR("error parsing audio output format: %s\n", conf);
@@ -211,7 +211,7 @@ int parseAudioConfig(AudioFormat * audioFormat, char *conf)
 		return -1;
 	}
 
-	audioFormat->channels = (mpd_sint8)strtol(test + 1, &test, 10);
+	audioFormat->channels = (int8_t)strtol(test + 1, &test, 10);
 
 	if (*test != '\0') {
 		ERROR("error parsing audio output format: %s\n", conf);

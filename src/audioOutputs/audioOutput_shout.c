@@ -636,7 +636,7 @@ static int myShout_play(AudioOutput * audioOutput,
 
 	for (i = 0; i < samples; i++) {
 		for (j = 0; j < sd->audioFormat->channels; j++) {
-			vorbbuf[j][i] = (*((const mpd_sint16 *) playChunk))
+			vorbbuf[j][i] = (*((const int16_t *) playChunk))
 			                 / 32768.0;
 			playChunk += bytes;
 		}

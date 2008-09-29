@@ -74,10 +74,10 @@ static mpc_int32_t mpc_getsize_cb(void *vdata)
 }
 
 /* this _looks_ performance-critical, don't de-inline -- eric */
-static inline mpd_sint16 convertSample(MPC_SAMPLE_FORMAT sample)
+static inline int16_t convertSample(MPC_SAMPLE_FORMAT sample)
 {
 	/* only doing 16-bit audio for now */
-	mpd_sint32 val;
+	int32_t val;
 
 	const int clip_min = -1 << (16 - 1);
 	const int clip_max = (1 << (16 - 1)) - 1;
@@ -121,7 +121,7 @@ static int mpc_decode(InputStream * inStream)
 	char chunk[MPC_CHUNK_SIZE];
 	int chunkpos = 0;
 	long bitRate = 0;
-	mpd_sint16 *s16 = (mpd_sint16 *) chunk;
+	int16_t *s16 = (int16_t *) chunk;
 	unsigned long samplePos = 0;
 	mpc_uint32_t vbrUpdateAcc;
 	mpc_uint32_t vbrUpdateBits;
@@ -175,7 +175,7 @@ static int mpc_decode(InputStream * inStream)
 			dc_action_begin();
 			samplePos = dc.seek_where * dc.audio_format.sampleRate;
 			if (mpc_decoder_seek_sample(&decoder, samplePos)) {
-				s16 = (mpd_sint16 *) chunk;
+				s16 = (int16_t *) chunk;
 				chunkpos = 0;
 			} else
 				dc.seek_where = DC_SEEK_ERROR;
@@ -214,7 +214,7 @@ static int mpc_decode(InputStream * inStream)
 				        bitRate, replayGainInfo);
 
 				chunkpos = 0;
-				s16 = (mpd_sint16 *) chunk;
+				s16 = (int16_t *) chunk;
 				if (dc_intr()) {
 					eof = 1;
 					break;

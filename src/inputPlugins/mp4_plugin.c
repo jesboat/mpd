@@ -103,7 +103,7 @@ static int mp4_decode(InputStream * inStream)
 	long seekTableEnd = -1;
 	int seekPositionFound = 0;
 	long offset;
-	mpd_uint16 bitRate = 0;
+	uint16_t bitRate = 0;
 	int seeking = 0;
 
 	mp4cb = xmalloc(sizeof(mp4ff_callback_t));
