@@ -691,43 +691,32 @@ int printDirectoryInfo(int fd, const char *name)
 }
 
 /* TODO error checking */
-static void writeDirectoryInfo(int fd, Directory * directory)
+static int writeDirectoryInfo(int fd, Directory * directory)
 {
 	struct dirvec *children = &directory->children;
 	size_t i;
-	int retv;
 
-	if (directory->path) {
-		retv = fdprintf(fd, DIRECTORY_BEGIN "%s\n",
-			  getDirectoryPath(directory));
-		if (retv < 0) {
-			ERROR("Failed to write data to database file: %s\n",strerror(errno));
-			return;
-		}
-	}
+	if (directory->path &&
+	    fdprintf(fd, DIRECTORY_BEGIN "%s\n",
+	             getDirectoryPath(directory)) < 0)
+		return -1;
 
 	for (i = 0; i < children->nr; ++i) {
 		Directory *cur = children->base[i];
 		const char *base = mpd_basename(cur->path);
 
-		retv = fdprintf(fd, DIRECTORY_DIR "%s\n", base);
-		if (retv < 0) {
-			ERROR("Failed to write data to database file: %s\n",
-			      strerror(errno));
-			return;
-		}
-		writeDirectoryInfo(fd, cur);
+		if (fdprintf(fd, DIRECTORY_DIR "%s\n", base) < 0)
+			return -1;
+		if (writeDirectoryInfo(fd, cur) < 0)
+			return -1;
 	}
 	songvec_write(&directory->songs, fd, 1);
 
-	if (directory->path) {
-		retv = fdprintf(fd, DIRECTORY_END "%s\n",
-			  getDirectoryPath(directory));
-		if (retv < 0) {
-			ERROR("Failed to write data to database file: %s\n",strerror(errno));
-			return;
-		}
-	}
+	if (directory->path &&
+	    fdprintf(fd, DIRECTORY_END "%s\n",
+	             getDirectoryPath(directory)) < 0)
+		return -1;
+	return 0;
 }
 
 static void readDirectoryInfo(FILE * fp, Directory * directory)
@@ -867,8 +856,10 @@ int writeDirectoryDB(void)
 	         DIRECTORY_FS_CHARSET "%s\n"
 	         DIRECTORY_INFO_END "\n", getFsCharset());
 
-	writeDirectoryInfo(fd, music_root);
-
+	if (writeDirectoryInfo(fd, music_root) < 0)
+		ERROR("Failed to write to database file: %s\n",
+		      strerror(errno));
+	return -1;
 	xclose(fd);
 
 	if (stat(dbFile, &st) == 0)
