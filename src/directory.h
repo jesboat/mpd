@@ -21,7 +21,6 @@
 
 #include "song.h"
 #include "songvec.h"
-#include "list.h"
 
 struct dirvec {
 	struct _Directory **base;
@@ -42,8 +41,13 @@ void reap_update_task(void);
 
 int isUpdatingDB(void);
 
-/* returns the non-negative update job ID on success, -1 on error */
-int updateInit(List * pathList);
+/*
+ * returns the non-negative update job ID on success,
+ * -1 if busy, -2 if invalid argument
+ * @argv itself is safe to free once updateInit returns, but the
+ * string values contained by @argv MUST NOT be freed manually
+ */
+int updateInit(int argc, char *argv[]);
 
 void directory_init(void);
 

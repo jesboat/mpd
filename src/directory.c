@@ -114,16 +114,15 @@ void reap_update_task(void)
 	progress = UPDATE_PROGRESS_IDLE;
 }
 
-static void * update_task(void *arg)
+/* @argv represents a null-terminated array of (null-terminated) strings */
+static void * update_task(void *argv)
 {
-	List *path_list = (List *)arg;
 	enum update_return ret = UPDATE_RETURN_NOUPDATE;
 
-	if (path_list) {
-		ListNode *node = path_list->firstNode;
-
-		while (node) {
-			switch (updatePath(node->key)) {
+	if (argv) {
+		char **pathv;
+		for (pathv = (char **)argv; *pathv; pathv++) {
+			switch (updatePath(*pathv)) {
 			case UPDATE_RETURN_ERROR:
 				ret = UPDATE_RETURN_ERROR;
 				goto out;
@@ -132,9 +131,9 @@ static void * update_task(void *arg)
 			case UPDATE_RETURN_UPDATED:
 				ret = UPDATE_RETURN_UPDATED;
 			}
-			node = node->nextNode;
+			free(*pathv);
 		}
-		freeList(path_list);
+		free(argv);
 	} else {
 		ret = updateDirectory(music_root);
 	}
@@ -147,17 +146,32 @@ out:
 	return (void *)ret;
 }
 
-int updateInit(List * path_list)
+int updateInit(int argc, char *argv[])
 {
 	pthread_attr_t attr;
+	char **pathv = NULL;
+	int i;
 
-	if (progress != UPDATE_PROGRESS_IDLE)
+	if (progress != UPDATE_PROGRESS_IDLE) {
+		for (i = argc; --i >= 0; )
+			free(argv[i]);
 		return -1;
+	}
+
+	for (i = argc; --i >= 0; ) {
+		if (!argv[i])
+			return -2;
+	}
 
 	progress = UPDATE_PROGRESS_RUNNING;
+	if (argc > 0) {
+		pathv = xmalloc((argc + 1) * sizeof(char *));
+		memcpy(pathv, argv, argc * sizeof(char *));
+		pathv[argc] = NULL;
+	}
 
 	pthread_attr_init(&attr);
-	if (pthread_create(&update_thr, &attr, update_task, path_list))
+	if (pthread_create(&update_thr, &attr, update_task, pathv))
 		FATAL("Failed to spawn update task: %s\n", strerror(errno));
 	directory_updateJobId++;
 	if (directory_updateJobId > 1 << 15)

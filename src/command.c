@@ -36,6 +36,7 @@
 #include "os_compat.h"
 #include "player_error.h"
 #include "outputBuffer.h"
+#include "path.h"
 
 #define COMMAND_PLAY           	"play"
 #define COMMAND_PLAYID         	"playid"
@@ -805,7 +806,10 @@ static int print_update_result(int fd, int ret)
 		fdprintf(fd, "updating_db: %i\n", ret);
 		return 0;
 	}
-	commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
+	if (ret == -2)
+		commandError(fd, ACK_ERROR_ARG, "invalid path");
+	else
+		commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
 	return -1;
 }
 
@@ -815,20 +819,28 @@ static int listHandleUpdate(int fd,
 			    char *argv[],
 			    struct strnode *cmdnode, CommandEntry * cmd)
 {
-	List *pathList = makeList(NULL, 1);
+	static char **pathv;
+	static int pathc;
 	CommandEntry *nextCmd = NULL;
 	struct strnode *next = cmdnode->next;
+	int last = pathc++;
 
-	if (argc == 2)
-		insertInList(pathList, argv[1], NULL);
-	else
-		insertInList(pathList, "", NULL);
+	pathv = xrealloc(pathv, pathc * sizeof(char *));
+	pathv[last] = sanitizePathDup(argc == 2 ? argv[1] : "");
 
 	if (next)
 		nextCmd = getCommandEntryFromString(next->data, permission);
 
-	if (cmd != nextCmd)
-		return print_update_result(fd, updateInit(pathList));
+	if (cmd != nextCmd) {
+		int ret = print_update_result(fd, updateInit(pathc, pathv));
+		if (pathc) {
+			assert(pathv);
+			free(pathv);
+			pathv = NULL;
+			pathc = 0;
+		}
+		return ret;
+	}
 
 	return 0;
 }
@@ -836,14 +848,12 @@ static int listHandleUpdate(int fd,
 static int handleUpdate(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
-	List *pathList = NULL;
+	char *pathv[1];
 
-	if (argc == 2) {
-		pathList = makeList(NULL, 1);
-		insertInList(pathList, argv[1], NULL);
-	}
-
-	return print_update_result(fd, updateInit(pathList));
+	assert(argc <= 2);
+	if (argc == 2)
+		pathv[0] = sanitizePathDup(argv[1]);
+	return print_update_result(fd, updateInit(argc - 1, pathv));
 }
 
 static int handleNext(mpd_unused int fd, mpd_unused int *permission,
