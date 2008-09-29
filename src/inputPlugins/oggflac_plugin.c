@@ -162,51 +162,12 @@ static FLAC__StreamDecoderWriteStatus oggflacWrite(mpd_unused const
 {
 	FlacData *data = (FlacData *) vdata;
 	FLAC__uint32 samples = frame->header.blocksize;
-	FLAC__uint16 u16;
-	unsigned char *uc;
-	unsigned int c_samp, c_chan;
-	int i;
 	float timeChange;
 
 	timeChange = ((float)samples) / frame->header.sample_rate;
 	data->time += timeChange;
 
-	/* ogg123 uses a complicated method of calculating bitrate
-	 * with averaging which I'm not too fond of.
-	 * (waste of memory/CPU cycles, especially given this is _lossless_)
-	 * a get_decode_position() is not available in OggFLAC, either
-	 *
-	 * this does not give an accurate bitrate:
-	 * (bytes_last_read was set in the read callback)
-	 data->bitRate = ((8.0 * data->bytes_last_read *
-	 frame->header.sample_rate)
-	 /((float)samples * 1000)) + 0.5;
-	 */
-
-	for (c_samp = 0; c_samp < frame->header.blocksize; c_samp++) {
-		for (c_chan = 0; c_chan < frame->header.channels;
-		     c_chan++) {
-			u16 = buf[c_chan][c_samp];
-			uc = (unsigned char *)&u16;
-			for (i = 0; i < (dc.audio_format.bits / 8); i++) {
-				if (data->chunk_length >= FLAC_CHUNK_SIZE) {
-					/* FIXME: line wrapping */
-					switch (flacSendChunk(data)) {
-					case DC_ACTION_STOP:
-						return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
-					case DC_ACTION_SEEK:
-						return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
-					default:
-						/* compilers are complainers */
-						break;
-					}
-				}
-				data->chunk[data->chunk_length++] = *(uc++);
-			}
-		}
-	}
-
-	return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+	return flac_common_write(data, frame, buf);
 }
 
 /* used by TagDup */
@@ -367,7 +328,6 @@ static int oggflac_decode(InputStream * inStream)
 				data.time = ((float)sampleToSeek) /
 				    dc.audio_format.sampleRate;
 				data.position = 0;
-				data.chunk_length = 0;
 			} else {
 				dc.seek_where = DC_SEEK_ERROR;
 			}
@@ -380,9 +340,6 @@ static int oggflac_decode(InputStream * inStream)
 		    (OggFLAC__seekable_stream_decoder_get_state(decoder));
 		OggFLAC__seekable_stream_decoder_finish(decoder);
 	}
-	/* send last little bit */
-	if (data.chunk_length > 0 && !dc_intr())
-		flacSendChunk(&data);
 
 fail:
 	oggflac_cleanup(&data, decoder);

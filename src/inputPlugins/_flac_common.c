@@ -32,7 +32,6 @@
 
 void init_FlacData(FlacData * data, InputStream * inStream)
 {
-	data->chunk_length = 0;
 	data->time = 0;
 	data->position = 0;
 	data->bitRate = 0;
@@ -192,6 +191,132 @@ void flac_error_common_cb(const char *plugin,
 	default:
 		ERROR("unknown %s error\n", plugin);
 	}
+}
+
+static void flac_convert_stereo16(int16_t *dest,
+				  const FLAC__int32 * const buf[],
+				  unsigned int position, unsigned int end)
+{
+	for (; position < end; ++position) {
+		*dest++ = buf[0][position];
+		*dest++ = buf[1][position];
+	}
+}
+
+static void
+flac_convert_16(int16_t *dest,
+		unsigned int num_channels,
+		const FLAC__int32 * const buf[],
+		unsigned int position, unsigned int end)
+{
+	unsigned int c_chan;
+
+	for (; position < end; ++position)
+		for (c_chan = 0; c_chan < num_channels; c_chan++)
+			*dest++ = buf[c_chan][position];
+}
+
+/**
+ * Note: this function also handles 24 bit files!
+ */
+static void
+flac_convert_32(int32_t *dest,
+		unsigned int num_channels,
+		const FLAC__int32 * const buf[],
+		unsigned int position, unsigned int end)
+{
+	unsigned int c_chan;
+
+	for (; position < end; ++position)
+		for (c_chan = 0; c_chan < num_channels; c_chan++)
+			*dest++ = buf[c_chan][position];
+}
+
+static void
+flac_convert_8(int8_t *dest,
+	       unsigned int num_channels,
+	       const FLAC__int32 * const buf[],
+	       unsigned int position, unsigned int end)
+{
+	unsigned int c_chan;
+
+	for (; position < end; ++position)
+		for (c_chan = 0; c_chan < num_channels; c_chan++)
+			*dest++ = buf[c_chan][position];
+}
+
+static void flac_convert(unsigned char *dest,
+			 unsigned int num_channels,
+			 unsigned int bytes_per_sample,
+			 const FLAC__int32 * const buf[],
+			 unsigned int position, unsigned int end)
+{
+	switch (bytes_per_sample) {
+	case 2:
+		if (num_channels == 2)
+			flac_convert_stereo16((int16_t*)dest, buf,
+					      position, end);
+		else
+			flac_convert_16((int16_t*)dest, num_channels, buf,
+					position, end);
+		break;
+
+	case 4:
+		flac_convert_32((int32_t*)dest, num_channels, buf,
+				position, end);
+		break;
+
+	case 1:
+		flac_convert_8((int8_t*)dest, num_channels, buf,
+			       position, end);
+		break;
+	}
+}
+
+FLAC__StreamDecoderWriteStatus
+flac_common_write(FlacData *data, const FLAC__Frame * frame,
+		  const FLAC__int32 *const buf[])
+{
+	unsigned int c_samp;
+	const unsigned int num_channels = frame->header.channels;
+	const unsigned int bytes_per_sample = (dc.audio_format.bits / 8);
+	const unsigned int bytes_per_channel =
+		bytes_per_sample * frame->header.channels;
+	const unsigned int max_samples = FLAC_CHUNK_SIZE / bytes_per_channel;
+	unsigned int num_samples;
+	enum dc_action action;
+
+	assert(dc.audio_format.bits > 0);
+
+	if (bytes_per_sample != 1 && bytes_per_sample != 2 &&
+	    bytes_per_sample != 4)
+		/* exotic unsupported bit rate */
+		return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+
+	for (c_samp = 0; c_samp < frame->header.blocksize;
+	     c_samp += num_samples) {
+		num_samples = frame->header.blocksize - c_samp;
+		if (num_samples > max_samples)
+			num_samples = max_samples;
+
+		flac_convert(data->chunk,
+			     num_channels, bytes_per_sample, buf,
+			     c_samp, c_samp + num_samples);
+
+		action = ob_send(data->chunk,
+		                 num_samples * bytes_per_channel,
+		                 data->time, data->bitRate,
+		                 data->replayGainInfo);
+		switch (action) {
+		case DC_ACTION_STOP:
+			return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+		case DC_ACTION_SEEK:
+			return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+		default: break; /* compilers are complainers */
+		}
+	}
+
+	return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
 }
 
 #endif /* HAVE_FLAC || HAVE_OGGFLAC */
