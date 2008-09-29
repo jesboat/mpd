@@ -277,7 +277,7 @@ static void openDB(Options * options, char *argv0)
 		flushWarningLog();
 		if (checkDirectoryDB() < 0)
 			exit(EXIT_FAILURE);
-		initMp3Directory();
+		directory_init();
 		if (writeDirectoryDB() < 0)
 			exit(EXIT_FAILURE);
 		if (options->createDB)
@@ -450,8 +450,8 @@ int main(int argc, char *argv[])
 	finishPlaylist();
 
 	start = clock();
-	closeMp3Directory();
-	DEBUG("closeMp3Directory took %f seconds\n", 
+	directory_finish();
+	DEBUG("directory_finish took %f seconds\n",
 	      ((float)(clock()-start))/CLOCKS_PER_SEC);
 
 	finishNormalization();

@@ -53,7 +53,7 @@ enum update_progress {
 	UPDATE_PROGRESS_DONE = 2
 } progress;
 
-static Directory *mp3rootDirectory;
+static Directory *music_root;
 
 static time_t directory_dbModTime;
 
@@ -137,7 +137,7 @@ static void * update_task(void *arg)
 		}
 		freeList(path_list);
 	} else {
-		ret = updateDirectory(mp3rootDirectory);
+		ret = updateDirectory(music_root);
 	}
 
 	if (ret == UPDATE_RETURN_UPDATED && writeDirectoryDB() < 0)
@@ -316,7 +316,7 @@ static Directory *addDirectoryPathToDB(const char *utf8path)
 	parent = parent_path(path_max_tmp, utf8path);
 
 	if (strlen(parent) == 0)
-		parentDirectory = (void *)mp3rootDirectory;
+		parentDirectory = music_root;
 	else
 		parentDirectory = addDirectoryPathToDB(parent);
 
@@ -352,7 +352,7 @@ static Directory *addParentPathToDB(const char *utf8path)
 	parent = parent_path(path_max_tmp, utf8path);
 
 	if (strlen(parent) == 0)
-		parentDirectory = (void *)mp3rootDirectory;
+		parentDirectory = music_root;
 	else
 		parentDirectory = addDirectoryPathToDB(parent);
 
@@ -386,7 +386,7 @@ static enum update_return updatePath(const char *utf8path)
 			return ret;
 		}
 		/* we don't want to delete the root directory */
-		else if (directory == mp3rootDirectory) {
+		else if (directory == music_root) {
 			free(path);
 			return UPDATE_RETURN_NOUPDATE;
 		}
@@ -616,9 +616,9 @@ static int addToDirectory(Directory * directory, const char *name)
 	return -1;
 }
 
-void closeMp3Directory(void)
+void directory_finish(void)
 {
-	freeDirectory(mp3rootDirectory);
+	freeDirectory(music_root);
 }
 
 int isRootDirectory(const char *name)
@@ -661,7 +661,7 @@ static Directory *getSubDirectory(Directory * directory, const char *name)
 
 static Directory *getDirectory(const char *name)
 {
-	return getSubDirectory(mp3rootDirectory, name);
+	return getSubDirectory(music_root, name);
 }
 
 static int printDirectoryList(int fd, struct dirvec *dv)
@@ -842,11 +842,11 @@ int writeDirectoryDB(void)
 	struct stat st;
 
 	DEBUG("removing empty directories from DB\n");
-	deleteEmptyDirectoriesInDirectory(mp3rootDirectory);
+	deleteEmptyDirectoriesInDirectory(music_root);
 
 	DEBUG("sorting DB\n");
 
-	sortDirectory(mp3rootDirectory);
+	sortDirectory(music_root);
 
 	DEBUG("writing DB\n");
 
@@ -867,7 +867,7 @@ int writeDirectoryDB(void)
 	         DIRECTORY_FS_CHARSET "%s\n"
 	         DIRECTORY_INFO_END "\n", getFsCharset());
 
-	writeDirectoryInfo(fd, mp3rootDirectory);
+	writeDirectoryInfo(fd, music_root);
 
 	xclose(fd);
 
@@ -883,8 +883,8 @@ int readDirectoryDB(void)
 	char *dbFile = getDbFile();
 	struct stat st;
 
-	if (!mp3rootDirectory)
-		mp3rootDirectory = newDirectory(NULL, NULL);
+	if (!music_root)
+		music_root = newDirectory(NULL, NULL);
 	while (!(fp = fopen(dbFile, "r")) && errno == EINTR) ;
 	if (fp == NULL) {
 		ERROR("unable to open db file \"%s\": %s\n",
@@ -945,7 +945,7 @@ int readDirectoryDB(void)
 
 	DEBUG("reading DB\n");
 
-	readDirectoryInfo(fp, mp3rootDirectory);
+	readDirectoryInfo(fp, music_root);
 	while (fclose(fp) && errno == EINTR) ;
 
 	stats.numberOfSongs = countSongsIn(NULL);
@@ -1009,10 +1009,10 @@ int traverseAllIn(const char *name,
 					 data);
 }
 
-void initMp3Directory(void)
+void directory_init(void)
 {
-	mp3rootDirectory = newDirectory(NULL, NULL);
-	exploreDirectory(mp3rootDirectory);
+	music_root = newDirectory(NULL, NULL);
+	exploreDirectory(music_root);
 	stats.numberOfSongs = countSongsIn(NULL);
 	stats.dbPlayTime = sumSongTimesIn(NULL);
 }
