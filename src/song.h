@@ -29,21 +29,24 @@
 #define SONG_BEGIN	"songList begin"
 #define SONG_END	"songList end"
 
-#define SONG_TYPE_FILE 1
-#define SONG_TYPE_URL 2
+enum song_type {
+	SONG_TYPE_FILE = 1,
+	SONG_TYPE_URL = 2
+};
 
 #define SONG_FILE	"file: "
 #define SONG_TIME	"Time: "
 
 typedef struct _Song {
 	char *url;
-	int8_t type;
 	struct mpd_tag *tag;
+	enum song_type type;
 	struct _Directory *parentDir;
 	time_t mtime;
 } Song;
 
-Song *newSong(const char *url, int songType, struct _Directory *parentDir);
+Song *newSong(const char *url, enum song_type type,
+	      struct _Directory *parentDir);
 
 void freeSong(Song *);
 

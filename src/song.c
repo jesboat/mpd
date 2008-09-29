@@ -29,7 +29,7 @@
 
 #include "os_compat.h"
 
-Song *newSong(const char *url, int type, Directory * parentDir)
+Song *newSong(const char *url, enum song_type type, Directory * parentDir)
 {
 	Song *song;
 
