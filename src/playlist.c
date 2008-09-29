@@ -825,7 +825,7 @@ enum playlist_result deleteFromPlaylistById(int id)
 	return deleteFromPlaylist(playlist.idToPosition[id]);
 }
 
-void deleteASongFromPlaylist(Song * song)
+void deleteASongFromPlaylist(const Song * song)
 {
 	int i;
 

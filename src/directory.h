@@ -21,13 +21,15 @@
 
 #include "song.h"
 #include "songvec.h"
-#include "list.h"
 
-typedef List DirectoryList;
+struct dirvec {
+	struct _Directory **base;
+	size_t nr;
+};
 
 typedef struct _Directory {
 	char *path;
-	DirectoryList *subDirectories;
+	struct dirvec children;
 	struct songvec songs;
 	struct _Directory *parent;
 	ino_t inode;
@@ -39,13 +41,17 @@ void reap_update_task(void);
 
 int isUpdatingDB(void);
 
-void directory_sigChldHandler(int pid, int status);
+/*
+ * returns the non-negative update job ID on success,
+ * -1 if busy, -2 if invalid argument
+ * @argv itself is safe to free once updateInit returns, but the
+ * string values contained by @argv MUST NOT be freed manually
+ */
+int updateInit(int argc, char *argv[]);
 
-int updateInit(int fd, List * pathList);
+void directory_init(void);
 
-void initMp3Directory(void);
-
-void closeMp3Directory(void);
+void directory_finish(void);
 
 int isRootDirectory(const char *name);
 

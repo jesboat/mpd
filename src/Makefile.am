@@ -41,6 +41,7 @@ mpd_headers = \
 	dbUtils.h \
 	decode.h \
 	directory.h \
+	dirvec.h \
 	gcc.h \
 	inputPlugin.h \
 	inputPlugins/_flac_common.h \
