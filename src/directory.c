@@ -18,7 +18,6 @@
 
 #include "directory.h"
 
-#include "command.h"
 #include "conf.h"
 #include "log.h"
 #include "ls.h"
@@ -148,14 +147,13 @@ out:
 	return (void *)ret;
 }
 
-int updateInit(int fd, List * path_list)
+int updateInit(List * path_list)
 {
 	pthread_attr_t attr;
 
-	if (progress != UPDATE_PROGRESS_IDLE) {
-		commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
+	if (progress != UPDATE_PROGRESS_IDLE)
 		return -1;
-	}
+
 	progress = UPDATE_PROGRESS_RUNNING;
 
 	pthread_attr_init(&attr);
@@ -166,9 +164,7 @@ int updateInit(int fd, List * path_list)
 		directory_updateJobId = 1;
 	DEBUG("updateInit: spawned update thread for update job id %i\n",
 	      (int)directory_updateJobId);
-	fdprintf(fd, "updating_db: %i\n", (int)directory_updateJobId);
-
-	return 0;
+	return directory_updateJobId;
 }
 
 static void directory_set_stat(Directory * dir, const struct stat *st)

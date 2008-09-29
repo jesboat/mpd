@@ -42,7 +42,8 @@ void reap_update_task(void);
 
 int isUpdatingDB(void);
 
-int updateInit(int fd, List * pathList);
+/* returns the non-negative update job ID on success, -1 on error */
+int updateInit(List * pathList);
 
 void directory_init(void);
 

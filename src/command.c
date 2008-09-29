@@ -799,6 +799,16 @@ static int handlePlaylistMove(int fd, mpd_unused int *permission,
 	return print_playlist_result(fd, result);
 }
 
+static int print_update_result(int fd, int ret)
+{
+	if (ret >= 0) {
+		fdprintf(fd, "updating_db: %i\n", ret);
+		return 0;
+	}
+	commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
+	return -1;
+}
+
 static int listHandleUpdate(int fd,
 			    mpd_unused int *permission,
 			    mpd_unused int argc,
@@ -818,7 +828,7 @@ static int listHandleUpdate(int fd,
 		nextCmd = getCommandEntryFromString(next->data, permission);
 
 	if (cmd != nextCmd)
-		return updateInit(fd, pathList);
+		return print_update_result(fd, updateInit(pathList));
 
 	return 0;
 }
@@ -826,12 +836,14 @@ static int listHandleUpdate(int fd,
 static int handleUpdate(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
+	List *pathList = NULL;
+
 	if (argc == 2) {
-		List *pathList = makeList(NULL, 1);
+		pathList = makeList(NULL, 1);
 		insertInList(pathList, argv[1], NULL);
-		return updateInit(fd, pathList);
 	}
-	return updateInit(fd, NULL);
+
+	return print_update_result(fd, updateInit(pathList));
 }
 
 static int handleNext(mpd_unused int fd, mpd_unused int *permission,
