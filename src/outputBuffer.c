@@ -22,7 +22,6 @@
 #include "normalize.h"
 #include "ringbuf.h"
 #include "condition.h"
-#include "song.h"
 #include "main_notify.h"
 #include "player_error.h"
 #include "log.h"

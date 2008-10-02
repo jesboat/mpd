@@ -173,12 +173,9 @@ static int decode_start(void)
 	InputStream is;
 	InputPlugin *plugin = NULL;
 	char path_max_fs[MPD_PATH_MAX];
-	char path_max_utf8[MPD_PATH_MAX];
 	assert(pthread_equal(pthread_self(), dc.thread));
 	assert(dc.state == DC_STATE_DECODE);
-	assert(dc.current_song);
-	get_song_url(path_max_utf8, dc.current_song);
-	assert(*path_max_utf8);
+	assert(*dc.utf8url);
 
 	switch (dc.action) {
 	case DC_ACTION_START:
@@ -193,20 +190,20 @@ static int decode_start(void)
 	default: assert("unknown action!" && 0);
 	}
 
-	if (isRemoteUrl(path_max_utf8)) {
-		pathcpy_trunc(path_max_fs, path_max_utf8);
+	if (isRemoteUrl(dc.utf8url)) {
+		pathcpy_trunc(path_max_fs, dc.utf8url);
 	} else {
 		rmp2amp_r(path_max_fs,
-		          utf8_to_fs_charset(path_max_fs, path_max_utf8));
+		          utf8_to_fs_charset(path_max_fs, dc.utf8url));
 	}
 
 	if (openInputStream(&is, path_max_fs) < 0) {
 		DEBUG("couldn't open song: %s\n", path_max_fs);
-		player_seterror(PLAYER_ERROR_FILENOTFOUND, dc.current_song);
+		player_seterror(PLAYER_ERROR_FILENOTFOUND, dc.utf8url);
 		return err;
 	}
 
-	if (isRemoteUrl(path_max_utf8)) {
+	if (isRemoteUrl(dc.utf8url)) {
 		unsigned int next = 0;
 
 		/* first we try mime types: */
@@ -224,7 +221,7 @@ static int decode_start(void)
 
 		/* if that fails, try suffix matching the URL: */
 		if (plugin == NULL) {
-			const char *s = getSuffix(path_max_utf8);
+			const char *s = getSuffix(dc.utf8url);
 			next = 0;
 			while (err && (plugin = getInputPluginFromSuffix(s, next++))) {
 				if (!plugin->streamDecodeFunc)
@@ -250,7 +247,7 @@ static int decode_start(void)
 		}
 	} else {
 		unsigned int next = 0;
-		const char *s = getSuffix(path_max_utf8);
+		const char *s = getSuffix(dc.utf8url);
 		while (err && (plugin = getInputPluginFromSuffix(s, next++))) {
 			if (!plugin->streamTypes & INPUT_PLUGIN_STREAM_FILE)
 				continue;
@@ -273,9 +270,9 @@ static int decode_start(void)
 
 	if (err) {
 		if (plugin)
-			player_seterror(PLAYER_ERROR_SYSTEM, dc.current_song);
+			player_seterror(PLAYER_ERROR_SYSTEM, dc.utf8url);
 		else
-			player_seterror(PLAYER_ERROR_UNKTYPE, dc.current_song);
+			player_seterror(PLAYER_ERROR_UNKTYPE, dc.utf8url);
 	}
 	if (player_errno)
 		ERROR("player_error: %s\n", player_strerror());
@@ -299,20 +296,18 @@ static void * decoder_task(mpd_unused void *arg)
 		case DC_STATE_DECODE:
 			/* DEBUG(__FILE__": %s %d\n", __func__, __LINE__); */
 			/* DEBUG("dc.action: %d\n", (int)dc.action); */
-			if ((dc.current_song = playlist_queued_song())) {
-				char p[MPD_PATH_MAX];
+			if (playlist_queued_url(dc.utf8url)) {
 				int err;
 
 				ob_advance_sequence();
-				get_song_url(p, dc.current_song);
-				DEBUG("decoding song: %s\n", p);
+				DEBUG("decoding song: %s\n", dc.utf8url);
 				err = decode_start();
-				DEBUG("DONE decoding song: %s\n", p);
+				DEBUG("DONE decoding song: %s\n", dc.utf8url);
 				if (err)
 					ob_trigger_action(OB_ACTION_RESET);
 				else
 					ob_flush();
-				dc.current_song = NULL;
+				dc.utf8url[0] = '\0';
 			}
 			finalize_per_track_actions();
 			playlist_queue_next();

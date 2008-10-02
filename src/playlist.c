@@ -554,11 +554,15 @@ void playlist_queue_next(void)
 	wakeup_main_task();
 }
 
-Song *playlist_queued_song(void)
+char *playlist_queued_url(char utf8url[MPD_PATH_MAX])
 {
+	Song *song;
+
 	assert(pthread_equal(pthread_self(), dc.thread));
 	pthread_mutex_lock(&queue_lock);
-	return song_at(playlist.queued);
+	song = song_at(playlist.queued);
+
+	return song ? get_song_url(utf8url, song) : NULL;
 }
 
 static void queue_song_locked(int order_num)

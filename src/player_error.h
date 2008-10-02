@@ -19,8 +19,6 @@
 #ifndef PLAYER_ERROR_H
 #define PLAYER_ERROR_H
 
-#include "song.h"
-
 enum player_error {
 	PLAYER_ERROR_NONE = 0,
 	PLAYER_ERROR_FILE,
@@ -31,10 +29,9 @@ enum player_error {
 };
 
 extern enum player_error player_errno;
-extern Song *player_errsong;
 
 void player_clearerror(void);
-void player_seterror(enum player_error err, Song *song);
+void player_seterror(enum player_error err, const char *url);
 const char *player_strerror(void);
 
 #endif /* PLAYER_ERROR_H */
