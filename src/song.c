@@ -207,19 +207,22 @@ int updateSongInfo(Song * song)
 		unsigned int next = 0;
 		char path_max_tmp[MPD_PATH_MAX];
 		char abs_path[MPD_PATH_MAX];
+		struct mpd_tag *old_tag = song->tag;
+		struct mpd_tag *new_tag = NULL;
 
 		utf8_to_fs_charset(abs_path, get_song_url(path_max_tmp, song));
 		rmp2amp_r(abs_path, abs_path);
 
-		if (song->tag)
-			tag_free(song->tag);
-
-		song->tag = NULL;
-
-		while (!song->tag && (plugin = isMusic(abs_path,
-						       &(song->mtime),
-						       next++))) {
-			song->tag = plugin->tagDupFunc(abs_path);
+		while ((plugin = isMusic(abs_path, &song->mtime, next++))) {
+			if ((new_tag = plugin->tagDupFunc(abs_path)))
+				break;
+		}
+		if (new_tag && tag_equal(new_tag, old_tag)) {
+			tag_free(new_tag);
+		} else {
+			song->tag = new_tag;
+			if (old_tag)
+				tag_free(old_tag);
 		}
 		if (!song->tag || song->tag->time < 0)
 			return -1;
