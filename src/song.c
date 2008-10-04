@@ -123,11 +123,20 @@ static void insertSongIntoList(struct songvec *sv, Song *newsong)
 			tag_end_add(newsong->tag);
 	} else { /* prevent dupes, just update the existing song info */
 		if (existing->mtime != newsong->mtime) {
-			tag_free(existing->tag);
-			if (newsong->tag)
-				tag_end_add(newsong->tag);
-			existing->tag = newsong->tag;
 			existing->mtime = newsong->mtime;
+			if (tag_equal(existing->tag, newsong->tag)) {
+				if (newsong->tag)
+					tag_free(newsong->tag);
+			} else {
+				struct mpd_tag *old_tag = existing->tag;
+
+				if (newsong->tag)
+					tag_end_add(newsong->tag);
+				existing->tag = newsong->tag;
+				if (old_tag)
+					tag_free(old_tag);
+			}
+			/* prevent tag_free in freeJustSong */
 			newsong->tag = NULL;
 		}
 		freeJustSong(newsong);
