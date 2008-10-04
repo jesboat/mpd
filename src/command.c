@@ -813,47 +813,17 @@ static int print_update_result(int fd, int ret)
 	return -1;
 }
 
-static int listHandleUpdate(int fd,
-			    mpd_unused int *permission,
-			    mpd_unused int argc,
-			    char *argv[],
-			    struct strnode *cmdnode, CommandEntry * cmd)
-{
-	static char **pathv;
-	static int pathc;
-	CommandEntry *nextCmd = NULL;
-	struct strnode *next = cmdnode->next;
-	int last = pathc++;
-
-	pathv = xrealloc(pathv, pathc * sizeof(char *));
-	pathv[last] = sanitizePathDup(argc == 2 ? argv[1] : "");
-
-	if (next)
-		nextCmd = getCommandEntryFromString(next->data, permission);
-
-	if (cmd != nextCmd) {
-		int ret = print_update_result(fd, updateInit(pathc, pathv));
-		if (pathc) {
-			assert(pathv);
-			free(pathv);
-			pathv = NULL;
-			pathc = 0;
-		}
-		return ret;
-	}
-
-	return 0;
-}
-
 static int handleUpdate(int fd, mpd_unused int *permission,
 			mpd_unused int argc, char *argv[])
 {
-	char *pathv[1];
+	char *path = NULL;
 
 	assert(argc <= 2);
-	if (argc == 2)
-		pathv[0] = sanitizePathDup(argv[1]);
-	return print_update_result(fd, updateInit(argc - 1, pathv));
+	if (argc == 2 && !(path = sanitizePathDup(argv[1]))) {
+		commandError(fd, ACK_ERROR_ARG, "invalid path");
+		return -1;
+	}
+	return print_update_result(fd, directory_update_init(path));
 }
 
 static int handleNext(mpd_unused int fd, mpd_unused int *permission,
@@ -1289,7 +1259,7 @@ void initCommands(void)
 	addCommand(COMMAND_PLAYLISTINFO,     PERMISSION_READ,    0,   1,   handlePlaylistInfo,         NULL);
 	addCommand(COMMAND_FIND,             PERMISSION_READ,    2,   -1,  handleFind,                 NULL);
 	addCommand(COMMAND_SEARCH,           PERMISSION_READ,    2,   -1,  handleSearch,               NULL);
-	addCommand(COMMAND_UPDATE,           PERMISSION_ADMIN,   0,   1,   handleUpdate,               listHandleUpdate);
+	addCommand(COMMAND_UPDATE,           PERMISSION_ADMIN,   0,   1,   handleUpdate,               NULL);
 	addCommand(COMMAND_NEXT,             PERMISSION_CONTROL, 0,   0,   handleNext,                 NULL);
 	addCommand(COMMAND_PREVIOUS,         PERMISSION_CONTROL, 0,   0,   handlePrevious,             NULL);
 	addCommand(COMMAND_LISTALL,          PERMISSION_READ,    0,   1,   handleListAll,              NULL);
