@@ -23,6 +23,7 @@
 
 #include "condition.h"
 #include "audio_format.h"
+#include "path.h"
 
 #define DECODE_TYPE_FILE	0
 #define DECODE_TYPE_URL		1
