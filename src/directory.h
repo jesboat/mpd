@@ -43,11 +43,10 @@ int isUpdatingDB(void);
 
 /*
  * returns the non-negative update job ID on success,
- * -1 if busy, -2 if invalid argument
- * @argv itself is safe to free once updateInit returns, but the
- * string values contained by @argv MUST NOT be freed manually
+ * returns -1 if busy
+ * @path will be freed by this function and should not be reused
  */
-int updateInit(int argc, char *argv[]);
+int directory_update_init(char *path);
 
 void directory_init(void);
 
