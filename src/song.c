@@ -71,7 +71,7 @@ Song *newSong(const char *url, int type, Directory * parentDir)
 			song->tag = plugin->tagDupFunc(abs_path);
 		}
 		if (!song->tag || song->tag->time < 0) {
-			freeSong(song);
+			freeJustSong(song);
 			song = NULL;
 		}
 	}
