@@ -29,18 +29,6 @@
 
 #include "os_compat.h"
 
-static Song *newNullSong(void)
-{
-	Song *song = xmalloc(sizeof(Song));
-
-	song->tag = NULL;
-	song->url = NULL;
-	song->type = SONG_TYPE_FILE;
-	song->parentDir = NULL;
-
-	return song;
-}
-
 Song *newSong(const char *url, int type, Directory * parentDir)
 {
 	Song *song;
@@ -50,8 +38,8 @@ Song *newSong(const char *url, int type, Directory * parentDir)
 		return NULL;
 	}
 
-	song = newNullSong();
-
+	song = xmalloc(sizeof(Song));
+	song->tag = NULL;
 	song->url = xstrdup(url);
 	song->type = type;
 	song->parentDir = parentDir;
@@ -169,7 +157,8 @@ void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song)
 				insertSongIntoList(sv, song);
-			song = newNullSong();
+			song = xmalloc(sizeof(Song));
+			song->tag = NULL;
 			song->url = xstrdup(buffer + strlen(SONG_KEY));
 			song->type = SONG_TYPE_FILE;
 			song->parentDir = parentDir;
