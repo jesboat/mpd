@@ -68,7 +68,7 @@ enum playlist_result playlistInfo(int fd, int song);
 
 enum playlist_result playlistId(int fd, int song);
 
-Song *playlist_queued_song(void);
+char *playlist_queued_url(char utf8url[MPD_PATH_MAX]);
 
 void playlist_queue_next(void);
 

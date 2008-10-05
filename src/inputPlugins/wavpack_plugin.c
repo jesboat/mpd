@@ -429,10 +429,8 @@ static int wavpack_open_wvc(InputStream *is_wvc)
 	char wvc_url[MPD_PATH_MAX];
 	size_t len;
 
-	/* This is the only reader of dc.current_song */
-	if (!get_song_url(wvc_url, dc.current_song))
-		return 0;
-
+	/* This is the only reader of dc.utf8url (in inputPlugins) */
+	pathcpy_trunc(wvc_url, dc.utf8url);
 	len = strlen(wvc_url);
 	if ((len + 2) >= MPD_PATH_MAX)
 		return 0;

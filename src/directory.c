@@ -52,13 +52,18 @@ enum update_progress {
 	UPDATE_PROGRESS_DONE = 2
 } progress;
 
+/* make this dynamic?, or maybe this is big enough... */
+static char *update_paths[32];
+static size_t update_paths_nr;
+
 static Directory *music_root;
 
 static time_t directory_dbModTime;
 
 static pthread_t update_thr;
 
-static int directory_updateJobId;
+static const int update_task_id_max = 1 << 15;
+static int update_task_id;
 
 static int addToDirectory(Directory * directory, const char *name);
 
@@ -70,8 +75,7 @@ static enum update_return updateDirectory(Directory * directory);
 
 static void deleteEmptyDirectoriesInDirectory(Directory * directory);
 
-static void removeSongFromDirectory(Directory * directory,
-				    const char *shortname);
+static void delete_song(Directory *dir, Song *del);
 
 static enum update_return addSubDirectoryToDirectory(Directory * directory,
 				      const char *name, struct stat *st);
@@ -98,12 +102,47 @@ static char *getDbFile(void)
 
 int isUpdatingDB(void)
 {
-	return (progress != UPDATE_PROGRESS_IDLE) ? directory_updateJobId : 0;
+	return (progress != UPDATE_PROGRESS_IDLE) ? update_task_id : 0;
+}
+
+static void * update_task(void *_path)
+{
+	enum update_return ret = UPDATE_RETURN_NOUPDATE;
+
+	if (_path) {
+		ret = updatePath((char *)_path);
+		free(_path);
+	} else {
+		ret = updateDirectory(music_root);
+	}
+
+	if (ret == UPDATE_RETURN_UPDATED && writeDirectoryDB() < 0)
+		ret = UPDATE_RETURN_ERROR;
+	progress = UPDATE_PROGRESS_DONE;
+	wakeup_main_task();
+	return (void *)ret;
+}
+
+static void spawn_update_task(char *path)
+{
+	pthread_attr_t attr;
+
+	assert(pthread_equal(pthread_self(), main_task));
+
+	progress = UPDATE_PROGRESS_RUNNING;
+	pthread_attr_init(&attr);
+	if (pthread_create(&update_thr, &attr, update_task, path))
+		FATAL("Failed to spawn update task: %s\n", strerror(errno));
+	if (++update_task_id > update_task_id_max)
+		update_task_id = 1;
+	DEBUG("spawned thread for update job id %i\n", update_task_id);
 }
 
 void reap_update_task(void)
 {
 	enum update_return ret;
+
+	assert(pthread_equal(pthread_self(), main_task));
 
 	if (progress != UPDATE_PROGRESS_DONE)
 		return;
@@ -111,74 +150,36 @@ void reap_update_task(void)
 		FATAL("error joining update thread: %s\n", strerror(errno));
 	if (ret == UPDATE_RETURN_UPDATED)
 		playlistVersionChange();
-	progress = UPDATE_PROGRESS_IDLE;
-}
 
-/* @argv represents a null-terminated array of (null-terminated) strings */
-static void * update_task(void *argv)
-{
-	enum update_return ret = UPDATE_RETURN_NOUPDATE;
-
-	if (argv) {
-		char **pathv;
-		for (pathv = (char **)argv; *pathv; pathv++) {
-			switch (updatePath(*pathv)) {
-			case UPDATE_RETURN_ERROR:
-				ret = UPDATE_RETURN_ERROR;
-				goto out;
-			case UPDATE_RETURN_NOUPDATE:
-				break;
-			case UPDATE_RETURN_UPDATED:
-				ret = UPDATE_RETURN_UPDATED;
-			}
-			free(*pathv);
-		}
-		free(argv);
+	if (update_paths_nr) {
+		char *path = update_paths[0];
+		memmove(&update_paths[0], &update_paths[1],
+		        --update_paths_nr * sizeof(char *));
+		spawn_update_task(path);
 	} else {
-		ret = updateDirectory(music_root);
+		progress = UPDATE_PROGRESS_IDLE;
 	}
-
-	if (ret == UPDATE_RETURN_UPDATED && writeDirectoryDB() < 0)
-		ret = UPDATE_RETURN_ERROR;
-out:
-	progress = UPDATE_PROGRESS_DONE;
-	wakeup_main_task();
-	return (void *)ret;
 }
 
-int updateInit(int argc, char *argv[])
+int directory_update_init(char *path)
 {
-	pthread_attr_t attr;
-	char **pathv = NULL;
-	int i;
+	assert(pthread_equal(pthread_self(), main_task));
 
 	if (progress != UPDATE_PROGRESS_IDLE) {
-		for (i = argc; --i >= 0; )
-			free(argv[i]);
-		return -1;
-	}
+		int next_task_id;
 
-	for (i = argc; --i >= 0; ) {
-		if (!argv[i])
-			return -2;
-	}
+		if (!path)
+			return -1;
+		if (update_paths_nr == ARRAY_SIZE(update_paths))
+			return -1;
+		assert(update_paths_nr < ARRAY_SIZE(update_paths));
+		update_paths[update_paths_nr++] = path;
+		next_task_id = update_task_id + update_paths_nr;
 
-	progress = UPDATE_PROGRESS_RUNNING;
-	if (argc > 0) {
-		pathv = xmalloc((argc + 1) * sizeof(char *));
-		memcpy(pathv, argv, argc * sizeof(char *));
-		pathv[argc] = NULL;
+		return next_task_id > update_task_id_max ?  1 : next_task_id;
 	}
-
-	pthread_attr_init(&attr);
-	if (pthread_create(&update_thr, &attr, update_task, pathv))
-		FATAL("Failed to spawn update task: %s\n", strerror(errno));
-	directory_updateJobId++;
-	if (directory_updateJobId > 1 << 15)
-		directory_updateJobId = 1;
-	DEBUG("updateInit: spawned update thread for update job id %i\n",
-	      (int)directory_updateJobId);
-	return directory_updateJobId;
+	spawn_update_task(path);
+	return update_task_id;
 }
 
 static void directory_set_stat(Directory * dir, const struct stat *st)
@@ -212,16 +213,12 @@ static void freeDirectory(Directory * directory)
 	/*getDirectoryPath(NULL); */
 }
 
-static void removeSongFromDirectory(Directory * directory, const char *shortname)
+static void delete_song(Directory *dir, Song *del)
 {
-	Song *song = songvec_find(&directory->songs, shortname);
-
-	if (song) {
-		char path_max_tmp[MPD_PATH_MAX]; /* wasteful */
-		LOG("removing: %s\n", get_song_url(path_max_tmp, song));
-		songvec_delete(&directory->songs, song);
-		freeSong(song); /* FIXME racy */
-	}
+	char path_max_tmp[MPD_PATH_MAX]; /* wasteful */
+	LOG("removing: %s\n", get_song_url(path_max_tmp, del));
+	songvec_delete(&dir->songs, del);
+	freeSong(del); /* FIXME racy */
 }
 
 static void deleteEmptyDirectoriesInDirectory(Directory * directory)
@@ -256,7 +253,7 @@ updateInDirectory(Directory * directory, const char *name)
 		} else if (st.st_mtime != song->mtime) {
 			LOG("updating %s\n", name);
 			if (updateSongInfo(song) < 0)
-				removeSongFromDirectory(directory, shortname);
+				delete_song(directory, song);
 			return UPDATE_RETURN_UPDATED;
 		}
 	} else if (S_ISDIR(st.st_mode)) {
@@ -308,7 +305,7 @@ removeDeletedFromDirectory(char *path_max_tmp, Directory * directory)
 			strcpy(path_max_tmp, song->url);
 
 		if (!isFile(path_max_tmp, NULL)) {
-			removeSongFromDirectory(directory, song->url);
+			delete_song(directory, song);
 			ret = UPDATE_RETURN_UPDATED;
 		}
 	}
@@ -322,6 +319,7 @@ static Directory *addDirectoryPathToDB(const char *utf8path)
 	char *parent;
 	Directory *parentDirectory;
 	Directory *directory;
+	Song *conflicting;
 
 	parent = parent_path(path_max_tmp, utf8path);
 
@@ -348,7 +346,10 @@ static Directory *addDirectoryPathToDB(const char *utf8path)
 
 	/* if we're adding directory paths, make sure to delete filenames
 	   with potentially the same name */
-	removeSongFromDirectory(parentDirectory, mpd_basename(directory->path));
+	conflicting = songvec_find(&parentDirectory->songs,
+	                           mpd_basename(directory->path));
+	if (conflicting)
+		delete_song(parentDirectory, conflicting);
 
 	return directory;
 }
@@ -419,14 +420,13 @@ static enum update_return updatePath(const char *utf8path)
 			else if (updateSongInfo(song) == 0)
 				return UPDATE_RETURN_UPDATED;
 			else {
-				removeSongFromDirectory(parentDirectory,
-							song->url);
+				delete_song(parentDirectory, song);
 				return UPDATE_RETURN_UPDATED;
 			}
 		}
 		/* if updateDirectory fails, means we should delete it */
 		else {
-			removeSongFromDirectory(parentDirectory, song->url);
+			delete_song(parentDirectory, song);
 			ret = UPDATE_RETURN_UPDATED;
 			/* don't return, path maybe a directory now */
 		}
@@ -723,12 +723,13 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 	char buffer[MPD_PATH_MAX * 2];
 	int bufferSize = MPD_PATH_MAX * 2;
 	char key[MPD_PATH_MAX * 2];
-	Directory *subDirectory;
 	char *name;
 
 	while (myFgets(buffer, bufferSize, fp)
 	       && prefixcmp(buffer, DIRECTORY_END)) {
 		if (!prefixcmp(buffer, DIRECTORY_DIR)) {
+			Directory *subdir;
+
 			strcpy(key, &(buffer[strlen(DIRECTORY_DIR)]));
 			if (!myFgets(buffer, bufferSize, fp))
 				FATAL("Error reading db, fgets\n");
@@ -740,9 +741,13 @@ static void readDirectoryInfo(FILE * fp, Directory * directory)
 			if (prefixcmp(buffer, DIRECTORY_BEGIN))
 				FATAL("Error reading db at line: %s\n", buffer);
 			name = &(buffer[strlen(DIRECTORY_BEGIN)]);
-			subDirectory = newDirectory(name, directory);
-			dirvec_add(&directory->children, subDirectory);
-			readDirectoryInfo(fp, subDirectory);
+			if ((subdir = getDirectory(name))) {
+				assert(subdir->parent == directory);
+			} else {
+				subdir = newDirectory(name, directory);
+				dirvec_add(&directory->children, subdir);
+			}
+			readDirectoryInfo(fp, subdir);
 		} else if (!prefixcmp(buffer, SONG_BEGIN)) {
 			readSongInfoIntoList(fp, directory);
 		} else {

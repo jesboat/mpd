@@ -43,7 +43,7 @@ enum dc_state {
 };
 
 struct decoder_control {
-	Song * current_song; /* only needed for wavpack, remove? */
+	char utf8url[MPD_PATH_MAX]; /* only needed for wavpack, remove? */
 	enum dc_state state; /* rw=dc.thread, r=main */
 	enum dc_action action; /* rw protected by action_cond */
 	float total_time;    /* w=dc.thread, r=main */

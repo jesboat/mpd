@@ -100,14 +100,10 @@ static void randomizeOrder(int start, int end);
 static void incrPlaylistVersion(void)
 {
 	static unsigned long max = ((uint32_t) 1 << 31) - 1;
-	playlist.version++;
-	if (playlist.version >= max) {
-		int i;
 
-		for (i = 0; i < playlist.length; i++) {
-			playlist.songMod[i] = 0;
-		}
-
+	if (++playlist.version >= max) {
+		memset(playlist.songMod, 0,
+		       playlist.length * sizeof(*playlist.songMod));
 		playlist.version = 1;
 	}
 }
@@ -116,9 +112,8 @@ void playlistVersionChange(void)
 {
 	int i;
 
-	for (i = 0; i < playlist.length; i++) {
+	for (i = playlist.length; --i >= 0; )
 		playlist.songMod[i] = playlist.version;
-	}
 
 	incrPlaylistVersion();
 }
@@ -128,12 +123,9 @@ static void incrPlaylistCurrent(void)
 	if (playlist.current < 0)
 		return;
 
-	if (playlist.current >= playlist.length - 1) {
-		if (playlist.repeat)
-			playlist.current = 0;
-		else
-			playlist.current = -1;
-	} else
+	if (playlist.current >= playlist.length - 1)
+		playlist.current = playlist.repeat ? 0 : -1;
+	else
 		playlist.current++;
 }
 
@@ -154,10 +146,9 @@ void initPlaylist(void)
 
 	if (param) {
 		playlist_max_length = strtol(param->value, &test, 10);
-		if (*test != '\0') {
+		if (*test != '\0')
 			FATAL("max playlist length \"%s\" is not an integer, "
 			      "line %i\n", param->value, param->line);
-		}
 	}
 
 	playlist_saveAbsolutePaths = getBoolConfigParam(
@@ -166,20 +157,17 @@ void initPlaylist(void)
 		playlist_saveAbsolutePaths =
 		                         DEFAULT_PLAYLIST_SAVE_ABSOLUTE_PATHS;
 
-	playlist.songs = xmalloc(sizeof(Song *) * playlist_max_length);
+	playlist.songs = xcalloc(playlist_max_length, sizeof(Song *));
 	playlist.songMod = xmalloc(sizeof(uint32_t) * playlist_max_length);
 	playlist.order = xmalloc(sizeof(int) * playlist_max_length);
 	playlist.idToPosition = xmalloc(sizeof(int) * playlist_max_length *
 				       PLAYLIST_HASH_MULT);
 	playlist.positionToId = xmalloc(sizeof(int) * playlist_max_length);
 
-	memset(playlist.songs, 0, sizeof(char *) * playlist_max_length);
-
 	srandom(time(NULL));
 
-	for (i = 0; i < playlist_max_length * PLAYLIST_HASH_MULT; i++) {
+	for (i = playlist_max_length * PLAYLIST_HASH_MULT; --i >= 0; )
 		playlist.idToPosition[i] = -1;
-	}
 }
 
 static int getNextId(void)
@@ -187,10 +175,8 @@ static int getNextId(void)
 	static int cur = -1;
 
 	do {
-		cur++;
-		if (cur >= playlist_max_length * PLAYLIST_HASH_MULT) {
+		if (++cur >= playlist_max_length * PLAYLIST_HASH_MULT)
 			cur = 0;
-		}
 	} while (playlist.idToPosition[cur] != -1);
 
 	return cur;
@@ -199,10 +185,10 @@ static int getNextId(void)
 void finishPlaylist(void)
 {
 	int i;
-	for (i = 0; i < playlist.length; i++) {
-		if (playlist.songs[i]->type == SONG_TYPE_URL) {
+
+	for (i = playlist.length; --i >= 0; ) {
+		if (playlist.songs[i]->type == SONG_TYPE_URL)
 			freeJustSong(playlist.songs[i]);
-		}
 	}
 
 	playlist.length = 0;
@@ -225,10 +211,9 @@ void clearPlaylist(void)
 
 	stopPlaylist();
 
-	for (i = 0; i < playlist.length; i++) {
-		if (playlist.songs[i]->type == SONG_TYPE_URL) {
+	for (i = playlist.length; --i >= 0 ; ) {
+		if (playlist.songs[i]->type == SONG_TYPE_URL)
 			freeJustSong(playlist.songs[i]);
-		}
 		playlist.idToPosition[playlist.positionToId[i]] = -1;
 		playlist.songs[i] = NULL;
 	}
@@ -248,10 +233,9 @@ void showPlaylist(int fd)
 	int i;
 	char path_max_tmp[MPD_PATH_MAX];
 
-	for (i = 0; i < playlist.length; i++) {
+	for (i = 0; i < playlist.length; i++)
 		fdprintf(fd, "%i:%s\n", i,
 		         get_song_url(path_max_tmp, playlist.songs[i]));
-	}
 }
 
 void savePlaylistState(int fd)
@@ -305,10 +289,9 @@ static void loadPlaylistFromStateFile(FILE *fp, char *buffer,
 		    && current == song) {
 			if (state == OB_STATE_PAUSE)
 				ob_trigger_action(OB_ACTION_PAUSE_SET);
-			if (state != OB_STATE_STOP) {
+			if (state != OB_STATE_STOP)
 				seekSongInPlaylist(playlist.length - 1,
 						   seek_time);
-			}
 		}
 		if (!myFgets(buffer, PLAYLIST_BUFFER_SIZE, fp))
 			state_file_fatal();
@@ -388,9 +371,8 @@ int playlistChanges(int fd, uint32_t version)
 	for (i = 0; i < playlist.length; i++) {
 		if (version > playlist.version ||
 		    playlist.songMod[i] >= version ||
-		    playlist.songMod[i] == 0) {
+		    playlist.songMod[i] == 0)
 			printPlaylistSongInfo(fd, i);
-		}
 	}
 
 	return 0;
@@ -403,10 +385,9 @@ int playlistChangesPosId(int fd, uint32_t version)
 	for (i = 0; i < playlist.length; i++) {
 		if (version > playlist.version ||
 		    playlist.songMod[i] >= version ||
-		    playlist.songMod[i] == 0) {
+		    playlist.songMod[i] == 0)
 			fdprintf(fd, "cpos: %i\nId: %i\n",
 			         i, playlist.positionToId[i]);
-		}
 	}
 
 	return 0;
@@ -522,7 +503,6 @@ static void queueNextSongInPlaylist(void)
 				playlist.current = -1;
 		}
 	} else if (dc.state == DC_STATE_STOP) {
-		/* DEBUG("%s:%d (%d)\n", __func__, __LINE__, playlist.queued);*/
 		dc_trigger_action(DC_ACTION_START, 0);
 	}
 }
@@ -554,11 +534,15 @@ void playlist_queue_next(void)
 	wakeup_main_task();
 }
 
-Song *playlist_queued_song(void)
+char *playlist_queued_url(char utf8url[MPD_PATH_MAX])
 {
+	Song *song;
+
 	assert(pthread_equal(pthread_self(), dc.thread));
 	pthread_mutex_lock(&queue_lock);
-	return song_at(playlist.queued);
+	song = song_at(playlist.queued);
+
+	return song ? get_song_url(utf8url, song) : NULL;
 }
 
 static void queue_song_locked(int order_num)
@@ -605,15 +589,13 @@ int addToStoredPlaylist(const char *url, const char *utf8file)
 
 	DEBUG("add to stored playlist: %s\n", url);
 
-	song = getSongFromDB(url);
-	if (song)
+	if ((song = getSongFromDB(url)))
 		return appendSongToStoredPlaylistByPath(utf8file, song);
 
 	if (!isValidRemoteUtf8Url(url))
 		return ACK_ERROR_NO_EXIST;
 
-	song = newSong(url, SONG_TYPE_URL, NULL);
-	if (song) {
+	if ((song = newSong(url, SONG_TYPE_URL, NULL))) {
 		int ret = appendSongToStoredPlaylistByPath(utf8file, song);
 		freeJustSong(song);
 		return ret;
@@ -629,11 +611,10 @@ enum playlist_result addSongToPlaylist(Song * song, int *added_id)
 	if (playlist.length == playlist_max_length)
 		return PLAYLIST_RESULT_TOO_LARGE;
 
-	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.queued >= 0
-		    && playlist.current == playlist.length - 1)
-			clear_queue();
-	}
+	if (playlist_state == PLAYLIST_STATE_PLAY &&
+	    playlist.queued >= 0 &&
+	    playlist.current == playlist.length - 1)
+		clear_queue();
 
 	id = getNextId();
 
@@ -684,9 +665,8 @@ enum playlist_result swapSongsInPlaylist(int song1, int song2)
 		return PLAYLIST_RESULT_BAD_RANGE;
 
 	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.queued >= 0) {
+		if (playlist.queued >= 0)
 			queuedSong = playlist.order[playlist.queued];
-		}
 		assert(playlist.current >= 0 &&
 		       playlist.current < playlist.length);
 		currentSong = playlist.order[playlist.current];
@@ -755,21 +735,18 @@ enum playlist_result deleteFromPlaylist(int song)
 		if (prev_queued >= 0
 		    && (playlist.order[prev_queued] == song
 			|| playlist.order[playlist.current] == song)) {
-			/* DEBUG(__FILE__": %d (clearing)\n", __LINE__); */
 			clear_queue();
 		}
 	}
 
-	if (playlist.songs[song]->type == SONG_TYPE_URL) {
+	if (playlist.songs[song]->type == SONG_TYPE_URL)
 		freeJustSong(playlist.songs[song]);
-	}
 
 	playlist.idToPosition[playlist.positionToId[song]] = -1;
 
 	/* delete song from songs array */
-	for (i = song; i < playlist.length - 1; i++) {
+	for (i = song; i < playlist.length - 1; i++)
 		moveSongFromTo(i + 1, i);
-	}
 	/* now find it in the order array */
 	for (i = 0; i < playlist.length - 1; i++) {
 		if (playlist.order[i] == song)
@@ -790,8 +767,6 @@ enum playlist_result deleteFromPlaylist(int song)
 
 	incrPlaylistVersion();
 
-	/* DEBUG("current: %d, songOrder: %d\n", playlist.current, songOrder); */
-	/* DEBUG("playlist_state: %d\n", playlist_state); */
 	if (playlist_state != PLAYLIST_STATE_STOP
 	    && playlist.current == songOrder)
 		stop_current = 1;
@@ -804,13 +779,11 @@ enum playlist_result deleteFromPlaylist(int song)
 		incrPlaylistCurrent();
 	}
 	if (stop_current) {
-		/* DEBUG(__FILE__": %d\n", __LINE__); */
 		if (playlist.current >= 0 && songOrder > 0)
 			play_order_num(playlist.current, 0);
 		else
 			stopPlaylist();
 	} else {
-		/* DEBUG(__FILE__": %d\n", __LINE__); */
 		queueNextSongInPlaylist();
 	}
 
@@ -832,10 +805,9 @@ void deleteASongFromPlaylist(const Song * song)
 	if (NULL == playlist.songs)
 		return;
 
-	for (i = 0; i < playlist.length; i++) {
-		if (song == playlist.songs[i]) {
+	for (i = playlist.length; --i >= 0; ) {
+		if (mpd_unlikely(song == playlist.songs[i]))
 			deleteFromPlaylist(i);
-		}
 	}
 }
 
@@ -883,8 +855,6 @@ static void play_order_num(int order_num, float seek_time)
 enum playlist_result playPlaylist(int song, int stopOnError)
 {
 	int i = song;
-
-	DEBUG("%s %d song(%d)\n", __func__, __LINE__, song);
 
 	player_clearerror();
 
@@ -935,9 +905,8 @@ enum playlist_result playPlaylist(int song, int stopOnError)
 
 enum playlist_result playPlaylistById(int id, int stopOnError)
 {
-	if (id == -1) {
+	if (id == -1)
 		return playPlaylist(id, stopOnError);
-	}
 
 	if (!song_id_exists(id))
 		return PLAYLIST_RESULT_NO_SUCH_SONG;
@@ -963,8 +932,7 @@ static void sync_metadata(void)
 	if (!(tag = metadata_pipe_current()))
 		return;
 	song = song_at(playlist.current);
-	if (!song || song->type != SONG_TYPE_URL ||
-	    tag_equal(song->tag, tag)) {
+	if (!song || song->type != SONG_TYPE_URL || tag_equal(song->tag, tag)) {
 		tag_free(tag);
 		return;
 	}
@@ -987,9 +955,8 @@ void syncPlayerAndPlaylist(void)
 	    playlist.queued != playlist.current &&
 	    ob_synced() &&
 	    dc.state == DC_STATE_STOP &&
-	    ob_get_state() != OB_STATE_PAUSE) {
+	    ob_get_state() != OB_STATE_PAUSE)
 		dc_trigger_action(DC_ACTION_START, 0);
-	}
 }
 
 void nextSongInPlaylist(void)
@@ -1021,10 +988,9 @@ int getPlaylistRandomStatus(void)
 
 void setPlaylistRepeatStatus(int status)
 {
-	if (playlist_state == PLAYLIST_STATE_PLAY) {
-		if (playlist.repeat && !status && playlist.queued == 0)
-			clear_queue();
-	}
+	if (playlist_state == PLAYLIST_STATE_PLAY &&
+	    playlist.repeat && !status && playlist.queued == 0)
+		clear_queue();
 
 	playlist.repeat = status;
 }
@@ -1072,9 +1038,8 @@ enum playlist_result moveSongInPlaylist(int from, int to)
 	tmpSong = playlist.songs[from];
 	tmpId = playlist.positionToId[from];
 	/* move songs to one less in from->to */
-	for (i = from; i < to; i++) {
+	for (i = from; i < to; i++)
 		moveSongFromTo(i + 1, i);
-	}
 	/* move songs to one more in to->from */
 	for (i = from; i > to; i--) {
 		moveSongFromTo(i - 1, i);
@@ -1097,13 +1062,12 @@ enum playlist_result moveSongInPlaylist(int from, int to)
 			}
 		}
 	} else {
-		if (playlist.current == from) {
+		if (playlist.current == from)
 			playlist.current = to;
-		} else if (playlist.current > from && playlist.current <= to) {
+		else if (playlist.current > from && playlist.current <= to)
 			playlist.current--;
-		} else if (playlist.current >= to && playlist.current < from) {
+		else if (playlist.current >= to && playlist.current < from)
 			playlist.current++;
-		}
 		if (queued_is_current)
 			playlist.queued = playlist.current;
 	}
@@ -1135,7 +1099,7 @@ static void orderPlaylist(void)
 		if (queued_is_current)
 			playlist.queued = playlist.current;
 	}
-	for (i = 0; i < playlist.length; i++)
+	for (i = playlist.length; --i >= 0; )
 		playlist.order[i] = i;
 }
 
@@ -1160,7 +1124,6 @@ static void randomizeOrder(int start, int end)
 	int queued_is_current = (playlist.queued == playlist.current);
 
 	DEBUG("playlist: randomize from %i to %i\n", start, end);
-	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
 
 	if (!queued_is_current &&
 	    playlist_state == PLAYLIST_STATE_PLAY &&
@@ -1178,7 +1141,6 @@ static void randomizeOrder(int start, int end)
 	}
 	if (queued_is_current)
 		playlist.queued = playlist.current;
-	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
 }
 
 void setPlaylistRandomStatus(int status)
@@ -1192,11 +1154,8 @@ void setPlaylistRandomStatus(int status)
 			randomizeOrder(0, playlist.length - 1);
 		else
 			orderPlaylist();
-		if (playlist_state == PLAYLIST_STATE_PLAY) {
+		if (playlist_state == PLAYLIST_STATE_PLAY)
 			queueNextSongInPlaylist();
-			DEBUG("%s:%d queued: %d\n",
-			      __func__,__LINE__,playlist.queued);
-		}
 	}
 }
 
@@ -1409,9 +1368,8 @@ int PlaylistInfo(int fd, const char *utf8file, int detail)
 			}
 		}
 
-		if (!wrote) {
+		if (!wrote)
 			fdprintf(fd, SONG_FILE "%s\n", temp);
-		}
 
 		node = node->nextNode;
 	}
