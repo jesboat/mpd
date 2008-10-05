@@ -518,7 +518,7 @@ static void queueNextSongInPlaylist(void)
 		if (playlist.length > 0) {
 			if (playlist.random)
 				randomizeOrder(0, playlist.length - 1);
-			else
+			else if (ob_get_state() == OB_STATE_STOP)
 				playlist.current = -1;
 		}
 	} else if (dc.state == DC_STATE_STOP) {
@@ -896,7 +896,13 @@ enum playlist_result playPlaylist(int song, int stopOnError)
 			ob_trigger_action(OB_ACTION_PAUSE_UNSET);
 			return PLAYLIST_RESULT_SUCCESS;
 		}
-		if (playlist.current >= 0 && playlist.current < playlist.length) {
+
+		if (playlist_state == PLAYLIST_STATE_STOP &&
+		    playlist.length > 0 &&
+		    playlist.current == playlist.length - 1) {
+			i = 0;
+		} else if (playlist.current >= 0 &&
+		           playlist.current < playlist.length) {
 			i = playlist.current;
 		} else {
 			i = 0;
@@ -1315,9 +1321,10 @@ enum playlist_result savePlaylist(const char *utf8file)
 int getPlaylistCurrentSong(void)
 {
 	DEBUG("%s:%d current: %d\n", __func__, __LINE__, playlist.current);
-	if (playlist.current >= 0 && playlist.current < playlist.length) {
+	if (ob_get_state() != OB_STATE_STOP &&
+	    playlist.current >= 0 &&
+	    playlist.current < playlist.length)
 		return playlist.order[playlist.current];
-	}
 
 	return -1;
 }
