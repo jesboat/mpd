@@ -20,6 +20,7 @@
 #define PLAYLIST_H
 
 #include "locate.h"
+#include "path.h"
 
 #define PLAYLIST_FILE_SUFFIX 	"m3u"
 #define PLAYLIST_COMMENT	'#'
