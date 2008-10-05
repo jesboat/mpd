@@ -1357,24 +1357,19 @@ static CommandEntry *getCommandEntryAndCheckArgcAndPermission(int fd,
 	return cmd;
 }
 
-static int processCommandInternal(int fd, mpd_unused int *permission,
-				  char *commandString, struct strnode *cmdnode)
+int processCommand(int fd, int *perm, char *commandString)
 {
 	int argc;
 	char *argv[COMMAND_ARGV_MAX] = { NULL };
 	CommandEntry *cmd;
 	int ret = -1;
 
-	argc = buffer2array(commandString, argv, COMMAND_ARGV_MAX);
-
-	if (argc == 0)
+	if (!(argc = buffer2array(commandString, argv, COMMAND_ARGV_MAX)))
 		return 0;
 
-	if ((cmd = getCommandEntryAndCheckArgcAndPermission(fd, permission,
-							    argc, argv))) {
-		if (!cmdnode)
-			ret = cmd->handler(fd, permission, argc, argv);
-	}
+	cmd = getCommandEntryAndCheckArgcAndPermission(fd, perm, argc, argv);
+	if (cmd)
+		ret = cmd->handler(fd, perm, argc, argv);
 
 	current_command = NULL;
 
@@ -1392,7 +1387,7 @@ int processListOfCommands(int fd, int *permission, int *expired,
 	while (cur) {
 		DEBUG("processListOfCommands: process command \"%s\"\n",
 		      cur->data);
-		ret = processCommandInternal(fd, permission, cur->data, cur);
+		ret = processCommand(fd, permission, cur->data);
 		DEBUG("processListOfCommands: command returned %i\n", ret);
 		if (ret != 0 || (*expired) != 0)
 			goto out;
@@ -1404,11 +1399,6 @@ int processListOfCommands(int fd, int *permission, int *expired,
 out:
 	command_listNum = 0;
 	return ret;
-}
-
-int processCommand(int fd, int *permission, char *commandString)
-{
-	return processCommandInternal(fd, permission, commandString, NULL);
 }
 
 mpd_fprintf_ void commandError(int fd, int error, const char *fmt, ...)
