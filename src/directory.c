@@ -860,10 +860,12 @@ int writeDirectoryDB(void)
 	         DIRECTORY_FS_CHARSET "%s\n"
 	         DIRECTORY_INFO_END "\n", getFsCharset());
 
-	if (writeDirectoryInfo(fd, music_root) < 0)
+	if (writeDirectoryInfo(fd, music_root) < 0) {
 		ERROR("Failed to write to database file: %s\n",
 		      strerror(errno));
-	return -1;
+		xclose(fd);
+		return -1;
+	}
 	xclose(fd);
 
 	if (stat(dbFile, &st) == 0)
