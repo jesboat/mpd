@@ -210,9 +210,8 @@ int addAllIn(const char *name)
 
 int addAllInToStoredPlaylist(const char *name, const char *utf8file)
 {
-	struct add_data data = {
-		.path = utf8file,
-	};
+	struct add_data data;
+	data.path = utf8file;
 
 	return traverseAllIn(name, directoryAddSongToStoredPlaylist, NULL,
 	                     &data);
