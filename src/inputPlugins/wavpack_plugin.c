@@ -382,17 +382,21 @@ static int can_seek(void *id)
 	return ((InputStreamPlus *)id)->is->seekable;
 }
 
-/* FIXME: remove C99 initializers */
-static WavpackStreamReader mpd_is_reader = {
-	.read_bytes = read_bytes,
-	.get_pos = get_pos,
-	.set_pos_abs = set_pos_abs,
-	.set_pos_rel = set_pos_rel,
-	.push_back_byte = push_back_byte,
-	.get_length = get_length,
-	.can_seek = can_seek,
-	.write_bytes = NULL /* no need to write edited tags */
-};
+static WavpackStreamReader mpd_is_reader;
+
+static int wavpack_init(void)
+{
+	mpd_is_reader.read_bytes = read_bytes;
+	mpd_is_reader.get_pos = get_pos;
+	mpd_is_reader.set_pos_abs = set_pos_abs;
+	mpd_is_reader.set_pos_rel = set_pos_rel;
+	mpd_is_reader.push_back_byte = push_back_byte;
+	mpd_is_reader.get_length = get_length;
+	mpd_is_reader.can_seek = can_seek;
+	/* mpd_is_reader.write_bytes = NULL;  no need to write edited tags */
+
+	return 0;
+}
 
 static void
 initInputStreamPlus(InputStreamPlus *isp, InputStream *is)
@@ -551,7 +555,7 @@ static char const *wavpackMimeTypes[] = { "audio/x-wavpack", NULL };
 
 InputPlugin wavpackPlugin = {
 	"wavpack",
-	NULL,
+	wavpack_init,
 	NULL,
 	wavpack_trydecode,
 	wavpack_streamdecode,
