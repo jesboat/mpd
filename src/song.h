@@ -48,6 +48,9 @@ void freeJustSong(Song *);
 
 ssize_t song_print_info(Song * song, int fd);
 
+/* like song_print_info, but casts data into an fd first */
+int song_print_info_x(Song * song, void *data);
+
 void readSongInfoIntoList(FILE * fp, struct _Directory *parent);
 
 int updateSongInfo(Song * song);

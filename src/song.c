@@ -112,6 +112,11 @@ ssize_t song_print_info(Song *song, int fd)
 	return ret;
 }
 
+int song_print_info_x(Song * song, void *data)
+{
+	return song_print_info(song, (int)(size_t)data);
+}
+
 static void insertSongIntoList(struct songvec *sv, Song *newsong)
 {
 	Song *existing = songvec_find(sv, newsong->url);
