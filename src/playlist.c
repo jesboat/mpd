@@ -187,7 +187,7 @@ void finishPlaylist(void)
 	int i;
 
 	for (i = playlist.length; --i >= 0; ) {
-		if (playlist.songs[i]->type == SONG_TYPE_URL)
+		if (!song_is_file(playlist.songs[i]))
 			freeJustSong(playlist.songs[i]);
 	}
 
@@ -212,7 +212,7 @@ void clearPlaylist(void)
 	stopPlaylist();
 
 	for (i = playlist.length; --i >= 0 ; ) {
-		if (playlist.songs[i]->type == SONG_TYPE_URL)
+		if (!song_is_file(playlist.songs[i]))
 			freeJustSong(playlist.songs[i]);
 		playlist.idToPosition[playlist.positionToId[i]] = -1;
 		playlist.songs[i] = NULL;
@@ -576,7 +576,7 @@ enum playlist_result addToPlaylist(const char *url, int *added_id)
 
 	if ((song = getSongFromDB(url))) {
 	} else if (!(isValidRemoteUtf8Url(url) &&
-		     (song = newSong(url, SONG_TYPE_URL, NULL)))) {
+		     (song = newSong(url, NULL)))) {
 		return PLAYLIST_RESULT_NO_SUCH_SONG;
 	}
 
@@ -595,7 +595,7 @@ int addToStoredPlaylist(const char *url, const char *utf8file)
 	if (!isValidRemoteUtf8Url(url))
 		return ACK_ERROR_NO_EXIST;
 
-	if ((song = newSong(url, SONG_TYPE_URL, NULL))) {
+	if ((song = newSong(url, NULL))) {
 		int ret = appendSongToStoredPlaylistByPath(utf8file, song);
 		freeJustSong(song);
 		return ret;
@@ -739,7 +739,7 @@ enum playlist_result deleteFromPlaylist(int song)
 		}
 	}
 
-	if (playlist.songs[song]->type == SONG_TYPE_URL)
+	if (!song_is_file(playlist.songs[song]))
 		freeJustSong(playlist.songs[song]);
 
 	playlist.idToPosition[playlist.positionToId[song]] = -1;
@@ -920,7 +920,7 @@ struct mpd_tag *playlist_current_tag(void)
 	Song *song = song_at(playlist.current);
 
 	/* Non-file song tags can get swept out from under us */
-	return (song && song->type == SONG_TYPE_FILE) ? song->tag : NULL;
+	return (song && song_is_file(song)) ? song->tag : NULL;
 }
 
 /* This receives dynamic metadata updates from streams */
@@ -932,7 +932,7 @@ static void sync_metadata(void)
 	if (!(tag = metadata_pipe_current()))
 		return;
 	song = song_at(playlist.current);
-	if (!song || song->type != SONG_TYPE_URL || tag_equal(song->tag, tag)) {
+	if (!song || song_is_file(song) || tag_equal(song->tag, tag)) {
 		tag_free(tag);
 		return;
 	}
@@ -1266,7 +1266,7 @@ enum playlist_result savePlaylist(const char *utf8file)
 		utf8_to_fs_charset(tmp, path_max_tmp);
 
 		if (playlist_saveAbsolutePaths &&
-		    playlist.songs[i]->type == SONG_TYPE_FILE)
+		    song_is_file(playlist.songs[i]))
 			fprintf(fp, "%s\n", rmp2amp_r(tmp, tmp));
 		else
 			fprintf(fp, "%s\n", tmp);

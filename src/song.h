@@ -30,11 +30,6 @@
 #define SONG_BEGIN	"songList begin"
 #define SONG_END	"songList end"
 
-enum song_type {
-	SONG_TYPE_FILE = 1,
-	SONG_TYPE_URL = 2
-};
-
 #define SONG_FILE	"file: "
 #define SONG_TIME	"Time: "
 
@@ -42,12 +37,10 @@ typedef struct _Song {
 	struct mpd_tag *tag;
 	struct _Directory *parentDir;
 	time_t mtime;
-	enum song_type type;
 	char url[1];
 } mpd_packed Song;
 
-Song *newSong(const char *url, enum song_type type,
-	      struct _Directory *parentDir);
+Song *newSong(const char *url, struct _Directory *parentDir);
 
 void freeSong(Song *);
 
@@ -68,5 +61,10 @@ void printSongUrl(int fd, Song * song);
  * terminating '\0').
  */
 char *get_song_url(char *path_max_tmp, Song * song);
+
+static inline int song_is_file(const Song *song)
+{
+	return !!song->parentDir;
+}
 
 #endif

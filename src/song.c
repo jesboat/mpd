@@ -29,21 +29,19 @@
 
 #include "os_compat.h"
 
-static Song *
-song_alloc(const char *url, enum song_type type, Directory *parent)
+static Song * song_alloc(const char *url, Directory *parent)
 {
 	size_t urllen = strlen(url);
 	Song *song = xmalloc(sizeof(Song) + urllen);
 
 	song->tag = NULL;
 	memcpy(song->url, url, urllen + 1);
-	song->type = type;
 	song->parentDir = parent;
 
 	return song;
 }
 
-Song *newSong(const char *url, enum song_type type, Directory * parentDir)
+Song *newSong(const char *url, Directory * parentDir)
 {
 	Song *song;
 
@@ -52,11 +50,9 @@ Song *newSong(const char *url, enum song_type type, Directory * parentDir)
 		return NULL;
 	}
 
-	song = song_alloc(url, type, parentDir);
+	song = song_alloc(url, parentDir);
 
-	assert(type == SONG_TYPE_URL || parentDir);
-
-	if (song->type == SONG_TYPE_FILE) {
+	if (song_is_file(song)) {
 		InputPlugin *plugin;
 		unsigned int next = 0;
 		char path_max_tmp[MPD_PATH_MAX];
@@ -166,8 +162,7 @@ void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song)
 				insertSongIntoList(sv, song);
-			song = song_alloc(buffer + strlen(SONG_KEY),
-			                  SONG_TYPE_FILE, parentDir);
+			song = song_alloc(buffer + strlen(SONG_KEY), parentDir);
 		} else if (*buffer == 0) {
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
@@ -204,7 +199,7 @@ void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 
 int updateSongInfo(Song * song)
 {
-	if (song->type == SONG_TYPE_FILE) {
+	if (song_is_file(song)) {
 		InputPlugin *plugin;
 		unsigned int next = 0;
 		char path_max_tmp[MPD_PATH_MAX];
