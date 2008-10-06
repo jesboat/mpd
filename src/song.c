@@ -92,24 +92,24 @@ void freeJustSong(Song * song)
 	free(song);
 }
 
-void printSongUrl(int fd, Song * song)
+ssize_t song_print_url(Song *song, int fd)
 {
-	if (song->parentDir && song->parentDir->path) {
-		fdprintf(fd, "%s%s/%s\n", SONG_FILE,
-			  getDirectoryPath(song->parentDir), song->url);
-	} else {
-		fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
-	}
+	if (song->parentDir && song->parentDir->path)
+		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
+			        getDirectoryPath(song->parentDir), song->url);
+	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
 }
 
-int printSongInfo(int fd, Song * song)
+ssize_t song_print_info(Song *song, int fd)
 {
-	printSongUrl(fd, song);
+	ssize_t ret = song_print_url(song, fd);
 
+	if (ret < 0)
+		return ret;
 	if (song->tag)
 		tag_print(fd, song->tag);
 
-	return 0;
+	return ret;
 }
 
 static void insertSongIntoList(struct songvec *sv, Song *newsong)

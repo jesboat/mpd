@@ -81,7 +81,7 @@ int songvec_write(struct songvec *sv, int fd, int extra)
 			Song *song = *sp++;
 			if (fdprintf(fd, SONG_KEY "%s\n", song->url) < 0)
 				return -1;
-			if (printSongInfo(fd, song) < 0)
+			if (song_print_info(song, fd) < 0)
 				return -1;
 			if (fdprintf(fd,
 			            SONG_MTIME "%li\n", (long)song->mtime) < 0)
@@ -92,7 +92,7 @@ int songvec_write(struct songvec *sv, int fd, int extra)
 			return -1;
 	} else {
 		for (i = sv->nr; --i >= 0;)
-			if (printSongInfo(fd, *sp++) < 0)
+			if (song_print_info(*sp++, fd) < 0)
 				return -1;
 	}
 

@@ -46,13 +46,13 @@ void freeSong(Song *);
 
 void freeJustSong(Song *);
 
-int printSongInfo(int fd, Song * song);
+ssize_t song_print_info(Song * song, int fd);
 
 void readSongInfoIntoList(FILE * fp, struct _Directory *parent);
 
 int updateSongInfo(Song * song);
 
-void printSongUrl(int fd, Song * song);
+ssize_t song_print_url(Song * song, int fd);
 
 /*
  * get_song_url - Returns a path of a song in UTF8-encoded form
