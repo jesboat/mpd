@@ -32,6 +32,7 @@ mpd_headers = \
 	ack.h \
 	action_status.h \
 	audio.h \
+	audio_format.h \
 	audioOutput.h \
 	buffer2array.h \
 	charConv.h \
@@ -68,6 +69,7 @@ mpd_headers = \
 	outputBuffer_accessors.h \
 	outputBuffer_audio.h \
 	outputBuffer_ob_send.h \
+	outputBuffer_sequence.h \
 	outputBuffer_xfade.h \
 	path.h \
 	pcm_utils.h \
