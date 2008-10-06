@@ -37,7 +37,7 @@ static Song * song_alloc(const char *url, Directory *parent)
 	assert(url);
 	urllen = strlen(url);
 	assert(urllen);
-	song = xmalloc(sizeof(Song) + urllen);
+	song = xmalloc(sizeof(*song) - sizeof(song->url) + urllen + 1);
 
 	song->tag = NULL;
 	memcpy(song->url, url, urllen + 1);

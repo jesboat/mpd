@@ -37,7 +37,7 @@ typedef struct _Song {
 	struct mpd_tag *tag;
 	struct _Directory *parentDir;
 	time_t mtime;
-	char url[1];
+	char url[sizeof(size_t)];
 } mpd_packed Song;
 
 Song *newSong(const char *url, struct _Directory *parentDir);
