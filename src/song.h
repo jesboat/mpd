@@ -23,6 +23,7 @@
 #include "os_compat.h"
 #include "tag.h"
 #include "list.h"
+#include "gcc.h"
 
 #define SONG_KEY	"key: "
 #define SONG_MTIME	"mtime: "
@@ -38,12 +39,12 @@ enum song_type {
 #define SONG_TIME	"Time: "
 
 typedef struct _Song {
-	char *url;
 	struct mpd_tag *tag;
-	enum song_type type;
 	struct _Directory *parentDir;
 	time_t mtime;
-} Song;
+	enum song_type type;
+	char url[1];
+} mpd_packed Song;
 
 Song *newSong(const char *url, enum song_type type,
 	      struct _Directory *parentDir);

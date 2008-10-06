@@ -29,6 +29,20 @@
 
 #include "os_compat.h"
 
+static Song *
+song_alloc(const char *url, enum song_type type, Directory *parent)
+{
+	size_t urllen = strlen(url);
+	Song *song = xmalloc(sizeof(Song) + urllen);
+
+	song->tag = NULL;
+	memcpy(song->url, url, urllen + 1);
+	song->type = type;
+	song->parentDir = parent;
+
+	return song;
+}
+
 Song *newSong(const char *url, enum song_type type, Directory * parentDir)
 {
 	Song *song;
@@ -38,11 +52,7 @@ Song *newSong(const char *url, enum song_type type, Directory * parentDir)
 		return NULL;
 	}
 
-	song = xmalloc(sizeof(Song));
-	song->tag = NULL;
-	song->url = xstrdup(url);
-	song->type = type;
-	song->parentDir = parentDir;
+	song = song_alloc(url, type, parentDir);
 
 	assert(type == SONG_TYPE_URL || parentDir);
 
@@ -75,7 +85,6 @@ void freeSong(Song * song)
 
 void freeJustSong(Song * song)
 {
-	free(song->url);
 	if (song->tag)
 		tag_free(song->tag);
 	free(song);
@@ -157,19 +166,14 @@ void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song)
 				insertSongIntoList(sv, song);
-			song = xmalloc(sizeof(Song));
-			song->tag = NULL;
-			song->url = xstrdup(buffer + strlen(SONG_KEY));
-			song->type = SONG_TYPE_FILE;
-			song->parentDir = parentDir;
+			song = song_alloc(buffer + strlen(SONG_KEY),
+			                  SONG_TYPE_FILE, parentDir);
 		} else if (*buffer == 0) {
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
 			FATAL("Problems reading song info\n");
 		} else if (!prefixcmp(buffer, SONG_FILE)) {
-			/* we don't need this info anymore
-			   song->url = xstrdup(&(buffer[strlen(SONG_FILE)]));
-			 */
+			/* we don't need this info anymore */
 		} else if (matchesAnMpdTagItemKey(buffer, &itemType)) {
 			if (!song->tag) {
 				song->tag = tag_new();
@@ -234,7 +238,7 @@ char *get_song_url(char *path_max_tmp, Song *song)
 	if (!song)
 		return NULL;
 
-	assert(song->url != NULL);
+	assert(*song->url);
 
 	if (!song->parentDir || !song->parentDir->path)
 		strcpy(path_max_tmp, song->url);
