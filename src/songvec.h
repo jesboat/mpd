@@ -11,7 +11,7 @@ struct songvec {
 
 void songvec_sort(struct songvec *sv);
 
-struct mpd_song *songvec_find(struct songvec *sv, const char *url);
+struct mpd_song *songvec_find(const struct songvec *sv, const char *url);
 
 int songvec_delete(struct songvec *sv, const struct mpd_song *del);
 

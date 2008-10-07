@@ -24,7 +24,7 @@ void songvec_sort(struct songvec *sv)
 	pthread_mutex_unlock(&nr_lock);
 }
 
-struct mpd_song *songvec_find(struct songvec *sv, const char *url)
+struct mpd_song *songvec_find(const struct songvec *sv, const char *url)
 {
 	int i;
 	struct mpd_song *ret = NULL;
