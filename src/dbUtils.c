@@ -82,7 +82,8 @@ static int searchInDirectory(Song * song, void *_data)
 	LocateTagItemArray *array = &data->array;
 
 	if (strstrSearchTags(song, array->numItems, array->items))
-		song_print_info(song, fd);
+		if (song_print_info(song, fd) < 0)
+			return -1;
 
 	return 0;
 }
@@ -124,7 +125,8 @@ static int findInDirectory(Song * song, void *_data)
 	LocateTagItemArray *array = &data->array;
 
 	if (tagItemsFoundAndMatches(song, array->numItems, array->items))
-		song_print_info(song, fd);
+		if (song_print_info(song, fd) < 0)
+			return -1;
 
 	return 0;
 }
@@ -217,13 +219,6 @@ int addAllInToStoredPlaylist(const char *name, const char *utf8file)
 	                     &data);
 }
 
-static int directoryPrintSongInfo(Song * song, void *data)
-{
-	song_print_info(song, (int)(size_t)data);
-
-	return 0;
-}
-
 static int sumSongTime(Song * song, void *data)
 {
 	unsigned long *sum_time = (unsigned long *)data;
@@ -236,7 +231,7 @@ static int sumSongTime(Song * song, void *data)
 
 int printInfoForAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, directoryPrintSongInfo,
+	return traverseAllIn(name, song_print_info_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
