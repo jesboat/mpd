@@ -360,7 +360,7 @@ void readPlaylistState(FILE *fp)
 
 static void printPlaylistSongInfo(int fd, int song)
 {
-	printSongInfo(fd, playlist.songs[song]);
+	song_print_info(playlist.songs[song], fd);
 	fdprintf(fd, "Pos: %i\nId: %i\n", song, playlist.positionToId[song]);
 }
 
@@ -1363,7 +1363,7 @@ int PlaylistInfo(int fd, const char *utf8file, int detail)
 		if (detail) {
 			Song *song = getSongFromDB(temp);
 			if (song) {
-				printSongInfo(fd, song);
+				song_print_info(song, fd);
 				wrote = 1;
 			}
 		}

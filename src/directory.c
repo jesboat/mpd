@@ -63,7 +63,12 @@ static time_t directory_dbModTime;
 static pthread_t update_thr;
 
 static const int update_task_id_max = 1 << 15;
+
 static int update_task_id;
+
+static Song *delete;
+
+static struct condition delete_cond;
 
 static int addToDirectory(Directory * directory, const char *name);
 
@@ -144,6 +149,16 @@ void reap_update_task(void)
 
 	assert(pthread_equal(pthread_self(), main_task));
 
+	cond_enter(&delete_cond);
+	if (delete) {
+		char tmp[MPD_PATH_MAX];
+		LOG("removing: %s\n", get_song_url(tmp, delete));
+		deleteASongFromPlaylist(delete);
+		delete = NULL;
+		cond_signal(&delete_cond);
+	}
+	cond_leave(&delete_cond);
+
 	if (progress != UPDATE_PROGRESS_DONE)
 		return;
 	if (pthread_join(update_thr, (void **)&ret))
@@ -215,10 +230,19 @@ static void freeDirectory(Directory * directory)
 
 static void delete_song(Directory *dir, Song *del)
 {
-	char path_max_tmp[MPD_PATH_MAX]; /* wasteful */
-	LOG("removing: %s\n", get_song_url(path_max_tmp, del));
+	/* first, prevent traversers in main task from getting this */
 	songvec_delete(&dir->songs, del);
-	freeSong(del); /* FIXME racy */
+
+	/* now take it out of the playlist (in the main_task) */
+	cond_enter(&delete_cond);
+	assert(!delete);
+	delete = del;
+	wakeup_main_task();
+	do { cond_wait(&delete_cond); } while (delete);
+	cond_leave(&delete_cond);
+
+	/* finally, all possible references gone, free it */
+	freeJustSong(del);
 }
 
 static void deleteEmptyDirectoriesInDirectory(Directory * directory)
@@ -276,15 +300,34 @@ static int skip_path(const char *path)
 	return (path[0] == '.' || strchr(path, '\n')) ? 1 : 0;
 }
 
+struct delete_data {
+	char *tmp;
+	Directory *dir;
+	enum update_return ret;
+};
+
+/* passed to songvec_for_each */
+static int delete_song_if_removed(Song *song, void *_data)
+{
+	struct delete_data *data = _data;
+
+	data->tmp = get_song_url(data->tmp, song);
+	assert(data->tmp);
+
+	if (!isFile(data->tmp, NULL)) {
+		delete_song(data->dir, song);
+		data->ret = UPDATE_RETURN_UPDATED;
+	}
+	return 0;
+}
+
 static enum update_return
 removeDeletedFromDirectory(char *path_max_tmp, Directory * directory)
 {
-	const char *dirname = (directory && directory->path) ?
-	    directory->path : NULL;
 	enum update_return ret = UPDATE_RETURN_NOUPDATE;
 	int i;
-	struct songvec *sv = &directory->songs;
 	struct dirvec *dv = &directory->children;
+	struct delete_data data;
 
 	for (i = dv->nr; --i >= 0; ) {
 		if (isDir(dv->base[i]->path))
@@ -294,23 +337,12 @@ removeDeletedFromDirectory(char *path_max_tmp, Directory * directory)
 		ret = UPDATE_RETURN_UPDATED;
 	}
 
-	for (i = sv->nr; --i >= 0; ) { /* cleaner deletes if we go backwards */
-		Song *song = sv->base[i];
-		if (!song || !*song->url)
-			continue; /* does this happen?, perhaps assert() */
+	data.dir = directory;
+	data.tmp = path_max_tmp;
+	data.ret = UPDATE_RETURN_UPDATED;
+	songvec_for_each(&directory->songs, delete_song_if_removed, &data);
 
-		if (dirname)
-			sprintf(path_max_tmp, "%s/%s", dirname, song->url);
-		else
-			strcpy(path_max_tmp, song->url);
-
-		if (!isFile(path_max_tmp, NULL)) {
-			delete_song(directory, song);
-			ret = UPDATE_RETURN_UPDATED;
-		}
-	}
-
-	return ret;
+	return data.ret;
 }
 
 static Directory *addDirectoryPathToDB(const char *utf8path)
@@ -684,7 +716,22 @@ int printDirectoryInfo(int fd, const char *name)
 		return -1;
 
 	printDirectoryList(fd, &directory->children);
-	songvec_write(&directory->songs, fd, 0);
+	songvec_for_each(&directory->songs,
+	                 song_print_info_x, (void *)(size_t)fd);
+
+	return 0;
+}
+
+static int directory_song_write(Song *song, void *data)
+{
+	int fd = (int)(size_t)data;
+
+	if (fdprintf(fd, SONG_KEY "%s\n", song->url) < 0)
+		return -1;
+	if (song_print_info(song, fd) < 0)
+		return -1;
+	if (fdprintf(fd, SONG_MTIME "%li\n", (long)song->mtime) < 0)
+		return -1;
 
 	return 0;
 }
@@ -709,7 +756,16 @@ static int writeDirectoryInfo(int fd, Directory * directory)
 		if (writeDirectoryInfo(fd, cur) < 0)
 			return -1;
 	}
-	songvec_write(&directory->songs, fd, 1);
+
+	if (fdprintf(fd, SONG_BEGIN "\n") < 0)
+		return -1;
+
+	if (songvec_for_each(&directory->songs,
+	                     directory_song_write, (void *)(size_t)fd) < 0)
+		return -1;
+
+	if (fdprintf(fd, SONG_END "\n") < 0)
+		return -1;
 
 	if (directory->path &&
 	    fdprintf(fd, DIRECTORY_END "%s\n",
@@ -960,32 +1016,23 @@ static int traverseAllInSubDirectory(Directory * directory,
 				     void *data)
 {
 	struct dirvec *dv = &directory->children;
-	int errFlag = 0;
+	int err = 0;
 	size_t j;
 
-	if (forEachDir) {
-		errFlag = forEachDir(directory, data);
-		if (errFlag)
-			return errFlag;
-	}
+	if (forEachDir && (err = forEachDir(directory, data)) < 0)
+		return err;
 
 	if (forEachSong) {
-		int i;
-		struct songvec *sv = &directory->songs;
-		Song **sp = sv->base;
-
-		for (i = sv->nr; --i >= 0; ) {
-			Song *song = *sp++;
-			if ((errFlag = forEachSong(song, data)))
-				return errFlag;
-		}
+		err = songvec_for_each(&directory->songs, forEachSong, data);
+		if (err < 0)
+			return err;
 	}
 
-	for (j = 0; !errFlag && j < dv->nr; ++j)
-		errFlag = traverseAllInSubDirectory(dv->base[j], forEachSong,
-						    forEachDir, data);
+	for (j = 0; err >= 0 && j < dv->nr; ++j)
+		err = traverseAllInSubDirectory(dv->base[j], forEachSong,
+						forEachDir, data);
 
-	return errFlag;
+	return err;
 }
 
 int traverseAllIn(const char *name,

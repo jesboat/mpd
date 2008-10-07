@@ -64,13 +64,6 @@ static int printDirectoryInDirectory(Directory * directory, void *data)
 	return 0;
 }
 
-static int printSongInDirectory(Song * song, mpd_unused void *data)
-{
-	int fd = (int)(size_t)data;
-	printSongUrl(fd, song);
-	return 0;
-}
-
 struct search_data {
 	int fd;
 	LocateTagItemArray array;
@@ -83,7 +76,7 @@ static int searchInDirectory(Song * song, void *_data)
 	LocateTagItemArray *array = &data->array;
 
 	if (strstrSearchTags(song, array->numItems, array->items))
-		printSongInfo(fd, song);
+		return (int)song_print_info(song, fd);
 
 	return 0;
 }
@@ -125,7 +118,7 @@ static int findInDirectory(Song * song, void *_data)
 	LocateTagItemArray *array = &data->array;
 
 	if (tagItemsFoundAndMatches(song, array->numItems, array->items))
-		printSongInfo(fd, song);
+		return (int)song_print_info(song, fd);
 
 	return 0;
 }
@@ -181,7 +174,7 @@ int searchStatsForSongsIn(int fd, const char *name, int numItems,
 
 int printAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, printSongInDirectory,
+	return traverseAllIn(name, song_print_url_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
@@ -217,13 +210,6 @@ int addAllInToStoredPlaylist(const char *name, const char *utf8file)
 	                     &data);
 }
 
-static int directoryPrintSongInfo(Song * song, void *data)
-{
-	int fd = (int)(size_t)data;
-
-	return printSongInfo(fd, song);
-}
-
 static int sumSongTime(Song * song, void *data)
 {
 	unsigned long *sum_time = (unsigned long *)data;
@@ -236,7 +222,7 @@ static int sumSongTime(Song * song, void *data)
 
 int printInfoForAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, directoryPrintSongInfo,
+	return traverseAllIn(name, song_print_info_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
@@ -284,7 +270,7 @@ static void visitTag(int fd, struct strset *set,
 	struct mpd_tag *tag = song->tag;
 
 	if (tagType == LOCATE_TAG_FILE_TYPE) {
-		printSongUrl(fd, song);
+		song_print_url(song, fd);
 		return;
 	}
 

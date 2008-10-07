@@ -42,17 +42,21 @@ typedef struct _Song {
 
 Song *newSong(const char *url, struct _Directory *parentDir);
 
-void freeSong(Song *);
-
 void freeJustSong(Song *);
 
-int printSongInfo(int fd, Song * song);
+ssize_t song_print_info(Song * song, int fd);
+
+/* like song_print_info, but casts data into an fd first */
+int song_print_info_x(Song * song, void *data);
 
 void readSongInfoIntoList(FILE * fp, struct _Directory *parent);
 
 int updateSongInfo(Song * song);
 
-void printSongUrl(int fd, Song * song);
+ssize_t song_print_url(Song * song, int fd);
+
+/* like song_print_url_x, but casts data into an fd first */
+int song_print_url_x(Song * song, void *data);
 
 /*
  * get_song_url - Returns a path of a song in UTF8-encoded form

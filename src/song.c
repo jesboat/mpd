@@ -31,8 +31,13 @@
 
 static Song * song_alloc(const char *url, Directory *parent)
 {
-	size_t urllen = strlen(url);
-	Song *song = xmalloc(sizeof(Song) + urllen);
+	size_t urllen;
+	Song *song;
+
+	assert(url);
+	urllen = strlen(url);
+	assert(urllen);
+	song = xmalloc(sizeof(Song) + urllen);
 
 	song->tag = NULL;
 	memcpy(song->url, url, urllen + 1);
@@ -44,6 +49,7 @@ static Song * song_alloc(const char *url, Directory *parent)
 Song *newSong(const char *url, Directory * parentDir)
 {
 	Song *song;
+	assert(*url);
 
 	if (strchr(url, '\n')) {
 		DEBUG("newSong: '%s' is not a valid uri\n", url);
@@ -73,12 +79,6 @@ Song *newSong(const char *url, Directory * parentDir)
 	return song;
 }
 
-void freeSong(Song * song)
-{
-	deleteASongFromPlaylist(song);
-	freeJustSong(song);
-}
-
 void freeJustSong(Song * song)
 {
 	if (song->tag)
@@ -86,24 +86,34 @@ void freeJustSong(Song * song)
 	free(song);
 }
 
-void printSongUrl(int fd, Song * song)
+ssize_t song_print_url(Song *song, int fd)
 {
-	if (song->parentDir && song->parentDir->path) {
-		fdprintf(fd, "%s%s/%s\n", SONG_FILE,
-			  getDirectoryPath(song->parentDir), song->url);
-	} else {
-		fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
-	}
+	if (song->parentDir && song->parentDir->path)
+		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
+			        getDirectoryPath(song->parentDir), song->url);
+	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
 }
 
-int printSongInfo(int fd, Song * song)
+ssize_t song_print_info(Song *song, int fd)
 {
-	printSongUrl(fd, song);
+	ssize_t ret = song_print_url(song, fd);
 
+	if (ret < 0)
+		return ret;
 	if (song->tag)
 		tag_print(fd, song->tag);
 
-	return 0;
+	return ret;
+}
+
+int song_print_info_x(Song * song, void *data)
+{
+	return song_print_info(song, (int)(size_t)data);
+}
+
+int song_print_url_x(Song * song, void *data)
+{
+	return song_print_url(song, (int)(size_t)data);
 }
 
 static void insertSongIntoList(struct songvec *sv, Song *newsong)
