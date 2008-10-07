@@ -57,6 +57,9 @@ int updateSongInfo(Song * song);
 
 ssize_t song_print_url(Song * song, int fd);
 
+/* like song_print_url_x, but casts data into an fd first */
+int song_print_url_x(Song * song, void *data);
+
 /*
  * get_song_url - Returns a path of a song in UTF8-encoded form
  * path_max_tmp is the argument that the URL is written to, this
