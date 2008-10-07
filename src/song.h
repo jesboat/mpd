@@ -42,8 +42,6 @@ typedef struct _Song {
 
 Song *newSong(const char *url, struct _Directory *parentDir);
 
-void freeSong(Song *);
-
 void freeJustSong(Song *);
 
 ssize_t song_print_info(Song * song, int fd);
