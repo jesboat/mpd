@@ -64,12 +64,6 @@ static int printDirectoryInDirectory(Directory * directory, void *data)
 	return 0;
 }
 
-static int printSongInDirectory(Song * song, void *data)
-{
-	song_print_url(song, (int)(size_t)data);
-	return 0;
-}
-
 struct search_data {
 	int fd;
 	LocateTagItemArray array;
@@ -82,8 +76,7 @@ static int searchInDirectory(Song * song, void *_data)
 	LocateTagItemArray *array = &data->array;
 
 	if (strstrSearchTags(song, array->numItems, array->items))
-		if (song_print_info(song, fd) < 0)
-			return -1;
+		return (int)song_print_info(song, fd);
 
 	return 0;
 }
@@ -125,8 +118,7 @@ static int findInDirectory(Song * song, void *_data)
 	LocateTagItemArray *array = &data->array;
 
 	if (tagItemsFoundAndMatches(song, array->numItems, array->items))
-		if (song_print_info(song, fd) < 0)
-			return -1;
+		return (int)song_print_info(song, fd);
 
 	return 0;
 }
@@ -182,7 +174,7 @@ int searchStatsForSongsIn(int fd, const char *name, int numItems,
 
 int printAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, printSongInDirectory,
+	return traverseAllIn(name, song_print_url_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
