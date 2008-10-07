@@ -21,6 +21,4 @@ void songvec_destroy(struct songvec *sv);
 
 int songvec_for_each(struct songvec *sv, int (*fn)(Song *, void *), void *arg);
 
-int songvec_write(struct songvec *sv, int fd, int extra);
-
 #endif /* SONGVEC_H */

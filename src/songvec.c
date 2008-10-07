@@ -104,34 +104,3 @@ int songvec_for_each(struct songvec *sv, int (*fn)(Song *, void *), void *arg)
 
 	return 0;
 }
-
-int songvec_write(struct songvec *sv, int fd, int extra)
-{
-	int i;
-	Song **sp = sv->base;
-
-	if (extra) {
-		if (fdprintf(fd, SONG_BEGIN "\n") < 0)
-			return -1;
-
-		for (i = sv->nr; --i >= 0; ) {
-			Song *song = *sp++;
-			if (fdprintf(fd, SONG_KEY "%s\n", song->url) < 0)
-				return -1;
-			if (song_print_info(song, fd) < 0)
-				return -1;
-			if (fdprintf(fd,
-			            SONG_MTIME "%li\n", (long)song->mtime) < 0)
-				return -1;
-		}
-
-		if (fdprintf(fd, SONG_END "\n") < 0)
-			return -1;
-	} else {
-		for (i = sv->nr; --i >= 0;)
-			if (song_print_info(*sp++, fd) < 0)
-				return -1;
-	}
-
-	return 0;
-}
