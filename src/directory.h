@@ -49,6 +49,11 @@ Directory * newDirectory(const char *dirname, Directory * parent);
 
 void freeDirectory(Directory * directory);
 
+static inline int directory_is_empty(Directory *directory)
+{
+	return directory->children.nr == 0 && directory->songs.nr == 0;
+}
+
 Directory * getDirectory(const char *name);
 
 void sortDirectory(Directory * directory);
