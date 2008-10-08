@@ -113,6 +113,7 @@ mpd_SOURCES = \
 	dbUtils.c \
 	decode.c \
 	directory.c \
+	dirvec.c \
 	inputPlugin.c \
 	inputStream.c \
 	inputStream_file.c \
