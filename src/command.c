@@ -19,6 +19,7 @@
 #include "command.h"
 #include "playlist.h"
 #include "ls.h"
+#include "database.h"
 #include "directory.h"
 #include "update.h"
 #include "volume.h"

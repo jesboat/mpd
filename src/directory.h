@@ -22,6 +22,15 @@
 #include "song.h"
 #include "songvec.h"
 
+#define DIRECTORY_DIR		"directory: "
+#define DIRECTORY_MTIME		"mtime: " /* DEPRECATED, noop-read-only */
+#define DIRECTORY_BEGIN		"begin: "
+#define DIRECTORY_END		"end: "
+#define DIRECTORY_INFO_BEGIN	"info_begin"
+#define DIRECTORY_INFO_END	"info_end"
+#define DIRECTORY_MPD_VERSION	"mpd_version: "
+#define DIRECTORY_FS_CHARSET	"fs_charset: "
+
 struct dirvec {
 	struct directory **base;
 	size_t nr;
@@ -37,17 +46,11 @@ struct directory {
 	unsigned stat; /* not needed if ino_t == dev_t == 0 is impossible */
 };
 
-void directory_init(void);
-
-void directory_finish(void);
-
 static inline int isRootDirectory(const char *name)
 {
 	/* TODO: verify and remove !name check */
 	return (!name || *name == '\0' || !strcmp(name, "/"));
 }
-
-struct directory * directory_get_root(void);
 
 struct directory * newDirectory(const char *dirname, struct directory *parent);
 
@@ -58,23 +61,28 @@ static inline int directory_is_empty(struct directory *directory)
 	return directory->children.nr == 0 && directory->songs.nr == 0;
 }
 
-struct directory * getDirectory(const char *name);
-
-void sortDirectory(struct directory * directory);
-
 int printDirectoryInfo(int fd, const char *dirname);
 
-int checkDirectoryDB(void);
+void deleteEmptyDirectoriesInDirectory(struct directory *directory);
 
-int writeDirectoryDB(void);
+struct directory *
+getSubDirectory(struct directory *directory, const char *name);
 
-int readDirectoryDB(void);
+int directory_print(int fd, const struct directory *directory);
 
 struct mpd_song *getSongFromDB(const char *file);
 
-time_t getDbModTime(void);
+int writeDirectoryInfo(int fd, struct directory *directory);
+
+void readDirectoryInfo(FILE *fp, struct directory *directory);
+
+void sortDirectory(struct directory * directory);
 
 int traverseAllIn(const char *name,
+		  int (*forEachSong) (struct mpd_song *, void *),
+		  int (*forEachDir) (struct directory *, void *), void *data);
+
+int traverseAllInSubDirectory(struct directory *directory,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 

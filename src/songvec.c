@@ -84,7 +84,8 @@ void songvec_destroy(struct songvec *sv)
 	pthread_mutex_unlock(&nr_lock);
 }
 
-int songvec_for_each(struct songvec *sv, int (*fn)(struct mpd_song *, void *), void *arg)
+int songvec_for_each(const struct songvec *sv,
+                     int (*fn)(struct mpd_song *, void *), void *arg)
 {
 	size_t i;
 

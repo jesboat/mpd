@@ -19,7 +19,7 @@ void songvec_add(struct songvec *sv, struct mpd_song *add);
 
 void songvec_destroy(struct songvec *sv);
 
-int songvec_for_each(struct songvec *sv,
+int songvec_for_each(const struct songvec *sv,
                      int (*fn)(struct mpd_song *, void *), void *arg);
 
 #endif /* SONGVEC_H */

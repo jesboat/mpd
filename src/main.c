@@ -19,7 +19,7 @@
 #include "client.h"
 #include "command.h"
 #include "playlist.h"
-#include "directory.h"
+#include "database.h"
 #include "update.h"
 #include "listen.h"
 #include "conf.h"

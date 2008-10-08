@@ -39,6 +39,7 @@ mpd_headers = \
 	command.h \
 	condition.h \
 	conf.h \
+	database.h \
 	dbUtils.h \
 	decode.h \
 	directory.h \
@@ -111,6 +112,7 @@ mpd_SOURCES = \
 	command.c \
 	condition.c \
 	conf.c \
+	database.c \
 	dbUtils.c \
 	decode.c \
 	directory.c \

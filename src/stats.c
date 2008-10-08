@@ -19,7 +19,7 @@
 
 #include "stats.h"
 
-#include "directory.h"
+#include "database.h"
 #include "myfprintf.h"
 #include "outputBuffer.h"
 #include "tag.h"

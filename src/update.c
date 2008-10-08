@@ -18,7 +18,7 @@
  */
 
 #include "update.h"
-#include "directory.h"
+#include "database.h"
 #include "log.h"
 #include "ls.h"
 #include "path.h"

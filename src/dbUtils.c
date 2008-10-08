@@ -18,7 +18,7 @@
 
 #include "dbUtils.h"
 
-#include "directory.h"
+#include "database.h"
 #include "myfprintf.h"
 #include "utils.h"
 #include "playlist.h"
