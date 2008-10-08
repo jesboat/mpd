@@ -23,19 +23,19 @@
 #include "songvec.h"
 
 struct dirvec {
-	struct _Directory **base;
+	struct directory **base;
 	size_t nr;
 };
 
-typedef struct _Directory {
+struct directory {
 	char *path;
 	struct dirvec children;
 	struct songvec songs;
-	struct _Directory *parent;
+	struct directory *parent;
 	ino_t inode;
 	dev_t device;
 	unsigned stat; /* not needed if ino_t == dev_t == 0 is impossible */
-} Directory;
+};
 
 void directory_init(void);
 
@@ -43,20 +43,20 @@ void directory_finish(void);
 
 int isRootDirectory(const char *name);
 
-Directory * directory_get_root(void);
+struct directory * directory_get_root(void);
 
-Directory * newDirectory(const char *dirname, Directory * parent);
+struct directory * newDirectory(const char *dirname, struct directory *parent);
 
-void freeDirectory(Directory * directory);
+void freeDirectory(struct directory *directory);
 
-static inline int directory_is_empty(Directory *directory)
+static inline int directory_is_empty(struct directory *directory)
 {
 	return directory->children.nr == 0 && directory->songs.nr == 0;
 }
 
-Directory * getDirectory(const char *name);
+struct directory * getDirectory(const char *name);
 
-void sortDirectory(Directory * directory);
+void sortDirectory(struct directory * directory);
 
 int printDirectoryInfo(int fd, const char *dirname);
 
@@ -72,7 +72,7 @@ time_t getDbModTime(void);
 
 int traverseAllIn(const char *name,
 		  int (*forEachSong) (Song *, void *),
-		  int (*forEachDir) (Directory *, void *), void *data);
+		  int (*forEachDir) (struct directory *, void *), void *data);
 
 #define getDirectoryPath(dir) ((dir && dir->path) ? dir->path : "")
 

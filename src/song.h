@@ -35,12 +35,12 @@
 
 typedef struct _Song {
 	struct mpd_tag *tag;
-	struct _Directory *parentDir;
+	struct directory *parentDir;
 	time_t mtime;
 	char url[sizeof(size_t)];
 } Song;
 
-Song *newSong(const char *url, struct _Directory *parentDir);
+Song *newSong(const char *url, struct directory *parentDir);
 
 void freeJustSong(Song *);
 
@@ -49,7 +49,7 @@ ssize_t song_print_info(Song * song, int fd);
 /* like song_print_info, but casts data into an fd first */
 int song_print_info_x(Song * song, void *data);
 
-void readSongInfoIntoList(FILE * fp, struct _Directory *parent);
+void readSongInfoIntoList(FILE * fp, struct directory *parent);
 
 int updateSongInfo(Song * song);
 

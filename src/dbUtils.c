@@ -45,8 +45,7 @@ typedef struct _SearchStats {
 	unsigned long playTime;
 } SearchStats;
 
-static int countSongsInDirectory(Directory * directory,
-				 void *data)
+static int countSongsInDirectory(struct directory *directory, void *data)
 {
 	int *count = (int *)data;
 
@@ -55,7 +54,7 @@ static int countSongsInDirectory(Directory * directory,
 	return 0;
 }
 
-static int printDirectoryInDirectory(Directory * directory, void *data)
+static int printDirectoryInDirectory(struct directory *directory, void *data)
 {
 	int fd = (int)(size_t)data;
 	if (directory->path) {
@@ -336,15 +335,15 @@ int listAllUniqueTags(int fd, int type, int numConditionals,
 	return ret;
 }
 
-static int sumSavedFilenameMemoryInDirectory(Directory * dir, void *data)
+static int sumSavedFilenameMemoryInDirectory(struct directory *dir, void *data)
 {
 	int *sum = data;
 
 	if (!dir->path)
 		return 0;
 
-	*sum += (strlen(getDirectoryPath(dir)) + 1 - sizeof(Directory *)) *
-	    dir->songs.nr;
+	*sum += (strlen(getDirectoryPath(dir)) + 1
+		 - sizeof(struct directory *)) * dir->songs.nr;
 
 	return 0;
 }

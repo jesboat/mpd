@@ -29,7 +29,7 @@
 
 #include "os_compat.h"
 
-static Song * song_alloc(const char *url, Directory *parent)
+static Song * song_alloc(const char *url, struct directory *parent)
 {
 	size_t urllen;
 	Song *song;
@@ -46,7 +46,7 @@ static Song * song_alloc(const char *url, Directory *parent)
 	return song;
 }
 
-Song *newSong(const char *url, Directory * parentDir)
+Song *newSong(const char *url, struct directory *parentDir)
 {
 	Song *song;
 	assert(*url);
@@ -160,7 +160,7 @@ static int matchesAnMpdTagItemKey(char *buffer, int *itemType)
 	return 0;
 }
 
-void readSongInfoIntoList(FILE * fp, Directory * parentDir)
+void readSongInfoIntoList(FILE * fp, struct directory * parentDir)
 {
 	char buffer[MPD_PATH_MAX + 1024];
 	int bufferSize = MPD_PATH_MAX + 1024;
