@@ -20,6 +20,7 @@
 #include "command.h"
 #include "playlist.h"
 #include "directory.h"
+#include "update.h"
 #include "listen.h"
 #include "conf.h"
 #include "path.h"

@@ -20,6 +20,7 @@
 #include "playlist.h"
 #include "ls.h"
 #include "directory.h"
+#include "update.h"
 #include "volume.h"
 #include "stats.h"
 #include "myfprintf.h"
