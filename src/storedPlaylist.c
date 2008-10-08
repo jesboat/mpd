@@ -118,7 +118,7 @@ List *loadStoredPlaylist(const char *utf8path)
 		    !strncmp(s, musicDir, musicDir_len))
 			memmove(s, s + musicDir_len + 1,
 				strlen(s + musicDir_len + 1) + 1);
-		if ((song = getSongFromDB(s))) {
+		if ((song = db_get_song(s))) {
 			song_get_url(song, path_max_tmp);
 			insertInListWithoutKey(list, xstrdup(path_max_tmp));
 		} else if (isValidRemoteUtf8Url(s))

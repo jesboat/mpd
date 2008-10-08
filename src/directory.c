@@ -195,7 +195,7 @@ void readDirectoryInfo(FILE * fp, struct directory * directory)
 			if (prefixcmp(buffer, DIRECTORY_BEGIN))
 				FATAL("Error reading db at line: %s\n", buffer);
 			name = &(buffer[strlen(DIRECTORY_BEGIN)]);
-			if ((subdir = getDirectory(name))) {
+			if ((subdir = db_get_directory(name))) {
 				assert(subdir->parent == directory);
 			} else {
 				subdir = newDirectory(name, directory);

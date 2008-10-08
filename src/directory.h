@@ -70,7 +70,7 @@ getSubDirectory(struct directory *directory, const char *name);
 
 int directory_print(int fd, const struct directory *directory);
 
-struct mpd_song *getSongFromDB(const char *file);
+struct mpd_song *db_get_song(const char *file);
 
 int writeDirectoryInfo(int fd, struct directory *directory);
 
@@ -78,7 +78,7 @@ void readDirectoryInfo(FILE *fp, struct directory *directory);
 
 void sortDirectory(struct directory * directory);
 
-int traverseAllIn(const char *name,
+int db_walk(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 

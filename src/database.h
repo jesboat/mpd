@@ -23,26 +23,26 @@
 #include "os_compat.h"
 #include "directory.h"
 
-void directory_init(void);
+void db_init(void);
 
-void directory_finish(void);
+void db_finish(void);
 
-struct directory * directory_get_root(void);
+struct directory * db_get_root(void);
 
-struct directory * getDirectory(const char *name);
+struct directory * db_get_directory(const char *name);
 
-struct mpd_song * getSongFromDB(const char *file);
+struct mpd_song * db_get_song(const char *file);
 
-int traverseAllIn(const char *name,
+int db_walk(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 
-int checkDirectoryDB(void);
+int db_check(void);
 
-int writeDirectoryDB(void);
+int db_save(void);
 
-int readDirectoryDB(void);
+int db_load(void);
 
-time_t getDbModTime(void);
+time_t db_get_mtime(void);
 
 #endif /* DATABASE_H */

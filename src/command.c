@@ -564,7 +564,7 @@ static int handleLsInfo(int fd, mpd_unused int *permission,
 	if (argc == 2)
 		path = argv[1];
 
-	if (!(directory = getDirectory(path))) {
+	if (!(directory = db_get_directory(path))) {
 		commandError(fd, ACK_ERROR_NO_EXIST, "directory not found");
 		return -1;
 	}

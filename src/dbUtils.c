@@ -98,7 +98,7 @@ int searchForSongsIn(int fd, const char *name, int numItems,
 	data.array.numItems = numItems;
 	data.array.items = items;
 
-	ret = traverseAllIn(name, searchInDirectory, NULL, &data);
+	ret = db_walk(name, searchInDirectory, NULL, &data);
 
 	for (i = 0; i < numItems; i++) {
 		free(items[i].needle);
@@ -130,7 +130,7 @@ int findSongsIn(int fd, const char *name, int numItems, LocateTagItem * items)
 	data.array.numItems = numItems;
 	data.array.items = items;
 
-	return traverseAllIn(name, findInDirectory, NULL, &data);
+	return db_walk(name, findInDirectory, NULL, &data);
 }
 
 static void printSearchStats(int fd, SearchStats *stats)
@@ -164,7 +164,7 @@ int searchStatsForSongsIn(int fd, const char *name, int numItems,
 	stats.numberOfSongs = 0;
 	stats.playTime = 0;
 
-	ret = traverseAllIn(name, searchStatsInDirectory, NULL, &stats);
+	ret = db_walk(name, searchStatsInDirectory, NULL, &stats);
 	if (ret == 0)
 		printSearchStats(fd, &stats);
 
@@ -173,7 +173,7 @@ int searchStatsForSongsIn(int fd, const char *name, int numItems,
 
 int printAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, song_print_url_x,
+	return db_walk(name, song_print_url_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
@@ -198,7 +198,7 @@ static int directoryAddSongToStoredPlaylist(struct mpd_song *song, void *_data)
 
 int addAllIn(const char *name)
 {
-	return traverseAllIn(name, directoryAddSongToPlaylist, NULL, NULL);
+	return db_walk(name, directoryAddSongToPlaylist, NULL, NULL);
 }
 
 int addAllInToStoredPlaylist(const char *name, const char *utf8file)
@@ -206,7 +206,7 @@ int addAllInToStoredPlaylist(const char *name, const char *utf8file)
 	struct add_data data;
 	data.path = utf8file;
 
-	return traverseAllIn(name, directoryAddSongToStoredPlaylist, NULL,
+	return db_walk(name, directoryAddSongToStoredPlaylist, NULL,
 	                     &data);
 }
 
@@ -222,7 +222,7 @@ static int sumSongTime(struct mpd_song * song, void *data)
 
 int printInfoForAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, song_print_info_x,
+	return db_walk(name, song_print_info_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
@@ -231,7 +231,7 @@ int countSongsIn(const char *name)
 	int count = 0;
 	void *ptr = (void *)&count;
 
-	traverseAllIn(name, NULL, countSongsInDirectory, ptr);
+	db_walk(name, NULL, countSongsInDirectory, ptr);
 
 	return count;
 }
@@ -241,7 +241,7 @@ unsigned long sumSongTimesIn(const char *name)
 	unsigned long dbPlayTime = 0;
 	void *ptr = (void *)&dbPlayTime;
 
-	traverseAllIn(name, sumSongTime, NULL, ptr);
+	db_walk(name, sumSongTime, NULL, ptr);
 
 	return dbPlayTime;
 }
@@ -318,7 +318,7 @@ int listAllUniqueTags(int fd, int type, int numConditionals,
 		data.set = strset_new();
 	}
 
-	ret = traverseAllIn(NULL, listUniqueTagsInDirectory, NULL, &data);
+	ret = db_walk(NULL, listUniqueTagsInDirectory, NULL, &data);
 
 	if (type >= 0 && type <= TAG_NUM_OF_ITEM_TYPES) {
 		const char *value;
@@ -362,7 +362,7 @@ void printSavedMemoryFromFilenames(void)
 {
 	int sum = 0;
 
-	traverseAllIn(NULL, sumSavedFilenameMemoryInSong,
+	db_walk(NULL, sumSavedFilenameMemoryInSong,
 		      sumSavedFilenameMemoryInDirectory, (void *)&sum);
 
 	DEBUG("saved memory from filenames: %i\n", sum);

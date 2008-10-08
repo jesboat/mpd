@@ -65,7 +65,7 @@ static unsigned int getNumberOfTagItems(int type)
 	data.type = type;
 	data.set = strset_new();
 
-	traverseAllIn(NULL, visit_tag_items, NULL, &data);
+	db_walk(NULL, visit_tag_items, NULL, &data);
 
 	ret = strset_size(data.set);
 	strset_free(data.set);
@@ -88,6 +88,6 @@ int printStats(int fd)
 		      time(NULL) - stats.daemonStart,
 		      (long)(ob_get_total_time() + 0.5),
 		      stats.dbPlayTime,
-		      getDbModTime());
+		      db_get_mtime());
 	return 0;
 }
