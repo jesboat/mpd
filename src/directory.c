@@ -105,11 +105,6 @@ struct directory * directory_get_root(void)
 	return music_root;
 }
 
-int isRootDirectory(const char *name)
-{
-	return (!name || name[0] == '\0' || !strcmp(name, "/"));
-}
-
 static struct directory *
 getSubDirectory(struct directory * directory, const char *name)
 {
@@ -117,6 +112,8 @@ getSubDirectory(struct directory * directory, const char *name)
 	struct directory *found = NULL;
 	char *duplicated;
 	char *locate;
+
+	assert(name != NULL);
 
 	if (isRootDirectory(name))
 		return directory;
@@ -143,6 +140,9 @@ getSubDirectory(struct directory * directory, const char *name)
 
 struct directory * getDirectory(const char *name)
 {
+	if (name == NULL)
+		return music_root;
+
 	return getSubDirectory(music_root, name);
 }
 

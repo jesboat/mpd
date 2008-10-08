@@ -41,7 +41,11 @@ void directory_init(void);
 
 void directory_finish(void);
 
-int isRootDirectory(const char *name);
+static inline int isRootDirectory(const char *name)
+{
+	/* TODO: verify and remove !name check */
+	return (!name || *name == '\0' || !strcmp(name, "/"));
+}
 
 struct directory * directory_get_root(void);
 
