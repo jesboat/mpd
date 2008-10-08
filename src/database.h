@@ -37,8 +37,6 @@ int traverseAllIn(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 
-int printDirectoryInfo(int fd, const char *name);
-
 int checkDirectoryDB(void);
 
 int writeDirectoryDB(void);
