@@ -17,6 +17,7 @@
  */
 
 #include "inputPlugin.h"
+#include "list.h"
 
 static List *inputPlugin_list;
 

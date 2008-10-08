@@ -23,6 +23,8 @@
 #include "outputBuffer.h"
 #include "metadata_pipe.h"
 #include "decode.h"
+#include "tag.h"
+#include "tag_id3.h"
 
 /* valid values for streamTypes in the InputPlugin struct: */
 #define INPUT_PLUGIN_STREAM_FILE	0x01

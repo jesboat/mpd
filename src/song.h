@@ -22,8 +22,6 @@
 #include "../config.h"
 #include "os_compat.h"
 #include "tag.h"
-#include "list.h"
-#include "gcc.h"
 
 #define SONG_KEY	"key: "
 #define SONG_MTIME	"mtime: "
