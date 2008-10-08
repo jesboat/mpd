@@ -135,7 +135,7 @@ static int statDirectory(struct directory *dir)
 {
 	struct stat st;
 
-	if (myStat(getDirectoryPath(dir), &st) < 0)
+	if (myStat(directory_get_path(dir), &st) < 0)
 		return -1;
 
 	directory_set_stat(dir, &st);
@@ -168,11 +168,11 @@ addSubDirectoryToDirectory(struct directory *directory,
 	if (inodeFoundInParent(directory, st->st_ino, st->st_dev))
 		return UPDATE_RETURN_NOUPDATE;
 
-	subDirectory = newDirectory(name, directory);
+	subDirectory = directory_new(name, directory);
 	directory_set_stat(subDirectory, st);
 
 	if (updateDirectory(subDirectory) != UPDATE_RETURN_UPDATED) {
-		freeDirectory(subDirectory);
+		directory_free(subDirectory);
 		return UPDATE_RETURN_NOUPDATE;
 	}
 
@@ -254,7 +254,7 @@ enum update_return updateDirectory(struct directory *directory)
 {
 	int was_empty = directory_is_empty(directory);
 	DIR *dir;
-	const char *dirname = getDirectoryPath(directory);
+	const char *dirname = directory_get_path(directory);
 	struct dirent *ent;
 	char path_max_tmp[MPD_PATH_MAX];
 	enum update_return ret = UPDATE_RETURN_NOUPDATE;
@@ -327,7 +327,7 @@ static struct directory * addDirectoryPathToDB(const char *utf8path)
 		    inodeFoundInParent(parentDirectory, st.st_ino, st.st_dev))
 			return NULL;
 		else {
-			directory = newDirectory(utf8path, parentDirectory);
+			directory = directory_new(utf8path, parentDirectory);
 			dirvec_add(&parentDirectory->children, directory);
 		}
 	}
@@ -378,7 +378,7 @@ static enum update_return updatePath(const char *utf8path)
 
 		/* if this update directory is successfull, we are done */
 		if ((ret = updateDirectory(directory)) >= 0) {
-			sortDirectory(directory);
+			directory_sort(directory);
 			return ret;
 		}
 		/* we don't want to delete the root directory */

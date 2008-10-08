@@ -52,9 +52,9 @@ static inline int isRootDirectory(const char *name)
 	return (!name || *name == '\0' || !strcmp(name, "/"));
 }
 
-struct directory * newDirectory(const char *dirname, struct directory *parent);
+struct directory * directory_new(const char *dirname, struct directory *parent);
 
-void freeDirectory(struct directory *directory);
+void directory_free(struct directory *directory);
 
 static inline int directory_is_empty(struct directory *directory)
 {
@@ -63,29 +63,29 @@ static inline int directory_is_empty(struct directory *directory)
 
 int printDirectoryInfo(int fd, const char *dirname);
 
-void deleteEmptyDirectoriesInDirectory(struct directory *directory);
+void directory_prune_empty(struct directory *directory);
 
 struct directory *
-getSubDirectory(struct directory *directory, const char *name);
+directory_get_subdir(struct directory *directory, const char *name);
 
 int directory_print(int fd, const struct directory *directory);
 
 struct mpd_song *db_get_song(const char *file);
 
-int writeDirectoryInfo(int fd, struct directory *directory);
+int directory_save(int fd, struct directory *directory);
 
-void readDirectoryInfo(FILE *fp, struct directory *directory);
+void directory_load(FILE *fp, struct directory *directory);
 
-void sortDirectory(struct directory * directory);
+void directory_sort(struct directory * directory);
 
 int db_walk(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 
-int traverseAllInSubDirectory(struct directory *directory,
+int directory_walk(struct directory *directory,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 
-#define getDirectoryPath(dir) ((dir && dir->path) ? dir->path : "")
+#define directory_get_path(dir) ((dir && dir->path) ? dir->path : "")
 
 #endif

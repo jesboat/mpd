@@ -87,7 +87,7 @@ ssize_t song_print_url(struct mpd_song *song, int fd)
 {
 	if (song->parent && song->parent->path)
 		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
-			        getDirectoryPath(song->parent), song->url);
+			        directory_get_path(song->parent), song->url);
 	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
 }
 
@@ -244,7 +244,7 @@ char *song_get_url(struct mpd_song *song, char *path_max_tmp)
 		strcpy(path_max_tmp, song->url);
 	else
 		pfx_dir(path_max_tmp, song->url, strlen(song->url),
-			getDirectoryPath(song->parent),
-			strlen(getDirectoryPath(song->parent)));
+			directory_get_path(song->parent),
+			strlen(directory_get_path(song->parent)));
 	return path_max_tmp;
 }

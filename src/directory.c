@@ -26,7 +26,7 @@
 #include "myfprintf.h"
 #include "dirvec.h"
 
-struct directory * newDirectory(const char *dirname, struct directory * parent)
+struct directory * directory_new(const char *dirname, struct directory * parent)
 {
 	struct directory *directory;
 
@@ -39,7 +39,7 @@ struct directory * newDirectory(const char *dirname, struct directory * parent)
 	return directory;
 }
 
-void freeDirectory(struct directory * directory)
+void directory_free(struct directory * directory)
 {
 	dirvec_destroy(&directory->children);
 	songvec_destroy(&directory->songs);
@@ -47,16 +47,16 @@ void freeDirectory(struct directory * directory)
 		free(directory->path);
 	free(directory);
 	/* this resets last dir returned */
-	/*getDirectoryPath(NULL); */
+	/*directory_get_path(NULL); */
 }
 
-void deleteEmptyDirectoriesInDirectory(struct directory * directory)
+void directory_prune_empty(struct directory * directory)
 {
 	int i;
 	struct dirvec *dv = &directory->children;
 
 	for (i = dv->nr; --i >= 0; ) {
-		deleteEmptyDirectoriesInDirectory(dv->base[i]);
+		directory_prune_empty(dv->base[i]);
 		if (directory_is_empty(dv->base[i]))
 			dirvec_delete(dv, dv->base[i]);
 	}
@@ -65,7 +65,7 @@ void deleteEmptyDirectoriesInDirectory(struct directory * directory)
 }
 
 struct directory *
-getSubDirectory(struct directory * directory, const char *name)
+directory_get_subdir(struct directory * directory, const char *name)
 {
 	struct directory *cur = directory;
 	struct directory *found = NULL;
@@ -97,13 +97,13 @@ getSubDirectory(struct directory * directory, const char *name)
 	return found;
 }
 
-static int printDirectoryList(int fd, const struct dirvec *dv)
+static int dirvec_print(int fd, const struct dirvec *dv)
 {
 	size_t i;
 
 	for (i = 0; i < dv->nr; ++i) {
 		if (fdprintf(fd, DIRECTORY_DIR "%s\n",
-		             getDirectoryPath(dv->base[i])) < 0)
+		             directory_get_path(dv->base[i])) < 0)
 			return -1;
 	}
 
@@ -112,7 +112,7 @@ static int printDirectoryList(int fd, const struct dirvec *dv)
 
 int directory_print(int fd, const struct directory *directory)
 {
-	if (printDirectoryList(fd, &directory->children) < 0)
+	if (dirvec_print(fd, &directory->children) < 0)
 		return -1;
 	if (songvec_for_each(&directory->songs, song_print_info_x,
 	                     (void *)(size_t)fd) < 0)
@@ -135,14 +135,14 @@ static int directory_song_write(struct mpd_song *song, void *data)
 }
 
 /* TODO error checking */
-int writeDirectoryInfo(int fd, struct directory * directory)
+int directory_save(int fd, struct directory * directory)
 {
 	struct dirvec *children = &directory->children;
 	size_t i;
 
 	if (directory->path &&
 	    fdprintf(fd, DIRECTORY_BEGIN "%s\n",
-	             getDirectoryPath(directory)) < 0)
+	             directory_get_path(directory)) < 0)
 		return -1;
 
 	for (i = 0; i < children->nr; ++i) {
@@ -151,7 +151,7 @@ int writeDirectoryInfo(int fd, struct directory * directory)
 
 		if (fdprintf(fd, DIRECTORY_DIR "%s\n", base) < 0)
 			return -1;
-		if (writeDirectoryInfo(fd, cur) < 0)
+		if (directory_save(fd, cur) < 0)
 			return -1;
 	}
 
@@ -167,12 +167,12 @@ int writeDirectoryInfo(int fd, struct directory * directory)
 
 	if (directory->path &&
 	    fdprintf(fd, DIRECTORY_END "%s\n",
-	             getDirectoryPath(directory)) < 0)
+	             directory_get_path(directory)) < 0)
 		return -1;
 	return 0;
 }
 
-void readDirectoryInfo(FILE * fp, struct directory * directory)
+void directory_load(FILE * fp, struct directory * directory)
 {
 	char buffer[MPD_PATH_MAX * 2];
 	int bufferSize = MPD_PATH_MAX * 2;
@@ -198,10 +198,10 @@ void readDirectoryInfo(FILE * fp, struct directory * directory)
 			if ((subdir = db_get_directory(name))) {
 				assert(subdir->parent == directory);
 			} else {
-				subdir = newDirectory(name, directory);
+				subdir = directory_new(name, directory);
 				dirvec_add(&directory->children, subdir);
 			}
-			readDirectoryInfo(fp, subdir);
+			directory_load(fp, subdir);
 		} else if (!prefixcmp(buffer, SONG_BEGIN)) {
 			readSongInfoIntoList(fp, directory);
 		} else {
@@ -210,7 +210,7 @@ void readDirectoryInfo(FILE * fp, struct directory * directory)
 	}
 }
 
-void sortDirectory(struct directory * directory)
+void directory_sort(struct directory * directory)
 {
 	int i;
 	struct dirvec *dv = &directory->children;
@@ -219,11 +219,11 @@ void sortDirectory(struct directory * directory)
 	songvec_sort(&directory->songs);
 
 	for (i = dv->nr; --i >= 0; )
-		sortDirectory(dv->base[i]);
+		directory_sort(dv->base[i]);
 }
 
 int
-traverseAllInSubDirectory(struct directory * directory,
+directory_walk(struct directory * directory,
 			  int (*forEachSong) (struct mpd_song *, void *),
 			  int (*forEachDir) (struct directory *, void *),
 			  void *data)
@@ -242,7 +242,7 @@ traverseAllInSubDirectory(struct directory * directory,
 	}
 
 	for (j = 0; err >= 0 && j < dv->nr; ++j)
-		err = traverseAllInSubDirectory(dv->base[j], forEachSong,
+		err = directory_walk(dv->base[j], forEachSong,
 						forEachDir, data);
 
 	return err;
