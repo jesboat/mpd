@@ -33,12 +33,12 @@
 
 struct mpd_song {
 	struct mpd_tag *tag;
-	struct directory *parentDir;
+	struct directory *parent;
 	time_t mtime;
 	char url[sizeof(size_t)];
 };
 
-void freeJustSong(struct mpd_song *);
+void song_free(struct mpd_song *);
 
 /** allocate a new song with a remote URL */
 struct mpd_song * song_remote_new(const char *url);
@@ -60,7 +60,7 @@ int song_print_info_x(struct mpd_song * song, void *data);
 
 void readSongInfoIntoList(FILE * fp, struct directory *parent);
 
-int updateSongInfo(struct mpd_song * song);
+int song_file_update(struct mpd_song * song);
 
 ssize_t song_print_url(struct mpd_song * song, int fd);
 
@@ -68,16 +68,16 @@ ssize_t song_print_url(struct mpd_song * song, int fd);
 int song_print_url_x(struct mpd_song * song, void *data);
 
 /*
- * get_song_url - Returns a path of a song in UTF8-encoded form
+ * song_get_url - Returns a path of a song in UTF8-encoded form
  * path_max_tmp is the argument that the URL is written to, this
  * buffer is assumed to be MPD_PATH_MAX or greater (including
  * terminating '\0').
  */
-char *get_song_url(char *path_max_tmp, struct mpd_song * song);
+char *song_get_url(struct mpd_song * song, char *path_max_tmp);
 
 static inline int song_is_file(const struct mpd_song *song)
 {
-	return !!song->parentDir;
+	return !!song->parent;
 }
 
 #endif

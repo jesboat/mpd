@@ -536,7 +536,7 @@ struct mpd_song *getSongFromDB(const char *file)
 		goto out;
 	if (!(song = songvec_find(&directory->songs, shortname)))
 		goto out;
-	assert(song->parentDir == directory);
+	assert(song->parent == directory);
 
 out:
 	free(duplicated);

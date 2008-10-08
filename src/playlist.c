@@ -189,7 +189,7 @@ void finishPlaylist(void)
 
 	for (i = playlist.length; --i >= 0; ) {
 		if (!song_is_file(playlist.songs[i]))
-			freeJustSong(playlist.songs[i]);
+			song_free(playlist.songs[i]);
 	}
 
 	playlist.length = 0;
@@ -214,7 +214,7 @@ void clearPlaylist(void)
 
 	for (i = playlist.length; --i >= 0 ; ) {
 		if (!song_is_file(playlist.songs[i]))
-			freeJustSong(playlist.songs[i]);
+			song_free(playlist.songs[i]);
 		playlist.idToPosition[playlist.positionToId[i]] = -1;
 		playlist.songs[i] = NULL;
 	}
@@ -236,7 +236,7 @@ void showPlaylist(int fd)
 
 	for (i = 0; i < playlist.length; i++)
 		fdprintf(fd, "%i:%s\n", i,
-		         get_song_url(path_max_tmp, playlist.songs[i]));
+		         song_get_url(playlist.songs[i], path_max_tmp));
 }
 
 void savePlaylistState(int fd)
@@ -543,7 +543,7 @@ char *playlist_queued_url(char utf8url[MPD_PATH_MAX])
 	pthread_mutex_lock(&queue_lock);
 	song = song_at(playlist.queued);
 
-	return song ? get_song_url(utf8url, song) : NULL;
+	return song ? song_get_url(song, utf8url) : NULL;
 }
 
 static void queue_song_locked(int order_num)
@@ -598,7 +598,7 @@ int addToStoredPlaylist(const char *url, const char *utf8file)
 
 	if ((song = song_remote_new(url))) {
 		int ret = appendSongToStoredPlaylistByPath(utf8file, song);
-		freeJustSong(song);
+		song_free(song);
 		return ret;
 	}
 
@@ -741,7 +741,7 @@ enum playlist_result deleteFromPlaylist(int song)
 	}
 
 	if (!song_is_file(playlist.songs[song]))
-		freeJustSong(playlist.songs[song]);
+		song_free(playlist.songs[song]);
 
 	playlist.idToPosition[playlist.positionToId[song]] = -1;
 
@@ -842,7 +842,7 @@ static void play_order_num(int order_num, float seek_time)
 	assert(song_at(order_num));
 
 	DEBUG("playlist: play %i:\"%s\"\n", order_num,
-	      get_song_url(path, song_at(order_num)));
+	      song_get_url(song_at(order_num), path));
 	dc_trigger_action(DC_ACTION_STOP, 0);
 	queue_song_locked(order_num);
 
@@ -1259,7 +1259,7 @@ enum playlist_result savePlaylist(const char *utf8file)
 	for (i = 0; i < playlist.length; i++) {
 		char tmp[MPD_PATH_MAX];
 
-		get_song_url(path_max_tmp, playlist.songs[i]);
+		song_get_url(playlist.songs[i], path_max_tmp);
 		utf8_to_fs_charset(tmp, path_max_tmp);
 
 		if (playlist_saveAbsolutePaths &&
@@ -1326,7 +1326,7 @@ enum playlist_result seekSongInPlaylist(int song, float seek_time)
 		 */
 	}
 
-	DEBUG("playlist: seek %i:\"%s\"\n", i, get_song_url(path, song_at(i)));
+	DEBUG("playlist: seek %i:\"%s\"\n", i, song_get_url(song_at(i), path));
 	play_order_num(i, seek_time);
 	return PLAYLIST_RESULT_SUCCESS;
 }

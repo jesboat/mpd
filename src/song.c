@@ -41,7 +41,7 @@ static struct mpd_song * song_alloc(const char *url, struct directory *parent)
 
 	song->tag = NULL;
 	memcpy(song->url, url, urllen + 1);
-	song->parentDir = parent;
+	song->parent = parent;
 
 	return song;
 }
@@ -72,21 +72,21 @@ struct mpd_song * song_file_load(const char *path, struct directory *parent)
 	}
 
 	song = song_file_new(path, parent);
-	abs_path = rmp2amp_r(path_max_tmp, get_song_url(path_max_tmp, song));
+	abs_path = rmp2amp_r(path_max_tmp, song_get_url(song, path_max_tmp));
 
 	while (!song->tag &&
 	       (plugin = isMusic(abs_path, &song->mtime, next++))) {
 		song->tag = plugin->tagDupFunc(abs_path);
 	}
 	if (!song->tag || song->tag->time < 0) {
-		freeJustSong(song);
+		song_free(song);
 		return NULL;
 	}
 
 	return song;
 }
 
-void freeJustSong(struct mpd_song * song)
+void song_free(struct mpd_song * song)
 {
 	if (song->tag)
 		tag_free(song->tag);
@@ -95,9 +95,9 @@ void freeJustSong(struct mpd_song * song)
 
 ssize_t song_print_url(struct mpd_song *song, int fd)
 {
-	if (song->parentDir && song->parentDir->path)
+	if (song->parent && song->parent->path)
 		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
-			        getDirectoryPath(song->parentDir), song->url);
+			        getDirectoryPath(song->parent), song->url);
 	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
 }
 
@@ -146,10 +146,10 @@ static void insertSongIntoList(struct songvec *sv, struct mpd_song *newsong)
 				if (old_tag)
 					tag_free(old_tag);
 			}
-			/* prevent tag_free in freeJustSong */
+			/* prevent tag_free in song_free */
 			newsong->tag = NULL;
 		}
-		freeJustSong(newsong);
+		song_free(newsong);
 	}
 }
 
@@ -167,20 +167,19 @@ static int matchesAnMpdTagItemKey(char *buffer, int *itemType)
 	return 0;
 }
 
-void readSongInfoIntoList(FILE * fp, struct directory * parentDir)
+void readSongInfoIntoList(FILE * fp, struct directory * parent)
 {
 	char buffer[MPD_PATH_MAX + 1024];
 	int bufferSize = MPD_PATH_MAX + 1024;
 	struct mpd_song *song = NULL;
-	struct songvec *sv = &parentDir->songs;
+	struct songvec *sv = &parent->songs;
 	int itemType;
 
 	while (myFgets(buffer, bufferSize, fp) && 0 != strcmp(SONG_END, buffer)) {
 		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song)
 				insertSongIntoList(sv, song);
-			song = song_file_new(buffer + strlen(SONG_KEY),
-			                     parentDir);
+			song = song_file_new(buffer + strlen(SONG_KEY), parent);
 		} else if (*buffer == 0) {
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
@@ -215,7 +214,7 @@ void readSongInfoIntoList(FILE * fp, struct directory * parentDir)
 		insertSongIntoList(sv, song);
 }
 
-int updateSongInfo(struct mpd_song * song)
+int song_file_update(struct mpd_song * song)
 {
 	if (song_is_file(song)) {
 		InputPlugin *plugin;
@@ -225,7 +224,7 @@ int updateSongInfo(struct mpd_song * song)
 		struct mpd_tag *old_tag = song->tag;
 		struct mpd_tag *new_tag = NULL;
 
-		utf8_to_fs_charset(abs_path, get_song_url(path_max_tmp, song));
+		utf8_to_fs_charset(abs_path, song_get_url(song, path_max_tmp));
 		rmp2amp_r(abs_path, abs_path);
 
 		while ((plugin = isMusic(abs_path, &song->mtime, next++))) {
@@ -246,18 +245,18 @@ int updateSongInfo(struct mpd_song * song)
 	return 0;
 }
 
-char *get_song_url(char *path_max_tmp, struct mpd_song *song)
+char *song_get_url(struct mpd_song *song, char *path_max_tmp)
 {
 	if (!song)
 		return NULL;
 
 	assert(*song->url);
 
-	if (!song->parentDir || !song->parentDir->path)
+	if (!song->parent || !song->parent->path)
 		strcpy(path_max_tmp, song->url);
 	else
 		pfx_dir(path_max_tmp, song->url, strlen(song->url),
-			getDirectoryPath(song->parentDir),
-			strlen(getDirectoryPath(song->parentDir)));
+			getDirectoryPath(song->parent),
+			strlen(getDirectoryPath(song->parent)));
 	return path_max_tmp;
 }
