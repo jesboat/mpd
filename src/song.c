@@ -61,10 +61,6 @@ struct mpd_song * song_file_new(const char *path, struct directory *parent)
 struct mpd_song * song_file_load(const char *path, struct directory *parent)
 {
 	struct mpd_song *song;
-	unsigned int next = 0;
-	InputPlugin *plugin;
-	char path_max_tmp[MPD_PATH_MAX];
-	char *abs_path;
 
 	if (strchr(path, '\n')) {
 		DEBUG("song_file_load: '%s' is not a valid uri\n", path);
@@ -72,13 +68,7 @@ struct mpd_song * song_file_load(const char *path, struct directory *parent)
 	}
 
 	song = song_file_new(path, parent);
-	abs_path = rmp2amp_r(path_max_tmp, song_get_url(song, path_max_tmp));
-
-	while (!song->tag &&
-	       (plugin = isMusic(abs_path, &song->mtime, next++))) {
-		song->tag = plugin->tagDupFunc(abs_path);
-	}
-	if (!song->tag || song->tag->time < 0) {
+	if (!song_file_update(song)) {
 		song_free(song);
 		return NULL;
 	}
