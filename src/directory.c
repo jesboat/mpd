@@ -30,10 +30,11 @@ struct directory * directory_new(const char *dirname, struct directory * parent)
 {
 	struct directory *directory;
 
-	directory = xcalloc(1, sizeof(*directory));
+	assert(dirname != NULL);
+	assert((*dirname == 0) == (parent == NULL));
 
-	if (dirname && strlen(dirname))
-		directory->path = xstrdup(dirname);
+	directory = xcalloc(1, sizeof(*directory));
+	directory->path = xstrdup(dirname);
 	directory->parent = parent;
 
 	return directory;
@@ -43,8 +44,7 @@ void directory_free(struct directory * directory)
 {
 	dirvec_destroy(&directory->children);
 	songvec_destroy(&directory->songs);
-	if (directory->path)
-		free(directory->path);
+	free(directory->path);
 	free(directory);
 	/* this resets last dir returned */
 	/*directory_get_path(NULL); */
@@ -140,7 +140,7 @@ int directory_save(int fd, struct directory * directory)
 	struct dirvec *children = &directory->children;
 	size_t i;
 
-	if (directory->path &&
+	if (!isRootDirectory(directory->path) &&
 	    fdprintf(fd, DIRECTORY_BEGIN "%s\n",
 	             directory_get_path(directory)) < 0)
 		return -1;
@@ -165,7 +165,7 @@ int directory_save(int fd, struct directory * directory)
 	if (fdprintf(fd, SONG_END "\n") < 0)
 		return -1;
 
-	if (directory->path &&
+	if (!isRootDirectory(directory->path) &&
 	    fdprintf(fd, DIRECTORY_END "%s\n",
 	             directory_get_path(directory)) < 0)
 		return -1;

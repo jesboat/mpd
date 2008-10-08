@@ -63,7 +63,7 @@ static inline int directory_is_empty(struct directory *directory)
 
 static inline const char * directory_get_path(struct directory *dir)
 {
-	return dir->path ? dir->path : "";
+	return dir->path;
 }
 
 void directory_prune_empty(struct directory *directory);
