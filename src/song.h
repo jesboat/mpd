@@ -38,9 +38,20 @@ struct mpd_song {
 	char url[sizeof(size_t)];
 };
 
-struct mpd_song *newSong(const char *url, struct directory *parentDir);
-
 void freeJustSong(struct mpd_song *);
+
+/** allocate a new song with a remote URL */
+struct mpd_song * song_remote_new(const char *url);
+
+/** allocate a new song with a local file name */
+struct mpd_song * song_file_new(const char *path, struct directory *parent);
+
+/**
+ * allocate a new song structure with a local file name and attempt to
+ * load its metadata.  If all decoder plugin fail to read its meta
+ * data, NULL is returned.
+ */
+struct mpd_song * song_file_load(const char *path, struct directory *parent);
 
 ssize_t song_print_info(struct mpd_song * song, int fd);
 

@@ -46,34 +46,41 @@ static struct mpd_song * song_alloc(const char *url, struct directory *parent)
 	return song;
 }
 
-struct mpd_song *newSong(const char *url, struct directory *parentDir)
+struct mpd_song * song_remote_new(const char *url)
+{
+	return song_alloc(url, NULL);
+}
+
+struct mpd_song * song_file_new(const char *path, struct directory *parent)
+{
+	assert(parent != NULL);
+
+	return song_alloc(path, parent);
+}
+
+struct mpd_song * song_file_load(const char *path, struct directory *parent)
 {
 	struct mpd_song *song;
-	assert(*url);
+	unsigned int next = 0;
+	InputPlugin *plugin;
+	char path_max_tmp[MPD_PATH_MAX];
+	char *abs_path;
 
-	if (strchr(url, '\n')) {
-		DEBUG("newSong: '%s' is not a valid uri\n", url);
+	if (strchr(path, '\n')) {
+		DEBUG("song_file_load: '%s' is not a valid uri\n", path);
 		return NULL;
 	}
 
-	song = song_alloc(url, parentDir);
+	song = song_file_new(path, parent);
+	abs_path = rmp2amp_r(path_max_tmp, get_song_url(path_max_tmp, song));
 
-	if (song_is_file(song)) {
-		InputPlugin *plugin;
-		unsigned int next = 0;
-		char path_max_tmp[MPD_PATH_MAX];
-		char *abs_path = rmp2amp_r(path_max_tmp,
-		                           get_song_url(path_max_tmp, song));
-
-		while (!song->tag && (plugin = isMusic(abs_path,
-						       &(song->mtime),
-						       next++))) {
-			song->tag = plugin->tagDupFunc(abs_path);
-		}
-		if (!song->tag || song->tag->time < 0) {
-			freeJustSong(song);
-			song = NULL;
-		}
+	while (!song->tag &&
+	       (plugin = isMusic(abs_path, &song->mtime, next++))) {
+		song->tag = plugin->tagDupFunc(abs_path);
+	}
+	if (!song->tag || song->tag->time < 0) {
+		freeJustSong(song);
+		return NULL;
 	}
 
 	return song;
@@ -172,7 +179,8 @@ void readSongInfoIntoList(FILE * fp, struct directory * parentDir)
 		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song)
 				insertSongIntoList(sv, song);
-			song = song_alloc(buffer + strlen(SONG_KEY), parentDir);
+			song = song_file_new(buffer + strlen(SONG_KEY),
+			                     parentDir);
 		} else if (*buffer == 0) {
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
