@@ -29,10 +29,10 @@
 
 #include "os_compat.h"
 
-static Song * song_alloc(const char *url, struct directory *parent)
+static struct mpd_song * song_alloc(const char *url, struct directory *parent)
 {
 	size_t urllen;
-	Song *song;
+	struct mpd_song *song;
 
 	assert(url);
 	urllen = strlen(url);
@@ -46,9 +46,9 @@ static Song * song_alloc(const char *url, struct directory *parent)
 	return song;
 }
 
-Song *newSong(const char *url, struct directory *parentDir)
+struct mpd_song *newSong(const char *url, struct directory *parentDir)
 {
-	Song *song;
+	struct mpd_song *song;
 	assert(*url);
 
 	if (strchr(url, '\n')) {
@@ -79,14 +79,14 @@ Song *newSong(const char *url, struct directory *parentDir)
 	return song;
 }
 
-void freeJustSong(Song * song)
+void freeJustSong(struct mpd_song * song)
 {
 	if (song->tag)
 		tag_free(song->tag);
 	free(song);
 }
 
-ssize_t song_print_url(Song *song, int fd)
+ssize_t song_print_url(struct mpd_song *song, int fd)
 {
 	if (song->parentDir && song->parentDir->path)
 		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
@@ -94,7 +94,7 @@ ssize_t song_print_url(Song *song, int fd)
 	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
 }
 
-ssize_t song_print_info(Song *song, int fd)
+ssize_t song_print_info(struct mpd_song *song, int fd)
 {
 	ssize_t ret = song_print_url(song, fd);
 
@@ -106,19 +106,19 @@ ssize_t song_print_info(Song *song, int fd)
 	return ret;
 }
 
-int song_print_info_x(Song * song, void *data)
+int song_print_info_x(struct mpd_song * song, void *data)
 {
 	return song_print_info(song, (int)(size_t)data);
 }
 
-int song_print_url_x(Song * song, void *data)
+int song_print_url_x(struct mpd_song * song, void *data)
 {
 	return song_print_url(song, (int)(size_t)data);
 }
 
-static void insertSongIntoList(struct songvec *sv, Song *newsong)
+static void insertSongIntoList(struct songvec *sv, struct mpd_song *newsong)
 {
-	Song *existing = songvec_find(sv, newsong->url);
+	struct mpd_song *existing = songvec_find(sv, newsong->url);
 
 	if (!existing) {
 		songvec_add(sv, newsong);
@@ -164,7 +164,7 @@ void readSongInfoIntoList(FILE * fp, struct directory * parentDir)
 {
 	char buffer[MPD_PATH_MAX + 1024];
 	int bufferSize = MPD_PATH_MAX + 1024;
-	Song *song = NULL;
+	struct mpd_song *song = NULL;
 	struct songvec *sv = &parentDir->songs;
 	int itemType;
 
@@ -207,7 +207,7 @@ void readSongInfoIntoList(FILE * fp, struct directory * parentDir)
 		insertSongIntoList(sv, song);
 }
 
-int updateSongInfo(Song * song)
+int updateSongInfo(struct mpd_song * song)
 {
 	if (song_is_file(song)) {
 		InputPlugin *plugin;
@@ -238,7 +238,7 @@ int updateSongInfo(Song * song)
 	return 0;
 }
 
-char *get_song_url(char *path_max_tmp, Song *song)
+char *get_song_url(char *path_max_tmp, struct mpd_song *song)
 {
 	if (!song)
 		return NULL;

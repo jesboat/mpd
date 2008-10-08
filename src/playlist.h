@@ -57,7 +57,7 @@ enum playlist_result addToPlaylist(const char *file, int *added_id);
 
 int addToStoredPlaylist(const char *file, const char *utf8file);
 
-enum playlist_result addSongToPlaylist(Song * song, int *added_id);
+enum playlist_result addSongToPlaylist(struct mpd_song * song, int *added_id);
 
 void showPlaylist(int fd);
 
@@ -93,7 +93,7 @@ enum playlist_result savePlaylist(const char *utf8file);
 
 enum playlist_result deletePlaylist(const char *utf8file);
 
-void deleteASongFromPlaylist(const Song * song);
+void deleteASongFromPlaylist(const struct mpd_song * song);
 
 enum playlist_result moveSongInPlaylist(int from, int to);
 

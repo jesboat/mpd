@@ -66,12 +66,12 @@ int writeDirectoryDB(void);
 
 int readDirectoryDB(void);
 
-Song *getSongFromDB(const char *file);
+struct mpd_song *getSongFromDB(const char *file);
 
 time_t getDbModTime(void);
 
 int traverseAllIn(const char *name,
-		  int (*forEachSong) (Song *, void *),
+		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 
 #define getDirectoryPath(dir) ((dir && dir->path) ? dir->path : "")

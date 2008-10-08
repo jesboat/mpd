@@ -173,7 +173,7 @@ int printDirectoryInfo(int fd, const char *name)
 	return 0;
 }
 
-static int directory_song_write(Song *song, void *data)
+static int directory_song_write(struct mpd_song *song, void *data)
 {
 	int fd = (int)(size_t)data;
 
@@ -463,7 +463,7 @@ int readDirectoryDB(void)
 
 static int
 traverseAllInSubDirectory(struct directory * directory,
-			  int (*forEachSong) (Song *, void *),
+			  int (*forEachSong) (struct mpd_song *, void *),
 			  int (*forEachDir) (struct directory *, void *),
 			  void *data)
 {
@@ -489,13 +489,13 @@ traverseAllInSubDirectory(struct directory * directory,
 
 int
 traverseAllIn(const char *name,
-	      int (*forEachSong) (Song *, void *),
+	      int (*forEachSong) (struct mpd_song *, void *),
 	      int (*forEachDir) (struct directory *, void *), void *data)
 {
 	struct directory *directory;
 
 	if ((directory = getDirectory(name)) == NULL) {
-		Song *song;
+		struct mpd_song *song;
 		if ((song = getSongFromDB(name)) && forEachSong) {
 			return forEachSong(song, data);
 		}
@@ -514,9 +514,9 @@ void directory_init(void)
 	stats.dbPlayTime = sumSongTimesIn(NULL);
 }
 
-Song *getSongFromDB(const char *file)
+struct mpd_song *getSongFromDB(const char *file)
 {
-	Song *song = NULL;
+	struct mpd_song *song = NULL;
 	struct directory *directory;
 	char *dir = NULL;
 	char *duplicated = xstrdup(file);

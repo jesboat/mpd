@@ -45,7 +45,7 @@ static const int update_task_id_max = 1 << 15;
 
 static int update_task_id;
 
-static Song *delete;
+static struct mpd_song *delete;
 
 static struct condition delete_cond;
 
@@ -61,7 +61,7 @@ static void directory_set_stat(struct directory *dir, const struct stat *st)
 	dir->stat = 1;
 }
 
-static void delete_song(struct directory *dir, Song *del)
+static void delete_song(struct directory *dir, struct mpd_song *del)
 {
 	/* first, prevent traversers in main task from getting this */
 	songvec_delete(&dir->songs, del);
@@ -85,7 +85,7 @@ struct delete_data {
 };
 
 /* passed to songvec_for_each */
-static int delete_song_if_removed(Song *song, void *_data)
+static int delete_song_if_removed(struct mpd_song *song, void *_data)
 {
 	struct delete_data *data = _data;
 
@@ -192,7 +192,7 @@ addToDirectory(struct directory *directory, const char *name)
 	}
 	if (S_ISREG(st.st_mode) &&
 	    hasMusicSuffix(name, 0) && isMusic(name, NULL, 0)) {
-		Song *song;
+		struct mpd_song *song;
 		const char *shortname = mpd_basename(name);
 
 		if (!(song = newSong(shortname, directory)))
@@ -212,7 +212,7 @@ addToDirectory(struct directory *directory, const char *name)
 static enum update_return
 updateInDirectory(struct directory *directory, const char *name)
 {
-	Song *song;
+	struct mpd_song *song;
 	struct stat st;
 
 	if (myStat(name, &st))
@@ -307,7 +307,7 @@ static struct directory * addDirectoryPathToDB(const char *utf8path)
 	char *parent;
 	struct directory *parentDirectory;
 	struct directory *directory;
-	Song *conflicting;
+	struct mpd_song *conflicting;
 
 	parent = parent_path(path_max_tmp, utf8path);
 
@@ -365,7 +365,7 @@ static enum update_return updatePath(const char *utf8path)
 {
 	struct directory *directory;
 	struct directory *parentDirectory;
-	Song *song;
+	struct mpd_song *song;
 	time_t mtime;
 	enum update_return ret = UPDATE_RETURN_NOUPDATE;
 	char path_max_tmp[MPD_PATH_MAX];

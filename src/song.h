@@ -33,30 +33,30 @@
 #define SONG_FILE	"file: "
 #define SONG_TIME	"Time: "
 
-typedef struct _Song {
+struct mpd_song {
 	struct mpd_tag *tag;
 	struct directory *parentDir;
 	time_t mtime;
 	char url[sizeof(size_t)];
-} Song;
+};
 
-Song *newSong(const char *url, struct directory *parentDir);
+struct mpd_song *newSong(const char *url, struct directory *parentDir);
 
-void freeJustSong(Song *);
+void freeJustSong(struct mpd_song *);
 
-ssize_t song_print_info(Song * song, int fd);
+ssize_t song_print_info(struct mpd_song * song, int fd);
 
 /* like song_print_info, but casts data into an fd first */
-int song_print_info_x(Song * song, void *data);
+int song_print_info_x(struct mpd_song * song, void *data);
 
 void readSongInfoIntoList(FILE * fp, struct directory *parent);
 
-int updateSongInfo(Song * song);
+int updateSongInfo(struct mpd_song * song);
 
-ssize_t song_print_url(Song * song, int fd);
+ssize_t song_print_url(struct mpd_song * song, int fd);
 
 /* like song_print_url_x, but casts data into an fd first */
-int song_print_url_x(Song * song, void *data);
+int song_print_url_x(struct mpd_song * song, void *data);
 
 /*
  * get_song_url - Returns a path of a song in UTF8-encoded form
@@ -64,9 +64,9 @@ int song_print_url_x(Song * song, void *data);
  * buffer is assumed to be MPD_PATH_MAX or greater (including
  * terminating '\0').
  */
-char *get_song_url(char *path_max_tmp, Song * song);
+char *get_song_url(char *path_max_tmp, struct mpd_song * song);
 
-static inline int song_is_file(const Song *song)
+static inline int song_is_file(const struct mpd_song *song)
 {
 	return !!song->parentDir;
 }

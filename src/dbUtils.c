@@ -68,7 +68,7 @@ struct search_data {
 	LocateTagItemArray array;
 };
 
-static int searchInDirectory(Song * song, void *_data)
+static int searchInDirectory(struct mpd_song * song, void *_data)
 {
 	struct search_data *data = _data;
 	int fd = data->fd;
@@ -110,7 +110,7 @@ int searchForSongsIn(int fd, const char *name, int numItems,
 	return ret;
 }
 
-static int findInDirectory(Song * song, void *_data)
+static int findInDirectory(struct mpd_song * song, void *_data)
 {
 	struct search_data *data = _data;
 	int fd = data->fd;
@@ -139,7 +139,7 @@ static void printSearchStats(int fd, SearchStats *stats)
 	fdprintf(fd, "playtime: %li\n", stats->playTime);
 }
 
-static int searchStatsInDirectory(Song * song, void *data)
+static int searchStatsInDirectory(struct mpd_song * song, void *data)
 {
 	SearchStats *stats = data;
 
@@ -177,7 +177,8 @@ int printAllIn(int fd, const char *name)
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
-static int directoryAddSongToPlaylist(Song * song, mpd_unused void *data)
+static int
+directoryAddSongToPlaylist(struct mpd_song * song, mpd_unused void *data)
 {
 	return addSongToPlaylist(song, NULL);
 }
@@ -186,7 +187,7 @@ struct add_data {
 	const char *path;
 };
 
-static int directoryAddSongToStoredPlaylist(Song *song, void *_data)
+static int directoryAddSongToStoredPlaylist(struct mpd_song *song, void *_data)
 {
 	struct add_data *data = _data;
 
@@ -209,7 +210,7 @@ int addAllInToStoredPlaylist(const char *name, const char *utf8file)
 	                     &data);
 }
 
-static int sumSongTime(Song * song, void *data)
+static int sumSongTime(struct mpd_song * song, void *data)
 {
 	unsigned long *sum_time = (unsigned long *)data;
 
@@ -263,7 +264,7 @@ static void freeListCommandItem(ListCommandItem * item)
 }
 
 static void visitTag(int fd, struct strset *set,
-		     Song * song, enum tag_type tagType)
+		     struct mpd_song * song, enum tag_type tagType)
 {
 	int i;
 	struct mpd_tag *tag = song->tag;
@@ -291,7 +292,7 @@ struct list_tags_data {
 	struct strset *set;
 };
 
-static int listUniqueTagsInDirectory(Song * song, void *_data)
+static int listUniqueTagsInDirectory(struct mpd_song * song, void *_data)
 {
 	struct list_tags_data *data = _data;
 	ListCommandItem *item = data->item;
@@ -348,7 +349,7 @@ static int sumSavedFilenameMemoryInDirectory(struct directory *dir, void *data)
 	return 0;
 }
 
-static int sumSavedFilenameMemoryInSong(Song * song, void *data)
+static int sumSavedFilenameMemoryInSong(struct mpd_song * song, void *data)
 {
 	int *sum = data;
 

@@ -121,7 +121,8 @@ void freeLocateTagItem(LocateTagItem * item)
 	free(item);
 }
 
-static int strstrSearchTag(Song * song, enum tag_type type, char *str)
+static int strstrSearchTag(struct mpd_song * song,
+                           enum tag_type type, char *str)
 {
 	int i;
 	char *duplicate;
@@ -166,7 +167,8 @@ static int strstrSearchTag(Song * song, enum tag_type type, char *str)
 	return ret;
 }
 
-int strstrSearchTags(Song * song, int numItems, LocateTagItem * items)
+int
+strstrSearchTags(struct mpd_song * song, int numItems, LocateTagItem * items)
 {
 	int i;
 
@@ -180,7 +182,8 @@ int strstrSearchTags(Song * song, int numItems, LocateTagItem * items)
 	return 1;
 }
 
-static int tagItemFoundAndMatches(Song * song, enum tag_type type, char *str)
+static int
+tagItemFoundAndMatches(struct mpd_song * song, enum tag_type type, char *str)
 {
 	int i;
 	int8_t visitedTypes[TAG_NUM_OF_ITEM_TYPES] = { 0 };
@@ -220,7 +223,8 @@ static int tagItemFoundAndMatches(Song * song, enum tag_type type, char *str)
 }
 
 
-int tagItemsFoundAndMatches(Song * song, int numItems, LocateTagItem * items)
+int tagItemsFoundAndMatches(struct mpd_song * song,
+                            int numItems, LocateTagItem * items)
 {
 	int i;
 
