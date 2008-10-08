@@ -30,7 +30,7 @@ enum update_return {
 
 int isUpdatingDB(void);
 
-enum update_return exploreDirectory(Directory * directory);
+enum update_return updateDirectory(Directory * directory);
 
 /*
  * returns the non-negative update job ID on success,
