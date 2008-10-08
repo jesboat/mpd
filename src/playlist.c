@@ -1146,11 +1146,7 @@ static void randomizeOrder(int start, int end)
 
 void setPlaylistRandomStatus(int status)
 {
-	int statusWas = playlist.random;
-
-	playlist.random = status;
-
-	if (status != statusWas) {
+	if (status != playlist.random) {
 		if (playlist.random)
 			randomizeOrder(0, playlist.length - 1);
 		else
