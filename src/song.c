@@ -239,10 +239,8 @@ int song_file_update(struct mpd_song * song)
 		if (old_tag)
 			tag_free(old_tag);
 	}
-	if (!song->tag || song->tag->time < 0)
-		return -1;
 
-	return 0;
+	return (song->tag && song->tag->time >= 0);
 }
 
 char *song_get_url(struct mpd_song *song, char *path_max_tmp)

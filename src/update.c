@@ -226,7 +226,7 @@ updateInDirectory(struct directory *directory, const char *name)
 			return UPDATE_RETURN_UPDATED;
 		} else if (st.st_mtime != song->mtime) {
 			LOG("updating %s\n", name);
-			if (song_file_update(song) < 0)
+			if (!song_file_update(song))
 				delete_song(directory, song);
 			return UPDATE_RETURN_UPDATED;
 		}
@@ -405,7 +405,7 @@ static enum update_return updatePath(const char *utf8path)
 			 isMusic(song_get_url(song, path_max_tmp), &mtime, 0)) {
 			if (song->mtime == mtime)
 				return UPDATE_RETURN_NOUPDATE;
-			else if (song_file_update(song) == 0)
+			else if (song_file_update(song))
 				return UPDATE_RETURN_UPDATED;
 			else {
 				delete_song(parentDirectory, song);
