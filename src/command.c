@@ -220,8 +220,7 @@ static int print_playlist_result(int fd, enum playlist_result result)
 		return -1;
 
 	case PLAYLIST_RESULT_LIST_EXISTS:
-		commandError(fd, ACK_ERROR_NO_EXIST,
-			     "Playlist already exists");
+		commandError(fd, ACK_ERROR_EXIST, "Playlist already exists");
 		return -1;
 
 	case PLAYLIST_RESULT_BAD_NAME:
