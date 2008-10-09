@@ -788,14 +788,12 @@ static int handlePlaylistMove(int fd, mpd_unused int *permission,
 
 static int print_update_result(int fd, int ret)
 {
-	if (ret >= 0) {
+	if (ret > 0) {
 		fdprintf(fd, "updating_db: %i\n", ret);
 		return 0;
 	}
-	if (ret == -2)
-		commandError(fd, ACK_ERROR_ARG, "invalid path");
-	else
-		commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
+	assert(!ret);
+	commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
 	return -1;
 }
 

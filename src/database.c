@@ -40,7 +40,7 @@ void db_init(void)
 {
 	music_root = directory_new("", NULL);
 
-	if (directory_update_init(NULL) < 0)
+	if (!directory_update_init(NULL))
 		FATAL("directory update failed\n");
 
 	do {
