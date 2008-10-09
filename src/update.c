@@ -308,13 +308,34 @@ enum update_return updateDirectory(struct directory *directory)
 	return ret;
 }
 
-static struct directory * addDirectoryPathToDB(const char *utf8path)
+static struct directory *
+directory_make_child_checked(struct directory *parent, const char *path)
+{
+	struct directory *directory;
+	struct stat st;
+	struct mpd_song *conflicting;
+
+	if ((directory = directory_get_child(parent, path)))
+		return directory;
+
+	if (myStat(path, &st) < 0 ||
+	    inodeFoundInParent(parent, st.st_ino, st.st_dev))
+		return NULL;
+
+	/* if we're adding directory paths, make sure to delete filenames
+	   with potentially the same name */
+	if ((conflicting = songvec_find(&parent->songs, mpd_basename(path))))
+		delete_song(parent, conflicting);
+
+	return directory_new_child(parent, path);
+}
+
+static struct directory *
+addDirectoryPathToDB(const char *utf8path)
 {
 	char path_max_tmp[MPD_PATH_MAX];
 	char *parent;
 	struct directory *parentDirectory;
-	struct directory *directory;
-	struct mpd_song *conflicting;
 
 	parent = parent_path(path_max_tmp, utf8path);
 
@@ -326,25 +347,7 @@ static struct directory * addDirectoryPathToDB(const char *utf8path)
 	if (!parentDirectory)
 		return NULL;
 
-	if ((directory = directory_get_child(parentDirectory, utf8path))) {
-		assert(parentDirectory == directory->parent);
-	} else {
-		struct stat st;
-		if (myStat(utf8path, &st) < 0 ||
-		    inodeFoundInParent(parentDirectory, st.st_ino, st.st_dev))
-			return NULL;
-
-		directory = directory_new_child(parentDirectory, utf8path);
-	}
-
-	/* if we're adding directory paths, make sure to delete filenames
-	   with potentially the same name */
-	conflicting = songvec_find(&parentDirectory->songs,
-	                           mpd_basename(directory->path));
-	if (conflicting)
-		delete_song(parentDirectory, conflicting);
-
-	return directory;
+	return directory_make_child_checked(parentDirectory, utf8path);
 }
 
 static struct directory * addParentPathToDB(const char *utf8path)
