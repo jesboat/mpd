@@ -43,6 +43,8 @@ mpd_headers = \
 	dbUtils.h \
 	decode.h \
 	directory.h \
+	directory_print.h \
+	directory_save.h \
 	update.h \
 	dirvec.h \
 	gcc.h \
@@ -116,6 +118,8 @@ mpd_SOURCES = \
 	dbUtils.c \
 	decode.c \
 	directory.c \
+	directory_print.c \
+	directory_save.c \
 	dirvec.c \
 	update.c \
 	inputPlugin.c \

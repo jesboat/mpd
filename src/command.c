@@ -21,6 +21,7 @@
 #include "ls.h"
 #include "database.h"
 #include "directory.h"
+#include "directory_print.h"
 #include "update.h"
 #include "volume.h"
 #include "stats.h"
