@@ -20,6 +20,7 @@
 #define DIRECTORY_H
 
 #include "song.h"
+#include "dirvec.h"
 #include "songvec.h"
 
 #define DIRECTORY_DIR		"directory: "
@@ -30,11 +31,6 @@
 #define DIRECTORY_INFO_END	"info_end"
 #define DIRECTORY_MPD_VERSION	"mpd_version: "
 #define DIRECTORY_FS_CHARSET	"fs_charset: "
-
-struct dirvec {
-	struct directory **base;
-	size_t nr;
-};
 
 struct directory {
 	char *path;
