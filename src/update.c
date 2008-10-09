@@ -238,6 +238,8 @@ updateInDirectory(struct directory *directory,
 				delete_song(directory, song);
 			return UPDATE_RETURN_UPDATED;
 		}
+
+		return UPDATE_RETURN_NOUPDATE;
 	} else if (S_ISDIR(st->st_mode)) {
 		struct directory *subdir;
 		enum update_return ret;
@@ -255,11 +257,10 @@ updateInDirectory(struct directory *directory,
 			delete_directory(subdir);
 
 		return ret;
+	} else {
+		DEBUG("update: %s is not a directory or music\n", name);
+		return UPDATE_RETURN_NOUPDATE;
 	}
-
-	DEBUG("update: %s is not a directory or music\n", name);
-
-	return UPDATE_RETURN_NOUPDATE;
 }
 
 /* we don't look at hidden files nor files with newlines in them */
