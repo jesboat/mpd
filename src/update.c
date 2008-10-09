@@ -338,15 +338,14 @@ directory_make_child_checked(struct directory *parent, const char *path)
 }
 
 static struct directory *
-addDirectoryPathToDB(const char *utf8path)
+addParentPathToDB(const char *utf8path)
 {
 	struct directory *directory = db_get_root();
 	char *duplicated = xstrdup(utf8path);
 	char *slash = duplicated;
 
-	while (1) {
-		if ((slash = strchr(slash, '/')))
-			*slash = 0;
+	while ((slash = strchr(slash, '/'))) {
+		*slash = 0;
 
 		directory = directory_make_child_checked(directory, duplicated);
 		if (!directory || !slash)
@@ -357,25 +356,6 @@ addDirectoryPathToDB(const char *utf8path)
 
 	free(duplicated);
 	return directory;
-}
-
-static struct directory * addParentPathToDB(const char *utf8path)
-{
-	char *parent;
-	char path_max_tmp[MPD_PATH_MAX];
-	struct directory *parentDirectory;
-
-	parent = parent_path(path_max_tmp, utf8path);
-
-	if (strlen(parent) == 0)
-		parentDirectory = db_get_root();
-	else
-		parentDirectory = addDirectoryPathToDB(parent);
-
-	if (!parentDirectory)
-		return NULL;
-
-	return (struct directory *) parentDirectory;
 }
 
 static enum update_return updatePath(const char *utf8path)
