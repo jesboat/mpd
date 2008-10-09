@@ -62,8 +62,10 @@ Song *newSong(const char *url, Directory * parentDir)
 		InputPlugin *plugin;
 		unsigned int next = 0;
 		char path_max_tmp[MPD_PATH_MAX];
-		char *abs_path = rmp2amp_r(path_max_tmp,
-		                           get_song_url(path_max_tmp, song));
+		char abs_path[MPD_PATH_MAX];
+
+		utf8_to_fs_charset(abs_path, get_song_url(path_max_tmp, song));
+		rmp2amp_r(abs_path, abs_path);
 
 		while (!song->tag && (plugin = isMusic(abs_path,
 						       &(song->mtime),
