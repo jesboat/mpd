@@ -181,34 +181,6 @@ addSubDirectoryToDirectory(struct directory *directory,
 }
 
 static enum update_return
-addToDirectory(struct directory *directory, const char *name)
-{
-	struct stat st;
-
-	if (myStat(name, &st)) {
-		DEBUG("failed to stat %s: %s\n", name, strerror(errno));
-		return UPDATE_RETURN_ERROR;
-	}
-	if (S_ISREG(st.st_mode) &&
-	    hasMusicSuffix(name, 0) && isMusic(name, NULL, 0)) {
-		struct mpd_song *song;
-		const char *shortname = mpd_basename(name);
-
-		if (!(song = song_file_load(shortname, directory)))
-			return -1;
-		songvec_add(&directory->songs, song);
-		LOG("added %s\n", name);
-		return UPDATE_RETURN_UPDATED;
-	} else if (S_ISDIR(st.st_mode)) {
-		return addSubDirectoryToDirectory(directory, name, &st);
-	}
-
-	DEBUG("addToDirectory: %s is not a directory or music\n", name);
-
-	return UPDATE_RETURN_ERROR;
-}
-
-static enum update_return
 updateInDirectory(struct directory *directory, const char *name)
 {
 	struct mpd_song *song;
@@ -221,7 +193,10 @@ updateInDirectory(struct directory *directory, const char *name)
 		const char *shortname = mpd_basename(name);
 
 		if (!(song = songvec_find(&directory->songs, shortname))) {
-			addToDirectory(directory, name);
+			if (!(song = song_file_load(shortname, directory)))
+				return -1;
+			songvec_add(&directory->songs, song);
+			LOG("added %s\n", name);
 			return UPDATE_RETURN_UPDATED;
 		} else if (st.st_mtime != song->mtime) {
 			LOG("updating %s\n", name);
@@ -239,6 +214,8 @@ updateInDirectory(struct directory *directory, const char *name)
 			return addSubDirectoryToDirectory(directory, name, &st);
 		}
 	}
+
+	DEBUG("update: %s is not a directory or music\n", name);
 
 	return UPDATE_RETURN_NOUPDATE;
 }
@@ -285,14 +262,9 @@ enum update_return updateDirectory(struct directory *directory)
 		if (!isRootDirectory(directory->path))
 			utf8 = pfx_dir(path_max_tmp, utf8, strlen(utf8),
 			               dirname, strlen(dirname));
-		if (was_empty) {
-			if (addToDirectory(directory, path_max_tmp) ==
-			    UPDATE_RETURN_UPDATED)
-				ret = UPDATE_RETURN_UPDATED;
-		} else {
-			if (updateInDirectory(directory, path_max_tmp) > 0)
-				ret = UPDATE_RETURN_UPDATED;
-		}
+		if (updateInDirectory(directory, path_max_tmp) ==
+		    UPDATE_RETURN_UPDATED)
+			ret = UPDATE_RETURN_UPDATED;
 	}
 
 	closedir(dir);
@@ -428,7 +400,7 @@ static enum update_return updatePath(const char *utf8path)
 		} else if (0 == inodeFoundInParent(parentDirectory->parent,
 						   parentDirectory->inode,
 						   parentDirectory->device)
-			   && addToDirectory(parentDirectory, utf8path)
+			   && updateInDirectory(parentDirectory, utf8path)
 			   == UPDATE_RETURN_UPDATED) {
 			ret = UPDATE_RETURN_UPDATED;
 		}
