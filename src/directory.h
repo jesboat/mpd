@@ -62,6 +62,20 @@ static inline const char * directory_get_path(struct directory *dir)
 	return dir->path;
 }
 
+static inline struct directory *
+directory_get_child(const struct directory *directory, const char *name)
+{
+	return dirvec_find(&directory->children, name);
+}
+
+static inline struct directory *
+directory_new_child(struct directory *directory, const char *name)
+{
+	struct directory *subdir = directory_new(name, directory);
+	dirvec_add(&directory->children, subdir);
+	return subdir;
+}
+
 void directory_prune_empty(struct directory *directory);
 
 struct directory *
