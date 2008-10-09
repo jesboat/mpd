@@ -39,7 +39,15 @@ static time_t directory_dbModTime;
 void db_init(void)
 {
 	music_root = directory_new("", NULL);
-	updateDirectory(music_root);
+
+	if (directory_update_init(NULL) < 0)
+		FATAL("directory update failed\n");
+
+	do {
+		my_usleep(100000);
+		reap_update_task();
+	} while (isUpdatingDB());
+
 	stats.numberOfSongs = countSongsIn(NULL);
 	stats.dbPlayTime = sumSongTimesIn(NULL);
 }

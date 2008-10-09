@@ -409,6 +409,8 @@ int main(int argc, char *argv[])
 	initPlaylist();
 	initInputPlugins();
 
+	init_main_notify();
+
 	openDB(&options, argv[0]);
 
 	initCommands();
@@ -424,7 +426,6 @@ int main(int argc, char *argv[])
 
 	daemonize(&options);
 
-	init_main_notify();
 	init_output_buffer();
 	setup_log_output(options.stdOutput);
 
