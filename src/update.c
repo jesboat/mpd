@@ -317,10 +317,9 @@ directory_make_child_checked(struct directory *parent, const char *path)
 	return dir;
 }
 
-static struct directory *
-addParentPathToDB(const char *utf8path)
+static struct directory * addParentPathToDB(const char *utf8path)
 {
-	struct directory *dir = db_get_root();
+	struct directory *dir = &music_root;
 	char *duplicated = xstrdup(utf8path);
 	char *slash = duplicated;
 
@@ -354,11 +353,10 @@ static void * update_task(void *_path)
 		updatePath((char *)_path);
 		free(_path);
 	} else {
-		struct directory *dir = db_get_root();
 		struct stat st;
 
-		if (myStat(directory_get_path(dir), &st) == 0)
-			updateDirectory(dir, &st);
+		if (myStat(directory_get_path(&music_root), &st) == 0)
+			updateDirectory(&music_root, &st);
 	}
 
 	if (modified)

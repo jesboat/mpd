@@ -43,6 +43,8 @@ struct directory {
 	char path[mpd_sizeof_str_flex_array];
 } mpd_packed;
 
+extern struct directory music_root;
+
 static inline int isRootDirectory(const char *name)
 {
 	/* TODO: verify and remove !name check */
