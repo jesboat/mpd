@@ -183,10 +183,6 @@ int db_save(void)
 	DEBUG("removing empty directories from DB\n");
 	directory_prune_empty(&music_root);
 
-	DEBUG("sorting DB\n");
-
-	directory_sort(&music_root);
-
 	DEBUG("writing DB\n");
 
 	fd = open(dbFile, O_WRONLY|O_TRUNC|O_CREAT, 0666);

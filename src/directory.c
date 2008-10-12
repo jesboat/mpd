@@ -110,19 +110,6 @@ directory_get_subdir(struct directory *dir, const char *name)
 	return found;
 }
 
-static int directory_sort_x(struct directory *dir, mpd_unused void *arg)
-{
-	directory_sort(dir);
-	return 0;
-}
-
-void directory_sort(struct directory *dir)
-{
-	dirvec_sort(&dir->children);
-	dirvec_for_each(&dir->children, directory_sort_x, NULL);
-	songvec_sort(&dir->songs);
-}
-
 struct dirwalk_arg {
 	int (*each_song) (struct mpd_song *, void *);
 	int (*each_dir) (struct directory *, void *);

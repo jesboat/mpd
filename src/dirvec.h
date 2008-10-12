@@ -8,8 +8,6 @@ struct dirvec {
 	size_t nr;
 };
 
-void dirvec_sort(struct dirvec *dv);
-
 struct directory *dirvec_find(const struct dirvec *dv, const char *path);
 
 int dirvec_delete(struct dirvec *dv, struct directory *del);

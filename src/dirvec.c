@@ -18,13 +18,6 @@ static int dirvec_cmp(const void *d1, const void *d2)
 	return strcmp(a->path, b->path);
 }
 
-void dirvec_sort(struct dirvec *dv)
-{
-	pthread_mutex_lock(&nr_lock);
-	qsort(dv->base, dv->nr, sizeof(struct directory *), dirvec_cmp);
-	pthread_mutex_unlock(&nr_lock);
-}
-
 struct directory *dirvec_find(const struct dirvec *dv, const char *path)
 {
 	int i;
@@ -69,10 +62,14 @@ int dirvec_delete(struct dirvec *dv, struct directory *del)
 
 void dirvec_add(struct dirvec *dv, struct directory *add)
 {
+	size_t old_nr;
+
 	pthread_mutex_lock(&nr_lock);
-	++dv->nr;
+	old_nr = dv->nr++;
 	dv->base = xrealloc(dv->base, dv_size(dv));
-	dv->base[dv->nr - 1] = add;
+	dv->base[old_nr] = add;
+	if (old_nr && dirvec_cmp(&dv->base[old_nr - 1], &add) >= 0)
+		qsort(dv->base, dv->nr, sizeof(struct directory *), dirvec_cmp);
 	pthread_mutex_unlock(&nr_lock);
 }
 

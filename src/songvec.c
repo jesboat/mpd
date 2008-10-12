@@ -17,13 +17,6 @@ static size_t sv_size(struct songvec *sv)
 	return sv->nr * sizeof(struct mpd_song *);
 }
 
-void songvec_sort(struct songvec *sv)
-{
-	pthread_mutex_lock(&nr_lock);
-	qsort(sv->base, sv->nr, sizeof(struct mpd_song *), songvec_cmp);
-	pthread_mutex_unlock(&nr_lock);
-}
-
 struct mpd_song *songvec_find(const struct songvec *sv, const char *url)
 {
 	int i;
@@ -68,10 +61,14 @@ int songvec_delete(struct songvec *sv, const struct mpd_song *del)
 
 void songvec_add(struct songvec *sv, struct mpd_song *add)
 {
+	size_t old_nr;
+
 	pthread_mutex_lock(&nr_lock);
-	++sv->nr;
+	old_nr = sv->nr++;
 	sv->base = xrealloc(sv->base, sv_size(sv));
-	sv->base[sv->nr - 1] = add;
+	sv->base[old_nr] = add;
+	if (old_nr && songvec_cmp(&sv->base[old_nr - 1], &add) >= 0)
+		qsort(sv->base, sv->nr, sizeof(struct mpd_song *), songvec_cmp);
 	pthread_mutex_unlock(&nr_lock);
 }
 

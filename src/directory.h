@@ -92,8 +92,6 @@ int directory_save(int fd, struct directory *dir);
 
 void directory_load(FILE *fp, struct directory *dir);
 
-void directory_sort(struct directory *dir);
-
 int db_walk(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
