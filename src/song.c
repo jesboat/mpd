@@ -85,7 +85,7 @@ void song_free(struct mpd_song * song)
 
 ssize_t song_print_url(struct mpd_song *song, int fd)
 {
-	if (song->parent && song->parent->path)
+	if (song->parent && !isRootDirectory(song->parent->path))
 		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
 			        directory_get_path(song->parent), song->url);
 	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
