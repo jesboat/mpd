@@ -74,9 +74,6 @@ static void delete_song(struct directory *dir, struct mpd_song *del)
 	wakeup_main_task();
 	do { cond_wait(&delete_cond); } while (delete);
 	cond_leave(&delete_cond);
-
-	/* finally, all possible references gone, free it */
-	song_free(del);
 }
 
 static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
@@ -423,6 +420,7 @@ void reap_update_task(void)
 		char tmp[MPD_PATH_MAX];
 		LOG("removing: %s\n", song_get_url(delete, tmp));
 		deleteASongFromPlaylist(delete);
+		song_free(delete);
 		delete = NULL;
 		cond_signal(&delete_cond);
 	}
