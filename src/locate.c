@@ -121,7 +121,8 @@ void freeLocateTagItem(LocateTagItem * item)
 	free(item);
 }
 
-static int strstrSearchTag(Song * song, enum tag_type type, char *str)
+static int strstrSearchTag(struct mpd_song * song,
+                           enum tag_type type, char *str)
 {
 	int i;
 	char *duplicate;
@@ -131,7 +132,7 @@ static int strstrSearchTag(Song * song, enum tag_type type, char *str)
 	if (type == LOCATE_TAG_FILE_TYPE || type == LOCATE_TAG_ANY_TYPE) {
 		char path_max_tmp[MPD_PATH_MAX];
 
-		string_toupper(get_song_url(path_max_tmp, song));
+		string_toupper(song_get_url(song, path_max_tmp));
 		if (strstr(path_max_tmp, str))
 			ret = 1;
 		if (ret == 1 || type == LOCATE_TAG_FILE_TYPE)
@@ -166,7 +167,8 @@ static int strstrSearchTag(Song * song, enum tag_type type, char *str)
 	return ret;
 }
 
-int strstrSearchTags(Song * song, int numItems, LocateTagItem * items)
+int
+strstrSearchTags(struct mpd_song * song, int numItems, LocateTagItem * items)
 {
 	int i;
 
@@ -180,14 +182,15 @@ int strstrSearchTags(Song * song, int numItems, LocateTagItem * items)
 	return 1;
 }
 
-static int tagItemFoundAndMatches(Song * song, enum tag_type type, char *str)
+static int
+tagItemFoundAndMatches(struct mpd_song * song, enum tag_type type, char *str)
 {
 	int i;
 	int8_t visitedTypes[TAG_NUM_OF_ITEM_TYPES] = { 0 };
 
 	if (type == LOCATE_TAG_FILE_TYPE || type == LOCATE_TAG_ANY_TYPE) {
 		char path_max_tmp[MPD_PATH_MAX];
-		if (0 == strcmp(str, get_song_url(path_max_tmp, song)))
+		if (0 == strcmp(str, song_get_url(song, path_max_tmp)))
 			return 1;
 		if (type == LOCATE_TAG_FILE_TYPE)
 			return 0;
@@ -220,7 +223,8 @@ static int tagItemFoundAndMatches(Song * song, enum tag_type type, char *str)
 }
 
 
-int tagItemsFoundAndMatches(Song * song, int numItems, LocateTagItem * items)
+int tagItemsFoundAndMatches(struct mpd_song * song,
+                            int numItems, LocateTagItem * items)
 {
 	int i;
 

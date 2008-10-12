@@ -18,7 +18,7 @@
 
 #include "dbUtils.h"
 
-#include "directory.h"
+#include "database.h"
 #include "myfprintf.h"
 #include "utils.h"
 #include "playlist.h"
@@ -45,22 +45,20 @@ typedef struct _SearchStats {
 	unsigned long playTime;
 } SearchStats;
 
-static int countSongsInDirectory(Directory * directory,
-				 void *data)
+static int countSongsInDirectory(struct directory *dir, void *data)
 {
 	int *count = (int *)data;
 
-	*count += directory->songs.nr;
+	*count += dir->songs.nr;
 
 	return 0;
 }
 
-static int printDirectoryInDirectory(Directory * directory, void *data)
+static int printDirectoryInDirectory(struct directory *dir, void *data)
 {
 	int fd = (int)(size_t)data;
-	if (directory->path) {
-		fdprintf(fd, "directory: %s\n", getDirectoryPath(directory));
-	}
+	if (!isRootDirectory(dir->path))
+		fdprintf(fd, "directory: %s\n", directory_get_path(dir));
 	return 0;
 }
 
@@ -69,7 +67,7 @@ struct search_data {
 	LocateTagItemArray array;
 };
 
-static int searchInDirectory(Song * song, void *_data)
+static int searchInDirectory(struct mpd_song * song, void *_data)
 {
 	struct search_data *data = _data;
 	int fd = data->fd;
@@ -99,7 +97,7 @@ int searchForSongsIn(int fd, const char *name, int numItems,
 	data.array.numItems = numItems;
 	data.array.items = items;
 
-	ret = traverseAllIn(name, searchInDirectory, NULL, &data);
+	ret = db_walk(name, searchInDirectory, NULL, &data);
 
 	for (i = 0; i < numItems; i++) {
 		free(items[i].needle);
@@ -111,7 +109,7 @@ int searchForSongsIn(int fd, const char *name, int numItems,
 	return ret;
 }
 
-static int findInDirectory(Song * song, void *_data)
+static int findInDirectory(struct mpd_song * song, void *_data)
 {
 	struct search_data *data = _data;
 	int fd = data->fd;
@@ -131,7 +129,7 @@ int findSongsIn(int fd, const char *name, int numItems, LocateTagItem * items)
 	data.array.numItems = numItems;
 	data.array.items = items;
 
-	return traverseAllIn(name, findInDirectory, NULL, &data);
+	return db_walk(name, findInDirectory, NULL, &data);
 }
 
 static void printSearchStats(int fd, SearchStats *stats)
@@ -140,7 +138,7 @@ static void printSearchStats(int fd, SearchStats *stats)
 	fdprintf(fd, "playtime: %li\n", stats->playTime);
 }
 
-static int searchStatsInDirectory(Song * song, void *data)
+static int searchStatsInDirectory(struct mpd_song * song, void *data)
 {
 	SearchStats *stats = data;
 
@@ -165,7 +163,7 @@ int searchStatsForSongsIn(int fd, const char *name, int numItems,
 	stats.numberOfSongs = 0;
 	stats.playTime = 0;
 
-	ret = traverseAllIn(name, searchStatsInDirectory, NULL, &stats);
+	ret = db_walk(name, searchStatsInDirectory, NULL, &stats);
 	if (ret == 0)
 		printSearchStats(fd, &stats);
 
@@ -174,11 +172,12 @@ int searchStatsForSongsIn(int fd, const char *name, int numItems,
 
 int printAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, song_print_url_x,
+	return db_walk(name, song_print_url_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
-static int directoryAddSongToPlaylist(Song * song, mpd_unused void *data)
+static int
+directoryAddSongToPlaylist(struct mpd_song * song, mpd_unused void *data)
 {
 	return addSongToPlaylist(song, NULL);
 }
@@ -187,7 +186,7 @@ struct add_data {
 	const char *path;
 };
 
-static int directoryAddSongToStoredPlaylist(Song *song, void *_data)
+static int directoryAddSongToStoredPlaylist(struct mpd_song *song, void *_data)
 {
 	struct add_data *data = _data;
 
@@ -198,7 +197,7 @@ static int directoryAddSongToStoredPlaylist(Song *song, void *_data)
 
 int addAllIn(const char *name)
 {
-	return traverseAllIn(name, directoryAddSongToPlaylist, NULL, NULL);
+	return db_walk(name, directoryAddSongToPlaylist, NULL, NULL);
 }
 
 int addAllInToStoredPlaylist(const char *name, const char *utf8file)
@@ -206,11 +205,11 @@ int addAllInToStoredPlaylist(const char *name, const char *utf8file)
 	struct add_data data;
 	data.path = utf8file;
 
-	return traverseAllIn(name, directoryAddSongToStoredPlaylist, NULL,
+	return db_walk(name, directoryAddSongToStoredPlaylist, NULL,
 	                     &data);
 }
 
-static int sumSongTime(Song * song, void *data)
+static int sumSongTime(struct mpd_song * song, void *data)
 {
 	unsigned long *sum_time = (unsigned long *)data;
 
@@ -222,7 +221,7 @@ static int sumSongTime(Song * song, void *data)
 
 int printInfoForAllIn(int fd, const char *name)
 {
-	return traverseAllIn(name, song_print_info_x,
+	return db_walk(name, song_print_info_x,
 			     printDirectoryInDirectory, (void*)(size_t)fd);
 }
 
@@ -231,7 +230,7 @@ int countSongsIn(const char *name)
 	int count = 0;
 	void *ptr = (void *)&count;
 
-	traverseAllIn(name, NULL, countSongsInDirectory, ptr);
+	db_walk(name, NULL, countSongsInDirectory, ptr);
 
 	return count;
 }
@@ -241,7 +240,7 @@ unsigned long sumSongTimesIn(const char *name)
 	unsigned long dbPlayTime = 0;
 	void *ptr = (void *)&dbPlayTime;
 
-	traverseAllIn(name, sumSongTime, NULL, ptr);
+	db_walk(name, sumSongTime, NULL, ptr);
 
 	return dbPlayTime;
 }
@@ -264,7 +263,7 @@ static void freeListCommandItem(ListCommandItem * item)
 }
 
 static void visitTag(int fd, struct strset *set,
-		     Song * song, enum tag_type tagType)
+		     struct mpd_song * song, enum tag_type tagType)
 {
 	int i;
 	struct mpd_tag *tag = song->tag;
@@ -292,7 +291,7 @@ struct list_tags_data {
 	struct strset *set;
 };
 
-static int listUniqueTagsInDirectory(Song * song, void *_data)
+static int listUniqueTagsInDirectory(struct mpd_song * song, void *_data)
 {
 	struct list_tags_data *data = _data;
 	ListCommandItem *item = data->item;
@@ -318,7 +317,7 @@ int listAllUniqueTags(int fd, int type, int numConditionals,
 		data.set = strset_new();
 	}
 
-	ret = traverseAllIn(NULL, listUniqueTagsInDirectory, NULL, &data);
+	ret = db_walk(NULL, listUniqueTagsInDirectory, NULL, &data);
 
 	if (type >= 0 && type <= TAG_NUM_OF_ITEM_TYPES) {
 		const char *value;
@@ -336,20 +335,20 @@ int listAllUniqueTags(int fd, int type, int numConditionals,
 	return ret;
 }
 
-static int sumSavedFilenameMemoryInDirectory(Directory * dir, void *data)
+static int sumSavedFilenameMemoryInDirectory(struct directory *dir, void *data)
 {
 	int *sum = data;
 
-	if (!dir->path)
+	if (!isRootDirectory(dir->path))
 		return 0;
 
-	*sum += (strlen(getDirectoryPath(dir)) + 1 - sizeof(Directory *)) *
-	    dir->songs.nr;
+	*sum += (strlen(directory_get_path(dir)) + 1
+		 - sizeof(struct directory *)) * dir->songs.nr;
 
 	return 0;
 }
 
-static int sumSavedFilenameMemoryInSong(Song * song, void *data)
+static int sumSavedFilenameMemoryInSong(struct mpd_song * song, void *data)
 {
 	int *sum = data;
 
@@ -362,7 +361,7 @@ void printSavedMemoryFromFilenames(void)
 {
 	int sum = 0;
 
-	traverseAllIn(NULL, sumSavedFilenameMemoryInSong,
+	db_walk(NULL, sumSavedFilenameMemoryInSong,
 		      sumSavedFilenameMemoryInDirectory, (void *)&sum);
 
 	DEBUG("saved memory from filenames: %i\n", sum);

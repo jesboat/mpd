@@ -19,7 +19,8 @@
 
 #include "sig_handlers.h"
 #include "playlist.h"
-#include "directory.h"
+#include "database.h"
+#include "update.h"
 #include "command.h"
 #include "signal_check.h"
 #include "log.h"
@@ -35,7 +36,7 @@ int handlePendingSignals(void)
 		DEBUG("got SIGHUP, rereading DB\n");
 		signal_clear(SIGHUP);
 		if (!isUpdatingDB()) {
-			readDirectoryDB();
+			db_load();
 			playlistVersionChange();
 		}
 		if (cycle_log_files() < 0)

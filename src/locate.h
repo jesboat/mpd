@@ -44,8 +44,10 @@ void freeLocateTagItemArray(int count, LocateTagItem * array);
 
 void freeLocateTagItem(LocateTagItem * item);
 
-int strstrSearchTags(Song * song, int numItems, LocateTagItem * items);
+int strstrSearchTags(struct mpd_song * song,
+                     int numItems, LocateTagItem * items);
 
-int tagItemsFoundAndMatches(Song * song, int numItems, LocateTagItem * items);
+int tagItemsFoundAndMatches(struct mpd_song * song,
+                            int numItems, LocateTagItem * items);
 
 #endif

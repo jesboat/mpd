@@ -39,9 +39,13 @@ mpd_headers = \
 	command.h \
 	condition.h \
 	conf.h \
+	database.h \
 	dbUtils.h \
 	decode.h \
 	directory.h \
+	directory_print.h \
+	directory_save.h \
+	update.h \
 	dirvec.h \
 	gcc.h \
 	inputPlugin.h \
@@ -110,9 +114,14 @@ mpd_SOURCES = \
 	command.c \
 	condition.c \
 	conf.c \
+	database.c \
 	dbUtils.c \
 	decode.c \
 	directory.c \
+	directory_print.c \
+	directory_save.c \
+	dirvec.c \
+	update.c \
 	inputPlugin.c \
 	inputStream.c \
 	inputStream_file.c \

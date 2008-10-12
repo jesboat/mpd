@@ -20,7 +20,7 @@
 #include "path.h"
 #include "utils.h"
 #include "ls.h"
-#include "directory.h"
+#include "database.h"
 #include "os_compat.h"
 
 static ListNode *nodeOfStoredPlaylist(List *list, int idx)
@@ -110,7 +110,7 @@ List *loadStoredPlaylist(const char *utf8path)
 
 	while (myFgets(buffer, sizeof(buffer), file)) {
 		char *s = buffer;
-		Song *song;
+		struct mpd_song *song;
 
 		if (*s == PLAYLIST_COMMENT)
 			continue;
@@ -118,8 +118,8 @@ List *loadStoredPlaylist(const char *utf8path)
 		    !strncmp(s, musicDir, musicDir_len))
 			memmove(s, s + musicDir_len + 1,
 				strlen(s + musicDir_len + 1) + 1);
-		if ((song = getSongFromDB(s))) {
-			get_song_url(path_max_tmp, song);
+		if ((song = db_get_song(s))) {
+			song_get_url(song, path_max_tmp);
 			insertInListWithoutKey(list, xstrdup(path_max_tmp));
 		} else if (isValidRemoteUtf8Url(s))
 			insertInListWithoutKey(list, xstrdup(s));
@@ -263,7 +263,7 @@ removeOneSongFromStoredPlaylistByPath(const char *utf8path, int pos)
 }
 
 enum playlist_result
-appendSongToStoredPlaylistByPath(const char *utf8path, Song *song)
+appendSongToStoredPlaylistByPath(const char *utf8path, struct mpd_song *song)
 {
 	FILE *file;
 	char *s;
@@ -295,7 +295,7 @@ appendSongToStoredPlaylistByPath(const char *utf8path, Song *song)
 		return PLAYLIST_RESULT_TOO_LARGE;
 	}
 
-	s = utf8_to_fs_charset(path_max_tmp2, get_song_url(path_max_tmp, song));
+	s = utf8_to_fs_charset(path_max_tmp2, song_get_url(song, path_max_tmp));
 
 	if (playlist_saveAbsolutePaths && song_is_file(song))
 		s = rmp2amp_r(path_max_tmp, s);

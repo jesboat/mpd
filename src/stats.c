@@ -19,7 +19,7 @@
 
 #include "stats.h"
 
-#include "directory.h"
+#include "database.h"
 #include "myfprintf.h"
 #include "outputBuffer.h"
 #include "tag.h"
@@ -40,7 +40,7 @@ struct visit_data {
 	struct strset *set;
 };
 
-static int visit_tag_items(Song *song, void *_data)
+static int visit_tag_items(struct mpd_song *song, void *_data)
 {
 	const struct visit_data *data = _data;
 	unsigned i;
@@ -65,7 +65,7 @@ static unsigned int getNumberOfTagItems(int type)
 	data.type = type;
 	data.set = strset_new();
 
-	traverseAllIn(NULL, visit_tag_items, NULL, &data);
+	db_walk(NULL, visit_tag_items, NULL, &data);
 
 	ret = strset_size(data.set);
 	strset_free(data.set);
@@ -88,6 +88,6 @@ int printStats(int fd)
 		      time(NULL) - stats.daemonStart,
 		      (long)(ob_get_total_time() + 0.5),
 		      stats.dbPlayTime,
-		      getDbModTime());
+		      db_get_mtime());
 	return 0;
 }

@@ -22,7 +22,7 @@
 #include "ls.h"
 #include "tag.h"
 #include "conf.h"
-#include "directory.h"
+#include "database.h"
 #include "log.h"
 #include "path.h"
 #include "utils.h"
@@ -41,7 +41,7 @@ enum _playlist_state {
 static enum _playlist_state playlist_state;
 
 struct _playlist {
-	Song **songs;
+	struct mpd_song **songs;
 	/* holds version a song was modified on */
 	uint32_t *songMod;
 	int *order;
@@ -157,7 +157,8 @@ void initPlaylist(void)
 		playlist_saveAbsolutePaths =
 		                         DEFAULT_PLAYLIST_SAVE_ABSOLUTE_PATHS;
 
-	playlist.songs = xcalloc(playlist_max_length, sizeof(Song *));
+	playlist.songs = xcalloc(playlist_max_length,
+	                         sizeof(struct mpd_song *));
 	playlist.songMod = xmalloc(sizeof(uint32_t) * playlist_max_length);
 	playlist.order = xmalloc(sizeof(int) * playlist_max_length);
 	playlist.idToPosition = xmalloc(sizeof(int) * playlist_max_length *
@@ -188,7 +189,7 @@ void finishPlaylist(void)
 
 	for (i = playlist.length; --i >= 0; ) {
 		if (!song_is_file(playlist.songs[i]))
-			freeJustSong(playlist.songs[i]);
+			song_free(playlist.songs[i]);
 	}
 
 	playlist.length = 0;
@@ -213,7 +214,7 @@ void clearPlaylist(void)
 
 	for (i = playlist.length; --i >= 0 ; ) {
 		if (!song_is_file(playlist.songs[i]))
-			freeJustSong(playlist.songs[i]);
+			song_free(playlist.songs[i]);
 		playlist.idToPosition[playlist.positionToId[i]] = -1;
 		playlist.songs[i] = NULL;
 	}
@@ -235,7 +236,7 @@ void showPlaylist(int fd)
 
 	for (i = 0; i < playlist.length; i++)
 		fdprintf(fd, "%i:%s\n", i,
-		         get_song_url(path_max_tmp, playlist.songs[i]));
+		         song_get_url(playlist.songs[i], path_max_tmp));
 }
 
 void savePlaylistState(int fd)
@@ -440,7 +441,7 @@ enum playlist_result playlistId(int fd, int id)
 
 static void swapSongs(int song1, int song2)
 {
-	Song *sTemp;
+	struct mpd_song *sTemp;
 	int iTemp;
 
 	assert(song1 < playlist.length);
@@ -463,7 +464,7 @@ static void swapSongs(int song1, int song2)
 	playlist.positionToId[song2] = iTemp;
 }
 
-static Song *song_at(int order_num)
+static struct mpd_song *song_at(int order_num)
 {
 	if (order_num >= 0 && order_num < playlist.length) {
 		assert(playlist.songs[playlist.order[order_num]]);
@@ -536,13 +537,13 @@ void playlist_queue_next(void)
 
 char *playlist_queued_url(char utf8url[MPD_PATH_MAX])
 {
-	Song *song;
+	struct mpd_song *song;
 
 	assert(pthread_equal(pthread_self(), dc.thread));
 	pthread_mutex_lock(&queue_lock);
 	song = song_at(playlist.queued);
 
-	return song ? get_song_url(utf8url, song) : NULL;
+	return song ? song_get_url(song, utf8url) : NULL;
 }
 
 static void queue_song_locked(int order_num)
@@ -570,13 +571,13 @@ static int clear_queue(void)
 
 enum playlist_result addToPlaylist(const char *url, int *added_id)
 {
-	Song *song;
+	struct mpd_song *song;
 
 	DEBUG("add to playlist: %s\n", url);
 
-	if ((song = getSongFromDB(url))) {
+	if ((song = db_get_song(url))) {
 	} else if (!(isValidRemoteUtf8Url(url) &&
-		     (song = newSong(url, NULL)))) {
+		     (song = song_remote_new(url)))) {
 		return PLAYLIST_RESULT_NO_SUCH_SONG;
 	}
 
@@ -585,26 +586,26 @@ enum playlist_result addToPlaylist(const char *url, int *added_id)
 
 int addToStoredPlaylist(const char *url, const char *utf8file)
 {
-	Song *song;
+	struct mpd_song *song;
 
 	DEBUG("add to stored playlist: %s\n", url);
 
-	if ((song = getSongFromDB(url)))
+	if ((song = db_get_song(url)))
 		return appendSongToStoredPlaylistByPath(utf8file, song);
 
 	if (!isValidRemoteUtf8Url(url))
 		return ACK_ERROR_NO_EXIST;
 
-	if ((song = newSong(url, NULL))) {
+	if ((song = song_remote_new(url))) {
 		int ret = appendSongToStoredPlaylistByPath(utf8file, song);
-		freeJustSong(song);
+		song_free(song);
 		return ret;
 	}
 
 	return ACK_ERROR_NO_EXIST;
 }
 
-enum playlist_result addSongToPlaylist(Song * song, int *added_id)
+enum playlist_result addSongToPlaylist(struct mpd_song * song, int *added_id)
 {
 	int id;
 
@@ -740,7 +741,7 @@ enum playlist_result deleteFromPlaylist(int song)
 	}
 
 	if (!song_is_file(playlist.songs[song]))
-		freeJustSong(playlist.songs[song]);
+		song_free(playlist.songs[song]);
 
 	playlist.idToPosition[playlist.positionToId[song]] = -1;
 
@@ -798,7 +799,7 @@ enum playlist_result deleteFromPlaylistById(int id)
 	return deleteFromPlaylist(playlist.idToPosition[id]);
 }
 
-void deleteASongFromPlaylist(const Song * song)
+void deleteASongFromPlaylist(const struct mpd_song * song)
 {
 	int i;
 
@@ -841,7 +842,7 @@ static void play_order_num(int order_num, float seek_time)
 	assert(song_at(order_num));
 
 	DEBUG("playlist: play %i:\"%s\"\n", order_num,
-	      get_song_url(path, song_at(order_num)));
+	      song_get_url(song_at(order_num), path));
 	dc_trigger_action(DC_ACTION_STOP, 0);
 	queue_song_locked(order_num);
 
@@ -917,7 +918,7 @@ enum playlist_result playPlaylistById(int id, int stopOnError)
 /* This is used when we stream data out to shout while playing static files */
 struct mpd_tag *playlist_current_tag(void)
 {
-	Song *song = song_at(playlist.current);
+	struct mpd_song *song = song_at(playlist.current);
 
 	/* Non-file song tags can get swept out from under us */
 	return (song && song_is_file(song)) ? song->tag : NULL;
@@ -926,7 +927,7 @@ struct mpd_tag *playlist_current_tag(void)
 /* This receives dynamic metadata updates from streams */
 static void sync_metadata(void)
 {
-	Song *song;
+	struct mpd_song *song;
 	struct mpd_tag *tag;
 
 	if (!(tag = metadata_pipe_current()))
@@ -998,7 +999,7 @@ void setPlaylistRepeatStatus(int status)
 enum playlist_result moveSongInPlaylist(int from, int to)
 {
 	int i;
-	Song *tmpSong;
+	struct mpd_song *tmpSong;
 	int tmpId;
 	int currentSong;
 	int queued_is_current = (playlist.queued == playlist.current);
@@ -1145,11 +1146,7 @@ static void randomizeOrder(int start, int end)
 
 void setPlaylistRandomStatus(int status)
 {
-	int statusWas = playlist.random;
-
-	playlist.random = status;
-
-	if (status != statusWas) {
+	if (status != playlist.random) {
 		if (playlist.random)
 			randomizeOrder(0, playlist.length - 1);
 		else
@@ -1262,7 +1259,7 @@ enum playlist_result savePlaylist(const char *utf8file)
 	for (i = 0; i < playlist.length; i++) {
 		char tmp[MPD_PATH_MAX];
 
-		get_song_url(path_max_tmp, playlist.songs[i]);
+		song_get_url(playlist.songs[i], path_max_tmp);
 		utf8_to_fs_charset(tmp, path_max_tmp);
 
 		if (playlist_saveAbsolutePaths &&
@@ -1329,7 +1326,7 @@ enum playlist_result seekSongInPlaylist(int song, float seek_time)
 		 */
 	}
 
-	DEBUG("playlist: seek %i:\"%s\"\n", i, get_song_url(path, song_at(i)));
+	DEBUG("playlist: seek %i:\"%s\"\n", i, song_get_url(song_at(i), path));
 	play_order_num(i, seek_time);
 	return PLAYLIST_RESULT_SUCCESS;
 }
@@ -1361,7 +1358,7 @@ int PlaylistInfo(int fd, const char *utf8file, int detail)
 		int wrote = 0;
 
 		if (detail) {
-			Song *song = getSongFromDB(temp);
+			struct mpd_song *song = db_get_song(temp);
 			if (song) {
 				song_print_info(song, fd);
 				wrote = 1;

@@ -29,74 +29,69 @@
 
 #include "os_compat.h"
 
-static Song * song_alloc(const char *url, Directory *parent)
+static struct mpd_song * song_alloc(const char *url, struct directory *parent)
 {
 	size_t urllen;
-	Song *song;
+	struct mpd_song *song;
 
 	assert(url);
 	urllen = strlen(url);
 	assert(urllen);
-	song = xmalloc(sizeof(Song) + urllen);
+	song = xmalloc(sizeof(*song) - sizeof(song->url) + urllen + 1);
 
 	song->tag = NULL;
 	memcpy(song->url, url, urllen + 1);
-	song->parentDir = parent;
+	song->parent = parent;
 
 	return song;
 }
 
-Song *newSong(const char *url, Directory * parentDir)
+struct mpd_song * song_remote_new(const char *url)
 {
-	Song *song;
-	assert(*url);
+	return song_alloc(url, NULL);
+}
 
-	if (strchr(url, '\n')) {
-		DEBUG("newSong: '%s' is not a valid uri\n", url);
+struct mpd_song * song_file_new(const char *path, struct directory *parent)
+{
+	assert(parent != NULL);
+
+	return song_alloc(path, parent);
+}
+
+struct mpd_song * song_file_load(const char *path, struct directory *parent)
+{
+	struct mpd_song *song;
+
+	if (strchr(path, '\n')) {
+		DEBUG("song_file_load: '%s' is not a valid uri\n", path);
 		return NULL;
 	}
 
-	song = song_alloc(url, parentDir);
-
-	if (song_is_file(song)) {
-		InputPlugin *plugin;
-		unsigned int next = 0;
-		char path_max_tmp[MPD_PATH_MAX];
-		char abs_path[MPD_PATH_MAX];
-
-		utf8_to_fs_charset(abs_path, get_song_url(path_max_tmp, song));
-		rmp2amp_r(abs_path, abs_path);
-
-		while (!song->tag && (plugin = isMusic(abs_path,
-						       &(song->mtime),
-						       next++))) {
-			song->tag = plugin->tagDupFunc(abs_path);
-		}
-		if (!song->tag || song->tag->time < 0) {
-			freeJustSong(song);
-			song = NULL;
-		}
+	song = song_file_new(path, parent);
+	if (!song_file_update(song)) {
+		song_free(song);
+		return NULL;
 	}
 
 	return song;
 }
 
-void freeJustSong(Song * song)
+void song_free(struct mpd_song * song)
 {
 	if (song->tag)
 		tag_free(song->tag);
 	free(song);
 }
 
-ssize_t song_print_url(Song *song, int fd)
+ssize_t song_print_url(struct mpd_song *song, int fd)
 {
-	if (song->parentDir && song->parentDir->path)
+	if (song->parent && song->parent->path)
 		return fdprintf(fd, "%s%s/%s\n", SONG_FILE,
-			        getDirectoryPath(song->parentDir), song->url);
+			        directory_get_path(song->parent), song->url);
 	return fdprintf(fd, "%s%s\n", SONG_FILE, song->url);
 }
 
-ssize_t song_print_info(Song *song, int fd)
+ssize_t song_print_info(struct mpd_song *song, int fd)
 {
 	ssize_t ret = song_print_url(song, fd);
 
@@ -108,19 +103,19 @@ ssize_t song_print_info(Song *song, int fd)
 	return ret;
 }
 
-int song_print_info_x(Song * song, void *data)
+int song_print_info_x(struct mpd_song * song, void *data)
 {
 	return song_print_info(song, (int)(size_t)data);
 }
 
-int song_print_url_x(Song * song, void *data)
+int song_print_url_x(struct mpd_song * song, void *data)
 {
 	return song_print_url(song, (int)(size_t)data);
 }
 
-static void insertSongIntoList(struct songvec *sv, Song *newsong)
+static void insertSongIntoList(struct songvec *sv, struct mpd_song *newsong)
 {
-	Song *existing = songvec_find(sv, newsong->url);
+	struct mpd_song *existing = songvec_find(sv, newsong->url);
 
 	if (!existing) {
 		songvec_add(sv, newsong);
@@ -141,10 +136,10 @@ static void insertSongIntoList(struct songvec *sv, Song *newsong)
 				if (old_tag)
 					tag_free(old_tag);
 			}
-			/* prevent tag_free in freeJustSong */
+			/* prevent tag_free in song_free */
 			newsong->tag = NULL;
 		}
-		freeJustSong(newsong);
+		song_free(newsong);
 	}
 }
 
@@ -162,19 +157,19 @@ static int matchesAnMpdTagItemKey(char *buffer, int *itemType)
 	return 0;
 }
 
-void readSongInfoIntoList(FILE * fp, Directory * parentDir)
+void readSongInfoIntoList(FILE * fp, struct directory * parent)
 {
 	char buffer[MPD_PATH_MAX + 1024];
 	int bufferSize = MPD_PATH_MAX + 1024;
-	Song *song = NULL;
-	struct songvec *sv = &parentDir->songs;
+	struct mpd_song *song = NULL;
+	struct songvec *sv = &parent->songs;
 	int itemType;
 
 	while (myFgets(buffer, bufferSize, fp) && 0 != strcmp(SONG_END, buffer)) {
 		if (!prefixcmp(buffer, SONG_KEY)) {
 			if (song)
 				insertSongIntoList(sv, song);
-			song = song_alloc(buffer + strlen(SONG_KEY), parentDir);
+			song = song_file_new(buffer + strlen(SONG_KEY), parent);
 		} else if (*buffer == 0) {
 			/* ignore empty lines (starting with '\0') */
 		} else if (song == NULL) {
@@ -209,49 +204,47 @@ void readSongInfoIntoList(FILE * fp, Directory * parentDir)
 		insertSongIntoList(sv, song);
 }
 
-int updateSongInfo(Song * song)
+int song_file_update(struct mpd_song * song)
 {
-	if (song_is_file(song)) {
-		InputPlugin *plugin;
-		unsigned int next = 0;
-		char path_max_tmp[MPD_PATH_MAX];
-		char abs_path[MPD_PATH_MAX];
-		struct mpd_tag *old_tag = song->tag;
-		struct mpd_tag *new_tag = NULL;
+	InputPlugin *plugin;
+	unsigned int next = 0;
+	char path_max_tmp[MPD_PATH_MAX];
+	char abs_path[MPD_PATH_MAX];
+	struct mpd_tag *old_tag = song->tag;
+	struct mpd_tag *new_tag = NULL;
 
-		utf8_to_fs_charset(abs_path, get_song_url(path_max_tmp, song));
-		rmp2amp_r(abs_path, abs_path);
+	assert(song_is_file(song));
 
-		while ((plugin = isMusic(abs_path, &song->mtime, next++))) {
-			if ((new_tag = plugin->tagDupFunc(abs_path)))
-				break;
-		}
-		if (new_tag && tag_equal(new_tag, old_tag)) {
-			tag_free(new_tag);
-		} else {
-			song->tag = new_tag;
-			if (old_tag)
-				tag_free(old_tag);
-		}
-		if (!song->tag || song->tag->time < 0)
-			return -1;
+	utf8_to_fs_charset(abs_path, song_get_url(song, path_max_tmp));
+	rmp2amp_r(abs_path, abs_path);
+
+	while ((plugin = isMusic(abs_path, &song->mtime, next++))) {
+		if ((new_tag = plugin->tagDupFunc(abs_path)))
+			break;
+	}
+	if (new_tag && tag_equal(new_tag, old_tag)) {
+		tag_free(new_tag);
+	} else {
+		song->tag = new_tag;
+		if (old_tag)
+			tag_free(old_tag);
 	}
 
-	return 0;
+	return (song->tag && song->tag->time >= 0);
 }
 
-char *get_song_url(char *path_max_tmp, Song *song)
+char *song_get_url(struct mpd_song *song, char *path_max_tmp)
 {
 	if (!song)
 		return NULL;
 
 	assert(*song->url);
 
-	if (!song->parentDir || !song->parentDir->path)
+	if (!song->parent || !song->parent->path)
 		strcpy(path_max_tmp, song->url);
 	else
 		pfx_dir(path_max_tmp, song->url, strlen(song->url),
-			getDirectoryPath(song->parentDir),
-			strlen(getDirectoryPath(song->parentDir)));
+			directory_get_path(song->parent),
+			strlen(directory_get_path(song->parent)));
 	return path_max_tmp;
 }

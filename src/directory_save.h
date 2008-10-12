@@ -1,5 +1,5 @@
 /* the Music Player Daemon (MPD)
- * Copyright (C) 2007 by Warren Dukes (warren.dukes@gmail.com)
+ * Copyright (C) 2003-2007 by Warren Dukes (warren.dukes@gmail.com)
  * This project's homepage is: http://www.musicpd.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,28 +16,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef STORED_PLAYLIST_H
-#define STORED_PLAYLIST_H
+#ifndef DIRECTORY_SAVE_H
+#define DIRECTORY_SAVE_H
 
-#include "song.h"
-#include "list.h"
-#include "playlist.h"
+#include "os_compat.h"
 
-List *loadStoredPlaylist(const char *utf8path);
+struct directory;
 
-enum playlist_result
-moveSongInStoredPlaylistByPath(const char *utf8path, int src, int dest);
+int directory_save(int fd, struct directory *dir);
 
-enum playlist_result
-removeAllFromStoredPlaylistByPath(const char *utf8path);
+void directory_load(FILE *, struct directory *dir);
 
-enum playlist_result
-removeOneSongFromStoredPlaylistByPath(const char *utf8path, int pos);
-
-enum playlist_result
-appendSongToStoredPlaylistByPath(const char *utf8path, struct mpd_song *song);
-
-enum playlist_result
-renameStoredPlaylist(const char *utf8from, const char *utf8to);
-
-#endif
+#endif /* DIRECTORY_SAVE_H */

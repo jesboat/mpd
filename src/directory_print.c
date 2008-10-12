@@ -1,5 +1,6 @@
 /* the Music Player Daemon (MPD)
- * Copyright (C) 2007 by Warren Dukes (warren.dukes@gmail.com)
+ * Copyright (C) 2003-2007 by Warren Dukes (warren.dukes@gmail.com)
+ * Copyright (C) 2008 Max Kellermann <max@duempel.org>
  * This project's homepage is: http://www.musicpd.org
  *
  * This program is free software; you can redistribute it and/or modify
@@ -16,28 +17,31 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef STORED_PLAYLIST_H
-#define STORED_PLAYLIST_H
+#include "directory_print.h"
+#include "directory.h"
+#include "dirvec.h"
+#include "songvec.h"
+#include "myfprintf.h"
 
-#include "song.h"
-#include "list.h"
-#include "playlist.h"
+static int dirvec_print(int fd, const struct dirvec *dv)
+{
+	size_t i;
 
-List *loadStoredPlaylist(const char *utf8path);
+	for (i = 0; i < dv->nr; ++i) {
+		if (fdprintf(fd, DIRECTORY_DIR "%s\n",
+		             directory_get_path(dv->base[i])) < 0)
+			return -1;
+	}
 
-enum playlist_result
-moveSongInStoredPlaylistByPath(const char *utf8path, int src, int dest);
+	return 0;
+}
 
-enum playlist_result
-removeAllFromStoredPlaylistByPath(const char *utf8path);
-
-enum playlist_result
-removeOneSongFromStoredPlaylistByPath(const char *utf8path, int pos);
-
-enum playlist_result
-appendSongToStoredPlaylistByPath(const char *utf8path, struct mpd_song *song);
-
-enum playlist_result
-renameStoredPlaylist(const char *utf8from, const char *utf8to);
-
-#endif
+int directory_print(int fd, const struct directory *dir)
+{
+	if (dirvec_print(fd, &dir->children) < 0)
+		return -1;
+	if (songvec_for_each(&dir->songs, song_print_info_x,
+	                     (void *)(size_t)fd) < 0)
+		return -1;
+	return 0;
+}

@@ -19,7 +19,10 @@
 #include "command.h"
 #include "playlist.h"
 #include "ls.h"
+#include "database.h"
 #include "directory.h"
+#include "directory_print.h"
+#include "update.h"
 #include "volume.h"
 #include "stats.h"
 #include "myfprintf.h"
@@ -556,14 +559,17 @@ static int handleLsInfo(int fd, mpd_unused int *permission,
 			int argc, char *argv[])
 {
 	const char *path = "";
+	const struct directory *dir;
 
 	if (argc == 2)
 		path = argv[1];
 
-	if (printDirectoryInfo(fd, path) < 0) {
+	if (!(dir = db_get_directory(path))) {
 		commandError(fd, ACK_ERROR_NO_EXIST, "directory not found");
 		return -1;
 	}
+
+	directory_print(fd, dir);
 
 	if (isRootDirectory(path))
 		return lsPlaylists(fd, path);
@@ -781,14 +787,12 @@ static int handlePlaylistMove(int fd, mpd_unused int *permission,
 
 static int print_update_result(int fd, int ret)
 {
-	if (ret >= 0) {
+	if (ret > 0) {
 		fdprintf(fd, "updating_db: %i\n", ret);
 		return 0;
 	}
-	if (ret == -2)
-		commandError(fd, ACK_ERROR_ARG, "invalid path");
-	else
-		commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
+	assert(!ret);
+	commandError(fd, ACK_ERROR_UPDATE_ALREADY, "already updating");
 	return -1;
 }
 

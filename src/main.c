@@ -19,7 +19,8 @@
 #include "client.h"
 #include "command.h"
 #include "playlist.h"
-#include "directory.h"
+#include "database.h"
+#include "update.h"
 #include "listen.h"
 #include "conf.h"
 #include "path.h"
@@ -268,17 +269,17 @@ static void changeToUser(void)
 
 static void openDB(Options * options, char *argv0)
 {
-	if (options->createDB > 0 || readDirectoryDB() < 0) {
+	if (options->createDB > 0 || db_load() < 0) {
 		if (options->createDB < 0) {
 			FATAL("can't open db file and using "
 			      "\"--no-create-db\" command line option\n"
 			      "try running \"%s --create-db\"\n", argv0);
 		}
 		flushWarningLog();
-		if (checkDirectoryDB() < 0)
+		if (db_check() < 0)
 			exit(EXIT_FAILURE);
-		directory_init();
-		if (writeDirectoryDB() < 0)
+		db_init();
+		if (db_save() < 0)
 			exit(EXIT_FAILURE);
 		if (options->createDB)
 			exit(EXIT_SUCCESS);
@@ -408,6 +409,8 @@ int main(int argc, char *argv[])
 	initPlaylist();
 	initInputPlugins();
 
+	init_main_notify();
+
 	openDB(&options, argv[0]);
 
 	initCommands();
@@ -423,7 +426,6 @@ int main(int argc, char *argv[])
 
 	daemonize(&options);
 
-	init_main_notify();
 	init_output_buffer();
 	setup_log_output(options.stdOutput);
 
@@ -450,8 +452,8 @@ int main(int argc, char *argv[])
 	finishPlaylist();
 
 	start = clock();
-	directory_finish();
-	DEBUG("directory_finish took %f seconds\n",
+	db_finish();
+	DEBUG("db_finish took %f seconds\n",
 	      ((float)(clock()-start))/CLOCKS_PER_SEC);
 
 	finishNormalization();

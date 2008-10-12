@@ -20,56 +20,83 @@
 #define DIRECTORY_H
 
 #include "song.h"
+#include "dirvec.h"
 #include "songvec.h"
 
-struct dirvec {
-	struct _Directory **base;
-	size_t nr;
-};
+#define DIRECTORY_DIR		"directory: "
+#define DIRECTORY_MTIME		"mtime: " /* DEPRECATED, noop-read-only */
+#define DIRECTORY_BEGIN		"begin: "
+#define DIRECTORY_END		"end: "
+#define DIRECTORY_INFO_BEGIN	"info_begin"
+#define DIRECTORY_INFO_END	"info_end"
+#define DIRECTORY_MPD_VERSION	"mpd_version: "
+#define DIRECTORY_FS_CHARSET	"fs_charset: "
 
-typedef struct _Directory {
+struct directory {
 	char *path;
 	struct dirvec children;
 	struct songvec songs;
-	struct _Directory *parent;
+	struct directory *parent;
 	ino_t inode;
 	dev_t device;
 	unsigned stat; /* not needed if ino_t == dev_t == 0 is impossible */
-} Directory;
+};
 
-void reap_update_task(void);
+static inline int isRootDirectory(const char *name)
+{
+	/* TODO: verify and remove !name check */
+	return (!name || *name == '\0' || !strcmp(name, "/"));
+}
 
-int isUpdatingDB(void);
+struct directory * directory_new(const char *dirname, struct directory *parent);
 
-/*
- * returns the non-negative update job ID on success,
- * returns -1 if busy
- * @path will be freed by this function and should not be reused
- */
-int directory_update_init(char *path);
+void directory_free(struct directory *dir);
 
-void directory_init(void);
+static inline int directory_is_empty(struct directory *dir)
+{
+	return dir->children.nr == 0 && dir->songs.nr == 0;
+}
 
-void directory_finish(void);
+static inline const char * directory_get_path(struct directory *dir)
+{
+	return dir->path;
+}
 
-int isRootDirectory(const char *name);
+static inline struct directory *
+directory_get_child(const struct directory *dir, const char *name)
+{
+	return dirvec_find(&dir->children, name);
+}
 
-int printDirectoryInfo(int fd, const char *dirname);
+static inline struct directory *
+directory_new_child(struct directory *dir, const char *name)
+{
+	struct directory *subdir = directory_new(name, dir);
+	dirvec_add(&dir->children, subdir);
+	return subdir;
+}
 
-int checkDirectoryDB(void);
+void directory_prune_empty(struct directory *dir);
 
-int writeDirectoryDB(void);
+struct directory *
+directory_get_subdir(struct directory *dir, const char *name);
 
-int readDirectoryDB(void);
+int directory_print(int fd, const struct directory *dir);
 
-Song *getSongFromDB(const char *file);
+struct mpd_song *db_get_song(const char *file);
 
-time_t getDbModTime(void);
+int directory_save(int fd, struct directory *dir);
 
-int traverseAllIn(const char *name,
-		  int (*forEachSong) (Song *, void *),
-		  int (*forEachDir) (Directory *, void *), void *data);
+void directory_load(FILE *fp, struct directory *dir);
 
-#define getDirectoryPath(dir) ((dir && dir->path) ? dir->path : "")
+void directory_sort(struct directory *dir);
+
+int db_walk(const char *name,
+		  int (*forEachSong) (struct mpd_song *, void *),
+		  int (*forEachDir) (struct directory *, void *), void *data);
+
+int directory_walk(struct directory *dir,
+		  int (*forEachSong) (struct mpd_song *, void *),
+		  int (*forEachDir) (struct directory *, void *), void *data);
 
 #endif
