@@ -46,7 +46,11 @@ static const unsigned update_task_id_max = 1 << 15;
 
 static unsigned update_task_id;
 
-static struct mpd_song *delete;
+enum update_type { UPDATE_TYPE_SONG, UPDATE_TYPE_DIR };
+
+static enum update_type delete_type;
+
+static void *delete;
 
 static struct condition delete_cond;
 
@@ -62,18 +66,24 @@ static void directory_set_stat(struct directory *dir, const struct stat *st)
 	dir->stat = 1;
 }
 
+static void serialized_delete(void *del, enum update_type type)
+{
+	cond_enter(&delete_cond);
+	assert(!delete);
+	delete_type = type;
+	delete = del;
+	wakeup_main_task();
+	do { cond_wait(&delete_cond); } while (delete);
+	cond_leave(&delete_cond);
+}
+
 static void delete_song(struct directory *dir, struct mpd_song *del)
 {
 	/* first, prevent traversers in main task from getting this */
 	songvec_delete(&dir->songs, del);
 
-	/* now take it out of the playlist (in the main_task) */
-	cond_enter(&delete_cond);
-	assert(!delete);
-	delete = del;
-	wakeup_main_task();
-	do { cond_wait(&delete_cond); } while (delete);
-	cond_leave(&delete_cond);
+	/* now take it out of the playlist (in the main_task) and free */
+	serialized_delete(del, UPDATE_TYPE_SONG);
 }
 
 static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
@@ -105,7 +115,7 @@ static void delete_directory(struct directory *dir)
 
 	clear_directory(dir, NULL);
 	dirvec_delete(&dir->parent->children, dir);
-	directory_free(dir);
+	serialized_delete(dir, UPDATE_TYPE_DIR);
 }
 
 struct delete_data {
@@ -417,10 +427,17 @@ void reap_update_task(void)
 
 	cond_enter(&delete_cond);
 	if (delete) {
-		char tmp[MPD_PATH_MAX];
-		LOG("removing: %s\n", song_get_url(delete, tmp));
-		deleteASongFromPlaylist(delete);
-		song_free(delete);
+		switch (delete_type) {
+		case UPDATE_TYPE_SONG: {
+			char tmp[MPD_PATH_MAX];
+			LOG("removing: %s\n", song_get_url(delete, tmp));
+			deleteASongFromPlaylist(delete);
+			song_free(delete);
+			}
+			break;
+		case UPDATE_TYPE_DIR:
+			directory_free(delete);
+		}
 		delete = NULL;
 		cond_signal(&delete_cond);
 	}
