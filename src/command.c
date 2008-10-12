@@ -571,7 +571,7 @@ static int handleLsInfo(int fd, mpd_unused int *permission,
 
 	directory_print(fd, dir);
 
-	if (isRootDirectory(path))
+	if (dir == &music_root)
 		return lsPlaylists(fd, path);
 
 	return 0;

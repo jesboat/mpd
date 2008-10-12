@@ -278,7 +278,7 @@ static int updateDirectory(struct directory *dir, const struct stat *st)
 		if (!utf8)
 			continue;
 
-		if (!isRootDirectory(dir->path))
+		if (dir != &music_root)
 			utf8 = pfx_dir(path_max_tmp, utf8, strlen(utf8),
 			               dirname, strlen(dirname));
 
