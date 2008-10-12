@@ -23,25 +23,23 @@
 #include "songvec.h"
 #include "myfprintf.h"
 
-static int dirvec_print(int fd, const struct dirvec *dv)
+static int directory_print_info(struct directory *dir, int fd)
 {
-	size_t i;
+	return fdprintf(fd, DIRECTORY_DIR "%s\n", directory_get_path(dir));
+}
 
-	for (i = 0; i < dv->nr; ++i) {
-		if (fdprintf(fd, DIRECTORY_DIR "%s\n",
-		             directory_get_path(dv->base[i])) < 0)
-			return -1;
-	}
-
-	return 0;
+static int directory_print_info_x(struct directory *dir, void *data)
+{
+	return directory_print_info(dir, (int)(size_t)data);
 }
 
 int directory_print(int fd, const struct directory *dir)
 {
-	if (dirvec_print(fd, &dir->children) < 0)
+	void *arg = (void *)(size_t)fd;
+
+	if (dirvec_for_each(&dir->children, directory_print_info_x, arg) < 0)
 		return -1;
-	if (songvec_for_each(&dir->songs, song_print_info_x,
-	                     (void *)(size_t)fd) < 0)
+	if (songvec_for_each(&dir->songs, song_print_info_x, arg) < 0)
 		return -1;
 	return 0;
 }

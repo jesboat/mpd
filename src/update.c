@@ -91,15 +91,12 @@ static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
  * Recursively remove all sub directories and songs from a directory,
  * leaving an empty directory.
  */
-static void clear_directory(struct directory *dir)
+static int clear_directory(struct directory *dir, mpd_unused void *arg)
 {
-	int i;
-
-	for (i = dir->children.nr; --i >= 0;)
-		clear_directory(dir->children.base[i]);
+	dirvec_for_each(&dir->children, clear_directory, NULL);
 	dirvec_clear(&dir->children);
-
 	songvec_for_each(&dir->songs, delete_each_song, dir);
+	return 0;
 }
 
 /**
@@ -109,7 +106,7 @@ static void delete_directory(struct directory *dir)
 {
 	assert(dir->parent != NULL);
 
-	clear_directory(dir);
+	clear_directory(dir, NULL);
 	dirvec_delete(&dir->parent->children, dir);
 	directory_free(dir);
 }
@@ -149,23 +146,27 @@ static void delete_path(const char *path)
 	}
 }
 
+/* passed to dirvec_for_each */
+static int delete_directory_if_removed(struct directory *dir, void *_data)
+{
+	if (!isDir(dir->path)) {
+		struct delete_data *data = _data;
+
+		LOG("removing directory: %s\n", directory_get_path(dir));
+		dirvec_delete(&data->dir->children, dir);
+		modified = 1;
+	}
+	return 0;
+}
+
 static void
 removeDeletedFromDirectory(char *path_max_tmp, struct directory *dir)
 {
-	int i;
-	struct dirvec *dv = &dir->children;
 	struct delete_data data;
-
-	for (i = dv->nr; --i >= 0; ) {
-		if (isDir(dv->base[i]->path))
-			continue;
-		LOG("removing directory: %s\n", dv->base[i]->path);
-		dirvec_delete(dv, dv->base[i]);
-		modified = 1;
-	}
 
 	data.dir = dir;
 	data.tmp = path_max_tmp;
+	dirvec_for_each(&dir->children, delete_directory_if_removed, &data);
 	songvec_for_each(&dir->songs, delete_song_if_removed, &data);
 }
 
