@@ -349,9 +349,12 @@ static void updatePath(const char *utf8path)
 
 static void * update_task(void *_path)
 {
-	if (_path && !path_is_music_root(_path)) {
-		updatePath(_path);
-		free(_path);
+	char *utf8path = _path;
+
+	if (utf8path) {
+		assert(*utf8path);
+		updatePath(utf8path);
+		free(utf8path);
 	} else {
 		struct stat st;
 
@@ -385,6 +388,8 @@ static void spawn_update_task(char *path)
 unsigned directory_update_init(char *path)
 {
 	assert(pthread_equal(pthread_self(), main_task));
+
+	assert(!path || (path && *path));
 
 	if (progress != UPDATE_PROGRESS_IDLE) {
 		unsigned next_task_id;

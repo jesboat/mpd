@@ -802,9 +802,15 @@ static int handleUpdate(int fd, mpd_unused int *permission,
 	char *path = NULL;
 
 	assert(argc <= 2);
-	if (argc == 2 && !(path = sanitizePathDup(argv[1]))) {
-		commandError(fd, ACK_ERROR_ARG, "invalid path");
-		return -1;
+	if (argc == 2) {
+		if (!(path = sanitizePathDup(argv[1]))) {
+			commandError(fd, ACK_ERROR_ARG, "invalid path");
+			return -1;
+		}
+		if (path_is_music_root(path)) {
+			free(path);
+			path = NULL;
+		}
 	}
 	return print_update_result(fd, directory_update_init(path));
 }
