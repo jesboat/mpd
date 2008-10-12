@@ -40,14 +40,14 @@ static int directory_song_write(struct mpd_song *song, void *data)
 }
 
 /* TODO error checking */
-int directory_save(int fd, struct directory * directory)
+int directory_save(int fd, struct directory *dir)
 {
-	struct dirvec *children = &directory->children;
+	struct dirvec *children = &dir->children;
 	size_t i;
 
-	if (!isRootDirectory(directory->path) &&
+	if (!isRootDirectory(dir->path) &&
 	    fdprintf(fd, DIRECTORY_BEGIN "%s\n",
-	             directory_get_path(directory)) < 0)
+	             directory_get_path(dir)) < 0)
 		return -1;
 
 	for (i = 0; i < children->nr; ++i) {
@@ -63,21 +63,21 @@ int directory_save(int fd, struct directory * directory)
 	if (fdprintf(fd, SONG_BEGIN "\n") < 0)
 		return -1;
 
-	if (songvec_for_each(&directory->songs,
+	if (songvec_for_each(&dir->songs,
 	                     directory_song_write, (void *)(size_t)fd) < 0)
 		return -1;
 
 	if (fdprintf(fd, SONG_END "\n") < 0)
 		return -1;
 
-	if (!isRootDirectory(directory->path) &&
+	if (!isRootDirectory(dir->path) &&
 	    fdprintf(fd, DIRECTORY_END "%s\n",
-	             directory_get_path(directory)) < 0)
+	             directory_get_path(dir)) < 0)
 		return -1;
 	return 0;
 }
 
-void directory_load(FILE * fp, struct directory * directory)
+void directory_load(FILE * fp, struct directory *dir)
 {
 	char buffer[MPD_PATH_MAX * 2];
 	int bufferSize = MPD_PATH_MAX * 2;
@@ -100,19 +100,19 @@ void directory_load(FILE * fp, struct directory * directory)
 			if (prefixcmp(buffer, DIRECTORY_BEGIN))
 				FATAL("Error reading db at line: %s\n", buffer);
 			name = &(buffer[strlen(DIRECTORY_BEGIN)]);
-			if (prefixcmp(name, directory->path) != 0)
+			if (prefixcmp(name, dir->path) != 0)
 				FATAL("Wrong path in database: '%s' in '%s'\n",
-				      name, directory->path);
+				      name, dir->path);
 
-			if ((subdir = directory_get_child(directory, name))) {
-				assert(subdir->parent == directory);
+			if ((subdir = directory_get_child(dir, name))) {
+				assert(subdir->parent == dir);
 			} else {
-				subdir = directory_new(name, directory);
-				dirvec_add(&directory->children, subdir);
+				subdir = directory_new(name, dir);
+				dirvec_add(&dir->children, subdir);
 			}
 			directory_load(fp, subdir);
 		} else if (!prefixcmp(buffer, SONG_BEGIN)) {
-			readSongInfoIntoList(fp, directory);
+			readSongInfoIntoList(fp, dir);
 		} else {
 			FATAL("Unknown line in db: %s\n", buffer);
 		}

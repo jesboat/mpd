@@ -25,32 +25,32 @@
 
 struct directory * directory_new(const char *dirname, struct directory * parent)
 {
-	struct directory *directory;
+	struct directory *dir;
 
 	assert(dirname != NULL);
 	assert((*dirname == 0) == (parent == NULL));
 
-	directory = xcalloc(1, sizeof(*directory));
-	directory->path = xstrdup(dirname);
-	directory->parent = parent;
+	dir = xcalloc(1, sizeof(struct directory));
+	dir->path = xstrdup(dirname);
+	dir->parent = parent;
 
-	return directory;
+	return dir;
 }
 
-void directory_free(struct directory * directory)
+void directory_free(struct directory *dir)
 {
-	dirvec_destroy(&directory->children);
-	songvec_destroy(&directory->songs);
-	free(directory->path);
-	free(directory);
+	dirvec_destroy(&dir->children);
+	songvec_destroy(&dir->songs);
+	free(dir->path);
+	free(dir);
 	/* this resets last dir returned */
 	/*directory_get_path(NULL); */
 }
 
-void directory_prune_empty(struct directory * directory)
+void directory_prune_empty(struct directory *dir)
 {
 	int i;
-	struct dirvec *dv = &directory->children;
+	struct dirvec *dv = &dir->children;
 
 	for (i = dv->nr; --i >= 0; ) {
 		directory_prune_empty(dv->base[i]);
@@ -62,9 +62,9 @@ void directory_prune_empty(struct directory * directory)
 }
 
 struct directory *
-directory_get_subdir(struct directory * directory, const char *name)
+directory_get_subdir(struct directory *dir, const char *name)
 {
-	struct directory *cur = directory;
+	struct directory *cur = dir;
 	struct directory *found = NULL;
 	char *duplicated;
 	char *locate;
@@ -72,7 +72,7 @@ directory_get_subdir(struct directory * directory, const char *name)
 	assert(name != NULL);
 
 	if (isRootDirectory(name))
-		return directory;
+		return dir;
 
 	duplicated = xstrdup(name);
 	locate = strchr(duplicated, '/');
@@ -94,33 +94,33 @@ directory_get_subdir(struct directory * directory, const char *name)
 	return found;
 }
 
-void directory_sort(struct directory * directory)
+void directory_sort(struct directory *dir)
 {
 	int i;
-	struct dirvec *dv = &directory->children;
+	struct dirvec *dv = &dir->children;
 
 	dirvec_sort(dv);
-	songvec_sort(&directory->songs);
+	songvec_sort(&dir->songs);
 
 	for (i = dv->nr; --i >= 0; )
 		directory_sort(dv->base[i]);
 }
 
 int
-directory_walk(struct directory * directory,
+directory_walk(struct directory *dir,
 			  int (*forEachSong) (struct mpd_song *, void *),
 			  int (*forEachDir) (struct directory *, void *),
 			  void *data)
 {
-	struct dirvec *dv = &directory->children;
+	struct dirvec *dv = &dir->children;
 	int err = 0;
 	size_t j;
 
-	if (forEachDir && (err = forEachDir(directory, data)) < 0)
+	if (forEachDir && (err = forEachDir(dir, data)) < 0)
 		return err;
 
 	if (forEachSong) {
-		err = songvec_for_each(&directory->songs, forEachSong, data);
+		err = songvec_for_each(&dir->songs, forEachSong, data);
 		if (err < 0)
 			return err;
 	}

@@ -50,11 +50,11 @@ static inline int isRootDirectory(const char *name)
 
 struct directory * directory_new(const char *dirname, struct directory *parent);
 
-void directory_free(struct directory *directory);
+void directory_free(struct directory *dir);
 
-static inline int directory_is_empty(struct directory *directory)
+static inline int directory_is_empty(struct directory *dir)
 {
-	return directory->children.nr == 0 && directory->songs.nr == 0;
+	return dir->children.nr == 0 && dir->songs.nr == 0;
 }
 
 static inline const char * directory_get_path(struct directory *dir)
@@ -63,39 +63,39 @@ static inline const char * directory_get_path(struct directory *dir)
 }
 
 static inline struct directory *
-directory_get_child(const struct directory *directory, const char *name)
+directory_get_child(const struct directory *dir, const char *name)
 {
-	return dirvec_find(&directory->children, name);
+	return dirvec_find(&dir->children, name);
 }
 
 static inline struct directory *
-directory_new_child(struct directory *directory, const char *name)
+directory_new_child(struct directory *dir, const char *name)
 {
-	struct directory *subdir = directory_new(name, directory);
-	dirvec_add(&directory->children, subdir);
+	struct directory *subdir = directory_new(name, dir);
+	dirvec_add(&dir->children, subdir);
 	return subdir;
 }
 
-void directory_prune_empty(struct directory *directory);
+void directory_prune_empty(struct directory *dir);
 
 struct directory *
-directory_get_subdir(struct directory *directory, const char *name);
+directory_get_subdir(struct directory *dir, const char *name);
 
-int directory_print(int fd, const struct directory *directory);
+int directory_print(int fd, const struct directory *dir);
 
 struct mpd_song *db_get_song(const char *file);
 
-int directory_save(int fd, struct directory *directory);
+int directory_save(int fd, struct directory *dir);
 
-void directory_load(FILE *fp, struct directory *directory);
+void directory_load(FILE *fp, struct directory *dir);
 
-void directory_sort(struct directory * directory);
+void directory_sort(struct directory *dir);
 
 int db_walk(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 
-int directory_walk(struct directory *directory,
+int directory_walk(struct directory *dir,
 		  int (*forEachSong) (struct mpd_song *, void *),
 		  int (*forEachDir) (struct directory *, void *), void *data);
 

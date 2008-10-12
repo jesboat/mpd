@@ -23,8 +23,8 @@
 
 struct directory;
 
-int directory_save(int fd, struct directory *directory);
+int directory_save(int fd, struct directory *dir);
 
-void directory_load(FILE *, struct directory *directory);
+void directory_load(FILE *, struct directory *dir);
 
 #endif /* DIRECTORY_SAVE_H */

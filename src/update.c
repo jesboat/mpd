@@ -81,9 +81,9 @@ static void delete_song(struct directory *dir, struct mpd_song *del)
 
 static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
 {
-	struct directory *directory = data;
-	assert(song->parent == directory);
-	delete_song(directory, song);
+	struct directory *dir = data;
+	assert(song->parent == dir);
+	delete_song(dir, song);
 	return 0;
 }
 
@@ -91,28 +91,27 @@ static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
  * Recursively remove all sub directories and songs from a directory,
  * leaving an empty directory.
  */
-static void clear_directory(struct directory *directory)
+static void clear_directory(struct directory *dir)
 {
 	int i;
 
-	for (i = directory->children.nr; --i >= 0;)
-		clear_directory(directory->children.base[i]);
-	dirvec_clear(&directory->children);
+	for (i = dir->children.nr; --i >= 0;)
+		clear_directory(dir->children.base[i]);
+	dirvec_clear(&dir->children);
 
-	songvec_for_each(&directory->songs, delete_each_song, directory);
+	songvec_for_each(&dir->songs, delete_each_song, dir);
 }
 
 /**
  * Recursively free a directory and all its contents.
  */
-static void delete_directory(struct directory *directory)
+static void delete_directory(struct directory *dir)
 {
-	assert(directory->parent != NULL);
+	assert(dir->parent != NULL);
 
-	clear_directory(directory);
-
-	dirvec_delete(&directory->parent->children, directory);
-	directory_free(directory);
+	clear_directory(dir);
+	dirvec_delete(&dir->parent->children, dir);
+	directory_free(dir);
 }
 
 struct delete_data {
@@ -137,11 +136,11 @@ static int delete_song_if_removed(struct mpd_song *song, void *_data)
 
 static void delete_path(const char *path)
 {
-	struct directory *directory = db_get_directory(path);
+	struct directory *dir = db_get_directory(path);
 	struct mpd_song *song = db_get_song(path);
 
-	if (directory) {
-		delete_directory(directory);
+	if (dir) {
+		delete_directory(dir);
 		modified = 1;
 	}
 	if (song) {
@@ -151,10 +150,10 @@ static void delete_path(const char *path)
 }
 
 static void
-removeDeletedFromDirectory(char *path_max_tmp, struct directory *directory)
+removeDeletedFromDirectory(char *path_max_tmp, struct directory *dir)
 {
 	int i;
-	struct dirvec *dv = &directory->children;
+	struct dirvec *dv = &dir->children;
 	struct delete_data data;
 
 	for (i = dv->nr; --i >= 0; ) {
@@ -165,9 +164,9 @@ removeDeletedFromDirectory(char *path_max_tmp, struct directory *directory)
 		modified = 1;
 	}
 
-	data.dir = directory;
+	data.dir = dir;
 	data.tmp = path_max_tmp;
-	songvec_for_each(&directory->songs, delete_song_if_removed, &data);
+	songvec_for_each(&dir->songs, delete_song_if_removed, &data);
 }
 
 static const char *opendir_path(char *path_max_tmp, const char *dirname)
@@ -206,38 +205,38 @@ inodeFoundInParent(struct directory *parent, ino_t inode, dev_t device)
 	return 0;
 }
 
-static int updateDirectory(struct directory *directory, const struct stat *st);
+static int updateDirectory(struct directory *dir, const struct stat *st);
 
 static void
-updateInDirectory(struct directory *directory,
+updateInDirectory(struct directory *dir,
 		  const char *name, const struct stat *st)
 {
 	if (S_ISREG(st->st_mode) && hasMusicSuffix(name, 0)) {
 		const char *shortname = mpd_basename(name);
 		struct mpd_song *song;
 
-		if (!(song = songvec_find(&directory->songs, shortname))) {
-			if (!(song = song_file_load(shortname, directory)))
+		if (!(song = songvec_find(&dir->songs, shortname))) {
+			if (!(song = song_file_load(shortname, dir)))
 				return;
-			songvec_add(&directory->songs, song);
+			songvec_add(&dir->songs, song);
 			modified = 1;
 			LOG("added %s\n", name);
 		} else if (st->st_mtime != song->mtime) {
 			LOG("updating %s\n", name);
 			if (!song_file_update(song))
-				delete_song(directory, song);
+				delete_song(dir, song);
 			modified = 1;
 		}
 	} else if (S_ISDIR(st->st_mode)) {
 		struct directory *subdir;
 
-		if (inodeFoundInParent(directory, st->st_ino, st->st_dev))
+		if (inodeFoundInParent(dir, st->st_ino, st->st_dev))
 			return;
 
-		if (!(subdir = directory_get_child(directory, name)))
-			subdir = directory_new_child(directory, name);
+		if (!(subdir = directory_get_child(dir, name)))
+			subdir = directory_new_child(dir, name);
 
-		assert(directory == subdir->parent);
+		assert(dir == subdir->parent);
 
 		if (!updateDirectory(subdir, st))
 			delete_directory(subdir);
@@ -252,23 +251,23 @@ static int skip_path(const char *path)
 	return (path[0] == '.' || strchr(path, '\n')) ? 1 : 0;
 }
 
-static int updateDirectory(struct directory *directory, const struct stat *st)
+static int updateDirectory(struct directory *dir, const struct stat *st)
 {
-	DIR *dir;
-	const char *dirname = directory_get_path(directory);
+	DIR *fs_dir;
+	const char *dirname = directory_get_path(dir);
 	struct dirent *ent;
 	char path_max_tmp[MPD_PATH_MAX];
 
 	assert(S_ISDIR(st->st_mode));
 
-	directory_set_stat(directory, st);
+	directory_set_stat(dir, st);
 
-	if (!(dir = opendir(opendir_path(path_max_tmp, dirname))))
+	if (!(fs_dir = opendir(opendir_path(path_max_tmp, dirname))))
 		return 0;
 
-	removeDeletedFromDirectory(path_max_tmp, directory);
+	removeDeletedFromDirectory(path_max_tmp, dir);
 
-	while ((ent = readdir(dir))) {
+	while ((ent = readdir(fs_dir))) {
 		char *utf8;
 		struct stat st2;
 
@@ -279,17 +278,17 @@ static int updateDirectory(struct directory *directory, const struct stat *st)
 		if (!utf8)
 			continue;
 
-		if (!isRootDirectory(directory->path))
+		if (!isRootDirectory(dir->path))
 			utf8 = pfx_dir(path_max_tmp, utf8, strlen(utf8),
 			               dirname, strlen(dirname));
 
 		if (myStat(path_max_tmp, &st2) == 0)
-			updateInDirectory(directory, path_max_tmp, &st2);
+			updateInDirectory(dir, path_max_tmp, &st2);
 		else
 			delete_path(path_max_tmp);
 	}
 
-	closedir(dir);
+	closedir(fs_dir);
 
 	return 1;
 }
@@ -297,12 +296,12 @@ static int updateDirectory(struct directory *directory, const struct stat *st)
 static struct directory *
 directory_make_child_checked(struct directory *parent, const char *path)
 {
-	struct directory *directory;
+	struct directory *dir;
 	struct stat st;
 	struct mpd_song *conflicting;
 
-	if ((directory = directory_get_child(parent, path)))
-		return directory;
+	if ((dir = directory_get_child(parent, path)))
+		return dir;
 
 	if (myStat(path, &st) < 0 ||
 	    inodeFoundInParent(parent, st.st_ino, st.st_dev))
@@ -313,30 +312,30 @@ directory_make_child_checked(struct directory *parent, const char *path)
 	if ((conflicting = songvec_find(&parent->songs, mpd_basename(path))))
 		delete_song(parent, conflicting);
 
-	directory = directory_new_child(parent, path);
-	directory_set_stat(directory, &st);
-	return directory;
+	dir = directory_new_child(parent, path);
+	directory_set_stat(dir, &st);
+	return dir;
 }
 
 static struct directory *
 addParentPathToDB(const char *utf8path)
 {
-	struct directory *directory = db_get_root();
+	struct directory *dir = db_get_root();
 	char *duplicated = xstrdup(utf8path);
 	char *slash = duplicated;
 
 	while ((slash = strchr(slash, '/'))) {
 		*slash = 0;
 
-		directory = directory_make_child_checked(directory, duplicated);
-		if (!directory || !slash)
+		dir = directory_make_child_checked(dir, duplicated);
+		if (!dir || !slash)
 			break;
 
 		*slash++ = '/';
 	}
 
 	free(duplicated);
-	return directory;
+	return dir;
 }
 
 static void updatePath(const char *utf8path)
@@ -355,11 +354,11 @@ static void * update_task(void *_path)
 		updatePath((char *)_path);
 		free(_path);
 	} else {
-		struct directory *directory = db_get_root();
+		struct directory *dir = db_get_root();
 		struct stat st;
 
-		if (myStat(directory_get_path(directory), &st) == 0)
-			updateDirectory(directory, &st);
+		if (myStat(directory_get_path(dir), &st) == 0)
+			updateDirectory(dir, &st);
 	}
 
 	if (modified)

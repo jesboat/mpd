@@ -21,6 +21,6 @@
 
 struct directory;
 
-int directory_print(int fd, const struct directory *directory);
+int directory_print(int fd, const struct directory *dir);
 
 #endif

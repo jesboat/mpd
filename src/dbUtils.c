@@ -45,20 +45,20 @@ typedef struct _SearchStats {
 	unsigned long playTime;
 } SearchStats;
 
-static int countSongsInDirectory(struct directory *directory, void *data)
+static int countSongsInDirectory(struct directory *dir, void *data)
 {
 	int *count = (int *)data;
 
-	*count += directory->songs.nr;
+	*count += dir->songs.nr;
 
 	return 0;
 }
 
-static int printDirectoryInDirectory(struct directory *directory, void *data)
+static int printDirectoryInDirectory(struct directory *dir, void *data)
 {
 	int fd = (int)(size_t)data;
-	if (!isRootDirectory(directory->path))
-		fdprintf(fd, "directory: %s\n", directory_get_path(directory));
+	if (!isRootDirectory(dir->path))
+		fdprintf(fd, "directory: %s\n", directory_get_path(dir));
 	return 0;
 }
 

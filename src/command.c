@@ -560,17 +560,17 @@ static int handleLsInfo(int fd, mpd_unused int *permission,
 			int argc, char *argv[])
 {
 	const char *path = "";
-	const struct directory *directory;
+	const struct directory *dir;
 
 	if (argc == 2)
 		path = argv[1];
 
-	if (!(directory = db_get_directory(path))) {
+	if (!(dir = db_get_directory(path))) {
 		commandError(fd, ACK_ERROR_NO_EXIST, "directory not found");
 		return -1;
 	}
 
-	directory_print(fd, directory);
+	directory_print(fd, dir);
 
 	if (isRootDirectory(path))
 		return lsPlaylists(fd, path);

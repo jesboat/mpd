@@ -36,11 +36,11 @@ static int dirvec_print(int fd, const struct dirvec *dv)
 	return 0;
 }
 
-int directory_print(int fd, const struct directory *directory)
+int directory_print(int fd, const struct directory *dir)
 {
-	if (dirvec_print(fd, &directory->children) < 0)
+	if (dirvec_print(fd, &dir->children) < 0)
 		return -1;
-	if (songvec_for_each(&directory->songs, song_print_info_x,
+	if (songvec_for_each(&dir->songs, song_print_info_x,
 	                     (void *)(size_t)fd) < 0)
 		return -1;
 	return 0;

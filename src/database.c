@@ -75,8 +75,8 @@ struct directory * db_get_directory(const char *name)
 struct mpd_song *db_get_song(const char *file)
 {
 	struct mpd_song *song = NULL;
-	struct directory *directory;
-	char *dir = NULL;
+	struct directory *dir;
+	char *dirpath = NULL;
 	char *duplicated = xstrdup(file);
 	char *shortname = strrchr(duplicated, '/');
 
@@ -87,14 +87,14 @@ struct mpd_song *db_get_song(const char *file)
 	} else {
 		*shortname = '\0';
 		++shortname;
-		dir = duplicated;
+		dirpath = duplicated;
 	}
 
-	if (!(directory = db_get_directory(dir)))
+	if (!(dir = db_get_directory(dirpath)))
 		goto out;
-	if (!(song = songvec_find(&directory->songs, shortname)))
+	if (!(song = songvec_find(&dir->songs, shortname)))
 		goto out;
-	assert(song->parent == directory);
+	assert(song->parent == dir);
 
 out:
 	free(duplicated);
@@ -105,9 +105,9 @@ int db_walk(const char *name,
 	          int (*forEachSong) (struct mpd_song *, void *),
 	          int (*forEachDir) (struct directory *, void *), void *data)
 {
-	struct directory *directory;
+	struct directory *dir;
 
-	if ((directory = db_get_directory(name)) == NULL) {
+	if ((dir = db_get_directory(name)) == NULL) {
 		struct mpd_song *song;
 		if ((song = db_get_song(name)) && forEachSong) {
 			return forEachSong(song, data);
@@ -115,8 +115,7 @@ int db_walk(const char *name,
 		return -1;
 	}
 
-	return directory_walk(directory, forEachSong, forEachDir,
-					 data);
+	return directory_walk(dir, forEachSong, forEachDir, data);
 }
 
 static char *db_get_file(void)
