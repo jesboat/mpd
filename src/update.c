@@ -46,9 +46,7 @@ static const unsigned update_task_id_max = 1 << 15;
 
 static unsigned update_task_id;
 
-enum update_type { UPDATE_TYPE_SONG, UPDATE_TYPE_DIR };
-
-static enum update_type delete_type;
+static void (*delete_fn)(void *);
 
 static void *delete;
 
@@ -66,15 +64,24 @@ static void directory_set_stat(struct directory *dir, const struct stat *st)
 	dir->stat = 1;
 }
 
-static void serialized_delete(void *del, enum update_type type)
+static void serialized_delete(void (*fn)(void *), void *del)
 {
 	cond_enter(&delete_cond);
 	assert(!delete);
-	delete_type = type;
+	assert(!delete_fn);
+	delete_fn = fn;
 	delete = del;
 	wakeup_main_task();
 	do { cond_wait(&delete_cond); } while (delete);
 	cond_leave(&delete_cond);
+}
+
+static void delete_song_safely(struct mpd_song *song)
+{
+	char tmp[MPD_PATH_MAX];
+	LOG("removing: %s\n", song_get_url(song, tmp));
+	deleteASongFromPlaylist(song);
+	song_free(song);
 }
 
 static void delete_song(struct directory *dir, struct mpd_song *del)
@@ -83,7 +90,7 @@ static void delete_song(struct directory *dir, struct mpd_song *del)
 	songvec_delete(&dir->songs, del);
 
 	/* now take it out of the playlist (in the main_task) and free */
-	serialized_delete(del, UPDATE_TYPE_SONG);
+	serialized_delete((void (*)(void *))delete_song_safely, del);
 }
 
 /**
@@ -97,7 +104,7 @@ static void delete_directory(struct directory *dir)
 	dirvec_delete(&dir->parent->children, dir);
 
 	/* now we let the main task recursively delete everything under us */
-	serialized_delete(dir, UPDATE_TYPE_DIR);
+	serialized_delete((void (*)(void *))directory_free, dir);
 }
 
 struct delete_data {
@@ -408,19 +415,9 @@ void reap_update_task(void)
 		return;
 
 	cond_enter(&delete_cond);
-	if (delete) {
-		switch (delete_type) {
-		case UPDATE_TYPE_SONG: {
-			char tmp[MPD_PATH_MAX];
-			LOG("removing: %s\n", song_get_url(delete, tmp));
-			deleteASongFromPlaylist(delete);
-			song_free(delete);
-			}
-			break;
-		case UPDATE_TYPE_DIR:
-			directory_free(delete);
-		}
-		delete = NULL;
+	if (delete && delete_fn) {
+		delete_fn(delete);
+		delete = delete_fn = NULL;
 		cond_signal(&delete_cond);
 	}
 	cond_leave(&delete_cond);
