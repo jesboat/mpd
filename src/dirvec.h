@@ -23,4 +23,7 @@ static inline void dirvec_clear(struct dirvec *dv)
 
 void dirvec_destroy(struct dirvec *dv);
 
+int dirvec_for_each(const struct dirvec *dv,
+                    int (*fn)(struct directory *, void *), void *arg);
+
 #endif /* DIRVEC_H */
