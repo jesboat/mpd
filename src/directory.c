@@ -60,8 +60,11 @@ void directory_free(struct directory *dir)
 	directory_walk(dir, free_each_song, free_each_dir, dir);
 	dirvec_destroy(&dir->children);
 	songvec_destroy(&dir->songs);
-	if (dir != &music_root)
+	if (dir != &music_root) {
+		assert(dir->parent);
+		dirvec_delete(&dir->parent->children, dir);
 		free(dir);
+	}
 }
 
 static int dir_pruner(struct directory *dir, void *_dv)
