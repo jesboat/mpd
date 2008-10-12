@@ -42,8 +42,22 @@ struct directory * directory_new(const char *path, struct directory * parent)
 	return dir;
 }
 
+static int free_each_song(struct mpd_song *song, mpd_unused void *arg)
+{
+	song_free(song);
+	return 0;
+}
+
+static int free_each_dir(struct directory *dir, void *arg)
+{
+	if (arg != dir)
+		directory_free(dir);
+	return 0;
+}
+
 void directory_free(struct directory *dir)
 {
+	directory_walk(dir, free_each_song, free_each_dir, dir);
 	dirvec_destroy(&dir->children);
 	songvec_destroy(&dir->songs);
 	if (dir != &music_root)
