@@ -240,7 +240,7 @@ char *song_get_url(struct mpd_song *song, char *path_max_tmp)
 
 	assert(*song->url);
 
-	if (!song->parent || !song->parent->path)
+	if (!song->parent || isRootDirectory(song->parent->path))
 		strcpy(path_max_tmp, song->url);
 	else
 		pfx_dir(path_max_tmp, song->url, strlen(song->url),
