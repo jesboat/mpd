@@ -23,15 +23,16 @@
 #include "myfprintf.h"
 #include "dirvec.h"
 
-struct directory * directory_new(const char *dirname, struct directory * parent)
+struct directory * directory_new(const char *path, struct directory * parent)
 {
 	struct directory *dir;
+	size_t pathlen = strlen(path);
 
-	assert(dirname != NULL);
-	assert((*dirname == 0) == (parent == NULL));
+	assert(path != NULL);
+	assert((*path == 0) == (parent == NULL));
 
-	dir = xcalloc(1, sizeof(struct directory));
-	dir->path = xstrdup(dirname);
+	dir = xcalloc(1, sizeof(*dir) - sizeof(dir->path) + pathlen + 1);
+	memcpy(dir->path, path, pathlen + 1);
 	dir->parent = parent;
 
 	return dir;
@@ -41,7 +42,6 @@ void directory_free(struct directory *dir)
 {
 	dirvec_destroy(&dir->children);
 	songvec_destroy(&dir->songs);
-	free(dir->path);
 	free(dir);
 	/* this resets last dir returned */
 	/*directory_get_path(NULL); */
