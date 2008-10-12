@@ -46,7 +46,9 @@ static const unsigned update_task_id_max = 1 << 15;
 
 static unsigned update_task_id;
 
-static struct mpd_song *delete;
+static void (*delete_fn)(void *);
+
+static void *delete;
 
 static struct condition delete_cond;
 
@@ -62,44 +64,33 @@ static void directory_set_stat(struct directory *dir, const struct stat *st)
 	dir->stat = 1;
 }
 
+static void serialized_delete(void (*fn)(void *), void *del)
+{
+	cond_enter(&delete_cond);
+	assert(!delete);
+	assert(!delete_fn);
+	delete_fn = fn;
+	delete = del;
+	wakeup_main_task();
+	do { cond_wait(&delete_cond); } while (delete);
+	cond_leave(&delete_cond);
+}
+
+static void delete_song_safely(struct mpd_song *song)
+{
+	char tmp[MPD_PATH_MAX];
+	LOG("removing: %s\n", song_get_url(song, tmp));
+	deleteASongFromPlaylist(song);
+	song_free(song);
+}
+
 static void delete_song(struct directory *dir, struct mpd_song *del)
 {
 	/* first, prevent traversers in main task from getting this */
 	songvec_delete(&dir->songs, del);
 
-	/* now take it out of the playlist (in the main_task) */
-	cond_enter(&delete_cond);
-	assert(!delete);
-	delete = del;
-	wakeup_main_task();
-	do { cond_wait(&delete_cond); } while (delete);
-	cond_leave(&delete_cond);
-
-	/* finally, all possible references gone, free it */
-	song_free(del);
-}
-
-static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
-{
-	struct directory *dir = data;
-	assert(song->parent == dir);
-	delete_song(dir, song);
-	return 0;
-}
-
-/**
- * Recursively remove all sub directories and songs from a directory,
- * leaving an empty directory.
- */
-static void clear_directory(struct directory *dir)
-{
-	int i;
-
-	for (i = dir->children.nr; --i >= 0;)
-		clear_directory(dir->children.base[i]);
-	dirvec_clear(&dir->children);
-
-	songvec_for_each(&dir->songs, delete_each_song, dir);
+	/* now take it out of the playlist (in the main_task) and free */
+	serialized_delete((void (*)(void *))delete_song_safely, del);
 }
 
 /**
@@ -109,9 +100,11 @@ static void delete_directory(struct directory *dir)
 {
 	assert(dir->parent != NULL);
 
-	clear_directory(dir);
+	/* first, prevent traversers in main task from getting this */
 	dirvec_delete(&dir->parent->children, dir);
-	directory_free(dir);
+
+	/* now we let the main task recursively delete everything under us */
+	serialized_delete((void (*)(void *))directory_free, dir);
 }
 
 struct delete_data {
@@ -149,23 +142,27 @@ static void delete_path(const char *path)
 	}
 }
 
+/* passed to dirvec_for_each */
+static int delete_directory_if_removed(struct directory *dir, void *_data)
+{
+	if (!isDir(dir->path)) {
+		struct delete_data *data = _data;
+
+		LOG("removing directory: %s\n", directory_get_path(dir));
+		dirvec_delete(&data->dir->children, dir);
+		modified = 1;
+	}
+	return 0;
+}
+
 static void
 removeDeletedFromDirectory(char *path_max_tmp, struct directory *dir)
 {
-	int i;
-	struct dirvec *dv = &dir->children;
 	struct delete_data data;
-
-	for (i = dv->nr; --i >= 0; ) {
-		if (isDir(dv->base[i]->path))
-			continue;
-		LOG("removing directory: %s\n", dv->base[i]->path);
-		dirvec_delete(dv, dv->base[i]);
-		modified = 1;
-	}
 
 	data.dir = dir;
 	data.tmp = path_max_tmp;
+	dirvec_for_each(&dir->children, delete_directory_if_removed, &data);
 	songvec_for_each(&dir->songs, delete_song_if_removed, &data);
 }
 
@@ -278,7 +275,7 @@ static int updateDirectory(struct directory *dir, const struct stat *st)
 		if (!utf8)
 			continue;
 
-		if (!isRootDirectory(dir->path))
+		if (dir != &music_root)
 			utf8 = pfx_dir(path_max_tmp, utf8, strlen(utf8),
 			               dirname, strlen(dirname));
 
@@ -317,10 +314,9 @@ directory_make_child_checked(struct directory *parent, const char *path)
 	return dir;
 }
 
-static struct directory *
-addParentPathToDB(const char *utf8path)
+static struct directory * addParentPathToDB(const char *utf8path)
 {
-	struct directory *dir = db_get_root();
+	struct directory *dir = &music_root;
 	char *duplicated = xstrdup(utf8path);
 	char *slash = duplicated;
 
@@ -350,15 +346,17 @@ static void updatePath(const char *utf8path)
 
 static void * update_task(void *_path)
 {
-	if (_path != NULL && !isRootDirectory(_path)) {
-		updatePath((char *)_path);
-		free(_path);
+	char *utf8path = _path;
+
+	if (utf8path) {
+		assert(*utf8path);
+		updatePath(utf8path);
+		free(utf8path);
 	} else {
-		struct directory *dir = db_get_root();
 		struct stat st;
 
-		if (myStat(directory_get_path(dir), &st) == 0)
-			updateDirectory(dir, &st);
+		if (myStat(directory_get_path(&music_root), &st) == 0)
+			updateDirectory(&music_root, &st);
 	}
 
 	if (modified)
@@ -388,13 +386,14 @@ unsigned directory_update_init(char *path)
 {
 	assert(pthread_equal(pthread_self(), main_task));
 
+	assert(!path || (path && *path));
+
 	if (progress != UPDATE_PROGRESS_IDLE) {
 		unsigned next_task_id;
 
-		if (!path)
-			return 0;
 		if (update_paths_nr == ARRAY_SIZE(update_paths)) {
-			free(path);
+			if (path)
+				free(path);
 			return 0;
 		}
 
@@ -416,11 +415,9 @@ void reap_update_task(void)
 		return;
 
 	cond_enter(&delete_cond);
-	if (delete) {
-		char tmp[MPD_PATH_MAX];
-		LOG("removing: %s\n", song_get_url(delete, tmp));
-		deleteASongFromPlaylist(delete);
-		delete = NULL;
+	if (delete && delete_fn) {
+		delete_fn(delete);
+		delete = delete_fn = NULL;
 		cond_signal(&delete_cond);
 	}
 	cond_leave(&delete_cond);

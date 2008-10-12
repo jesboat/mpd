@@ -35,8 +35,8 @@ struct mpd_song {
 	struct mpd_tag *tag;
 	struct directory *parent;
 	time_t mtime;
-	char url[sizeof(size_t)];
-};
+	char url[mpd_sizeof_str_flex_array];
+} mpd_packed;
 
 void song_free(struct mpd_song *);
 

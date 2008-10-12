@@ -45,7 +45,7 @@ int directory_save(int fd, struct directory *dir)
 	struct dirvec *children = &dir->children;
 	size_t i;
 
-	if (!isRootDirectory(dir->path) &&
+	if ((dir != &music_root) &&
 	    fdprintf(fd, DIRECTORY_BEGIN "%s\n",
 	             directory_get_path(dir)) < 0)
 		return -1;
@@ -70,7 +70,7 @@ int directory_save(int fd, struct directory *dir)
 	if (fdprintf(fd, SONG_END "\n") < 0)
 		return -1;
 
-	if (!isRootDirectory(dir->path) &&
+	if ((dir != &music_root) &&
 	    fdprintf(fd, DIRECTORY_END "%s\n",
 	             directory_get_path(dir)) < 0)
 		return -1;

@@ -17,13 +17,6 @@ static size_t sv_size(struct songvec *sv)
 	return sv->nr * sizeof(struct mpd_song *);
 }
 
-void songvec_sort(struct songvec *sv)
-{
-	pthread_mutex_lock(&nr_lock);
-	qsort(sv->base, sv->nr, sizeof(struct mpd_song *), songvec_cmp);
-	pthread_mutex_unlock(&nr_lock);
-}
-
 struct mpd_song *songvec_find(const struct songvec *sv, const char *url)
 {
 	int i;
@@ -48,10 +41,12 @@ int songvec_delete(struct songvec *sv, const struct mpd_song *del)
 	for (i = sv->nr; --i >= 0; ) {
 		if (sv->base[i] != del)
 			continue;
-		/* we _don't_ call freeSong() here */
+		/* we _don't_ call song_free() here */
 		if (!--sv->nr) {
+			pthread_mutex_unlock(&nr_lock);
 			free(sv->base);
 			sv->base = NULL;
+			return i;
 		} else {
 			memmove(&sv->base[i], &sv->base[i + 1],
 				(sv->nr - i + 1) * sizeof(struct mpd_song *));
@@ -66,40 +61,48 @@ int songvec_delete(struct songvec *sv, const struct mpd_song *del)
 
 void songvec_add(struct songvec *sv, struct mpd_song *add)
 {
+	size_t old_nr;
+
 	pthread_mutex_lock(&nr_lock);
-	++sv->nr;
+	old_nr = sv->nr++;
 	sv->base = xrealloc(sv->base, sv_size(sv));
-	sv->base[sv->nr - 1] = add;
+	sv->base[old_nr] = add;
+	if (old_nr && songvec_cmp(&sv->base[old_nr - 1], &add) >= 0)
+		qsort(sv->base, sv->nr, sizeof(struct mpd_song *), songvec_cmp);
 	pthread_mutex_unlock(&nr_lock);
 }
 
 void songvec_destroy(struct songvec *sv)
 {
 	pthread_mutex_lock(&nr_lock);
+	sv->nr = 0;
+	pthread_mutex_unlock(&nr_lock);
 	if (sv->base) {
 		free(sv->base);
 		sv->base = NULL;
 	}
-	sv->nr = 0;
-	pthread_mutex_unlock(&nr_lock);
 }
 
 int songvec_for_each(const struct songvec *sv,
                      int (*fn)(struct mpd_song *, void *), void *arg)
 {
 	size_t i;
+	size_t prev_nr;
 
 	pthread_mutex_lock(&nr_lock);
-	for (i = 0; i < sv->nr; ++i) {
+	for (i = 0; i < sv->nr; ) {
 		struct mpd_song *song = sv->base[i];
 
 		assert(song);
 		assert(*song->url);
 
+		prev_nr = sv->nr;
 		pthread_mutex_unlock(&nr_lock); /* fn() may block */
 		if (fn(song, arg) < 0)
 			return -1;
 		pthread_mutex_lock(&nr_lock); /* sv->nr may change in fn() */
+		if (prev_nr == sv->nr)
+			++i;
 	}
 	pthread_mutex_unlock(&nr_lock);
 

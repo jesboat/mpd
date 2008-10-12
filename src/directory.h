@@ -22,6 +22,7 @@
 #include "song.h"
 #include "dirvec.h"
 #include "songvec.h"
+#include "gcc.h"
 
 #define DIRECTORY_DIR		"directory: "
 #define DIRECTORY_MTIME		"mtime: " /* DEPRECATED, noop-read-only */
@@ -33,19 +34,21 @@
 #define DIRECTORY_FS_CHARSET	"fs_charset: "
 
 struct directory {
-	char *path;
 	struct dirvec children;
 	struct songvec songs;
 	struct directory *parent;
 	ino_t inode;
 	dev_t device;
 	unsigned stat; /* not needed if ino_t == dev_t == 0 is impossible */
-};
+	char path[mpd_sizeof_str_flex_array];
+} mpd_packed;
 
-static inline int isRootDirectory(const char *name)
+extern struct directory music_root;
+
+static inline int path_is_music_root(const char *name)
 {
-	/* TODO: verify and remove !name check */
-	return (!name || *name == '\0' || !strcmp(name, "/"));
+	assert(name);
+	return (!*name || !strcmp(name, "/"));
 }
 
 struct directory * directory_new(const char *dirname, struct directory *parent);
@@ -88,8 +91,6 @@ struct mpd_song *db_get_song(const char *file);
 int directory_save(int fd, struct directory *dir);
 
 void directory_load(FILE *fp, struct directory *dir);
-
-void directory_sort(struct directory *dir);
 
 int db_walk(const char *name,
 		  int (*forEachSong) (struct mpd_song *, void *),

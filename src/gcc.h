@@ -32,6 +32,10 @@
 #  define mpd_must_check	__attribute__ ((warn_unused_result))
 #  define mpd_noreturn		__attribute__ ((noreturn))
 #  define mpd_packed		__attribute__ ((packed))
+
+/* str_flex_array is always >= 1 because we always 0 terminate strings */
+#  define mpd_sizeof_str_flex_array	1
+
 /* these are very useful for type checking */
 #  define mpd_printf		__attribute__ ((format(printf,1,2)))
 #  define mpd_fprintf		__attribute__ ((format(printf,2,3)))
@@ -52,6 +56,7 @@
 #  define mpd_must_check
 #  define mpd_noreturn
 #  define mpd_packed
+#  define mpd_sizeof_str_flex_array	(sizeof(size_t))
 #  define mpd_printf
 #  define mpd_fprintf
 #  define mpd_fprintf_

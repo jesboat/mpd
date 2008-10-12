@@ -42,7 +42,7 @@ extern const char *mpdTagItemKeys[];
 
 struct tag_item {
 	enum tag_type type;
-	char value[1];
+	char value[mpd_sizeof_str_flex_array];
 } mpd_packed;
 
 struct mpd_tag {

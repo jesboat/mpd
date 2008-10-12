@@ -57,7 +57,7 @@ static int countSongsInDirectory(struct directory *dir, void *data)
 static int printDirectoryInDirectory(struct directory *dir, void *data)
 {
 	int fd = (int)(size_t)data;
-	if (!isRootDirectory(dir->path))
+	if (dir != &music_root)
 		fdprintf(fd, "directory: %s\n", directory_get_path(dir));
 	return 0;
 }
@@ -339,7 +339,7 @@ static int sumSavedFilenameMemoryInDirectory(struct directory *dir, void *data)
 {
 	int *sum = data;
 
-	if (!isRootDirectory(dir->path))
+	if (dir != &music_root)
 		return 0;
 
 	*sum += (strlen(directory_get_path(dir)) + 1

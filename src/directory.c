@@ -23,42 +23,61 @@
 #include "myfprintf.h"
 #include "dirvec.h"
 
-struct directory * directory_new(const char *dirname, struct directory * parent)
+struct directory music_root;
+
+struct directory * directory_new(const char *path, struct directory * parent)
 {
 	struct directory *dir;
+	size_t pathlen;
 
-	assert(dirname != NULL);
-	assert((*dirname == 0) == (parent == NULL));
+	assert(path);
+	assert(*path);
+	assert(parent);
 
-	dir = xcalloc(1, sizeof(struct directory));
-	dir->path = xstrdup(dirname);
+	pathlen = strlen(path);
+	dir = xcalloc(1, sizeof(*dir) - sizeof(dir->path) + pathlen + 1);
+	memcpy(dir->path, path, pathlen + 1);
 	dir->parent = parent;
 
 	return dir;
 }
 
+static int free_each_song(struct mpd_song *song, mpd_unused void *arg)
+{
+	song_free(song);
+	return 0;
+}
+
+static int free_each_dir(struct directory *dir, void *arg)
+{
+	if (arg != dir)
+		directory_free(dir);
+	return 0;
+}
+
 void directory_free(struct directory *dir)
 {
+	directory_walk(dir, free_each_song, free_each_dir, dir);
 	dirvec_destroy(&dir->children);
 	songvec_destroy(&dir->songs);
-	free(dir->path);
-	free(dir);
-	/* this resets last dir returned */
-	/*directory_get_path(NULL); */
+	if (dir != &music_root) {
+		assert(dir->parent);
+		dirvec_delete(&dir->parent->children, dir);
+		free(dir);
+	}
+}
+
+static int dir_pruner(struct directory *dir, void *_dv)
+{
+	directory_prune_empty(dir);
+	if (directory_is_empty(dir))
+		dirvec_delete((struct dirvec *)_dv, dir);
+	return 0;
 }
 
 void directory_prune_empty(struct directory *dir)
 {
-	int i;
-	struct dirvec *dv = &dir->children;
-
-	for (i = dv->nr; --i >= 0; ) {
-		directory_prune_empty(dv->base[i]);
-		if (directory_is_empty(dv->base[i]))
-			dirvec_delete(dv, dv->base[i]);
-	}
-	if (!dv->nr)
-		dirvec_destroy(dv);
+	dirvec_for_each(&dir->children, dir_pruner, &dir->children);
 }
 
 struct directory *
@@ -71,7 +90,7 @@ directory_get_subdir(struct directory *dir, const char *name)
 
 	assert(name != NULL);
 
-	if (isRootDirectory(name))
+	if (path_is_music_root(name))
 		return dir;
 
 	duplicated = xstrdup(name);
@@ -94,27 +113,25 @@ directory_get_subdir(struct directory *dir, const char *name)
 	return found;
 }
 
-void directory_sort(struct directory *dir)
+struct dirwalk_arg {
+	int (*each_song) (struct mpd_song *, void *);
+	int (*each_dir) (struct directory *, void *);
+	void *data;
+};
+
+static int dirwalk_x(struct directory *dir, void *_arg)
 {
-	int i;
-	struct dirvec *dv = &dir->children;
+	struct dirwalk_arg *arg = _arg;
 
-	dirvec_sort(dv);
-	songvec_sort(&dir->songs);
-
-	for (i = dv->nr; --i >= 0; )
-		directory_sort(dv->base[i]);
+	return directory_walk(dir, arg->each_song, arg->each_dir, arg->data);
 }
 
-int
-directory_walk(struct directory *dir,
+int directory_walk(struct directory *dir,
 			  int (*forEachSong) (struct mpd_song *, void *),
 			  int (*forEachDir) (struct directory *, void *),
 			  void *data)
 {
-	struct dirvec *dv = &dir->children;
 	int err = 0;
-	size_t j;
 
 	if (forEachDir && (err = forEachDir(dir, data)) < 0)
 		return err;
@@ -125,9 +142,13 @@ directory_walk(struct directory *dir,
 			return err;
 	}
 
-	for (j = 0; err >= 0 && j < dv->nr; ++j)
-		err = directory_walk(dv->base[j], forEachSong,
-						forEachDir, data);
+	if (forEachDir) {
+		struct dirwalk_arg dw_arg;
 
+		dw_arg.each_song = forEachSong;
+		dw_arg.each_dir = forEachDir;
+		dw_arg.data = data;
+		err = dirvec_for_each(&dir->children, dirwalk_x, &dw_arg);
+	}
 	return err;
 }
