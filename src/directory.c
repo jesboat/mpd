@@ -74,7 +74,7 @@ directory_get_subdir(struct directory *dir, const char *name)
 
 	assert(name != NULL);
 
-	if (isRootDirectory(name))
+	if (path_is_music_root(name))
 		return dir;
 
 	duplicated = xstrdup(name);

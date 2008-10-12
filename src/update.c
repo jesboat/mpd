@@ -349,8 +349,8 @@ static void updatePath(const char *utf8path)
 
 static void * update_task(void *_path)
 {
-	if (_path != NULL && !isRootDirectory(_path)) {
-		updatePath((char *)_path);
+	if (_path && !path_is_music_root(_path)) {
+		updatePath(_path);
 		free(_path);
 	} else {
 		struct stat st;

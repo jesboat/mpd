@@ -45,10 +45,10 @@ struct directory {
 
 extern struct directory music_root;
 
-static inline int isRootDirectory(const char *name)
+static inline int path_is_music_root(const char *name)
 {
-	/* TODO: verify and remove !name check */
-	return (!name || *name == '\0' || !strcmp(name, "/"));
+	assert(name);
+	return (!*name || !strcmp(name, "/"));
 }
 
 struct directory * directory_new(const char *dirname, struct directory *parent);
