@@ -86,26 +86,6 @@ static void delete_song(struct directory *dir, struct mpd_song *del)
 	serialized_delete(del, UPDATE_TYPE_SONG);
 }
 
-static int delete_each_song(struct mpd_song *song, mpd_unused void *data)
-{
-	struct directory *dir = data;
-	assert(song->parent == dir);
-	delete_song(dir, song);
-	return 0;
-}
-
-/**
- * Recursively remove all sub directories and songs from a directory,
- * leaving an empty directory.
- */
-static int clear_directory(struct directory *dir, mpd_unused void *arg)
-{
-	dirvec_for_each(&dir->children, clear_directory, NULL);
-	dirvec_clear(&dir->children);
-	songvec_for_each(&dir->songs, delete_each_song, dir);
-	return 0;
-}
-
 /**
  * Recursively free a directory and all its contents.
  */
@@ -113,8 +93,10 @@ static void delete_directory(struct directory *dir)
 {
 	assert(dir->parent != NULL);
 
-	clear_directory(dir, NULL);
+	/* first, prevent traversers in main task from getting this */
 	dirvec_delete(&dir->parent->children, dir);
+
+	/* now we let the main task recursively delete everything under us */
 	serialized_delete(dir, UPDATE_TYPE_DIR);
 }
 
