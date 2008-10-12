@@ -3,6 +3,8 @@
 #include "os_compat.h"
 #include "utils.h"
 
+static pthread_mutex_t nr_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static size_t dv_size(struct dirvec *dv)
 {
 	return dv->nr * sizeof(struct directory *);
@@ -18,55 +20,71 @@ static int dirvec_cmp(const void *d1, const void *d2)
 
 void dirvec_sort(struct dirvec *dv)
 {
+	pthread_mutex_lock(&nr_lock);
 	qsort(dv->base, dv->nr, sizeof(struct directory *), dirvec_cmp);
+	pthread_mutex_unlock(&nr_lock);
 }
 
 struct directory *dirvec_find(const struct dirvec *dv, const char *path)
 {
 	int i;
+	struct directory *ret = NULL;
 
-	for (i = dv->nr; --i >= 0; )
-		if (!strcmp(dv->base[i]->path, path))
-			return dv->base[i];
-	return NULL;
+	pthread_mutex_lock(&nr_lock);
+	for (i = dv->nr; --i >= 0; ) {
+		if (strcmp(dv->base[i]->path, path))
+			continue;
+		ret = dv->base[i];
+		break;
+	}
+	pthread_mutex_unlock(&nr_lock);
+	return ret;
 }
 
 int dirvec_delete(struct dirvec *dv, struct directory *del)
 {
 	int i;
 
+	pthread_mutex_lock(&nr_lock);
 	for (i = dv->nr; --i >= 0; ) {
 		if (dv->base[i] != del)
 			continue;
 		/* we _don't_ call directory_free() here */
 		if (!--dv->nr) {
+			pthread_mutex_unlock(&nr_lock);
 			free(dv->base);
 			dv->base = NULL;
+			return i;
 		} else {
 			memmove(&dv->base[i], &dv->base[i + 1],
 				(dv->nr - i + 1) * sizeof(struct directory *));
 			dv->base = xrealloc(dv->base, dv_size(dv));
 		}
-		return i;
+		break;
 	}
+	pthread_mutex_unlock(&nr_lock);
 
-	return -1; /* not found */
+	return i;
 }
 
 void dirvec_add(struct dirvec *dv, struct directory *add)
 {
+	pthread_mutex_lock(&nr_lock);
 	++dv->nr;
 	dv->base = xrealloc(dv->base, dv_size(dv));
 	dv->base[dv->nr - 1] = add;
+	pthread_mutex_unlock(&nr_lock);
 }
 
 void dirvec_destroy(struct dirvec *dv)
 {
+	pthread_mutex_lock(&nr_lock);
+	dv->nr = 0;
+	pthread_mutex_unlock(&nr_lock);
 	if (dv->base) {
 		free(dv->base);
 		dv->base = NULL;
 	}
-	dv->nr = 0;
 }
 
 int dirvec_for_each(const struct dirvec *dv,
@@ -74,13 +92,17 @@ int dirvec_for_each(const struct dirvec *dv,
 {
 	size_t i;
 
+	pthread_mutex_lock(&nr_lock);
 	for (i = 0; i < dv->nr; ++i) {
 		struct directory *dir = dv->base[i];
 
 		assert(dir);
+		pthread_mutex_unlock(&nr_lock);
 		if (fn(dir, arg) < 0)
 			return -1;
+		pthread_mutex_lock(&nr_lock); /* dv->nr may change in fn() */
 	}
+	pthread_mutex_unlock(&nr_lock);
 
 	return 0;
 }
