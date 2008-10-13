@@ -5,7 +5,7 @@
 
 static pthread_mutex_t nr_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static size_t dv_size(struct dirvec *dv)
+static size_t dv_size(const struct dirvec *dv)
 {
 	return dv->nr * sizeof(struct directory *);
 }
