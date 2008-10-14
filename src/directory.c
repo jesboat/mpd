@@ -44,27 +44,29 @@ struct directory * directory_new(const char *path, struct directory * parent)
 
 static int free_each_song(struct mpd_song *song, mpd_unused void *arg)
 {
+	songvec_delete(&song->parent->songs, song);
 	song_free(song);
 	return 0;
 }
 
-static int free_each_dir(struct directory *dir, void *arg)
+static int free_each_dir(struct directory *dir, mpd_unused void *arg)
 {
-	if (arg != dir)
-		directory_free(dir);
+	if (dir != &music_root) {
+		assert(dir->parent);
+		dirvec_delete(&dir->parent->children, dir);
+	}
+	assert(!dir->songs.nr);
+	assert(!dir->songs.base);
+	assert(!dir->children.nr);
+	assert(!dir->children.base);
+	if (dir != &music_root)
+		free(dir);
 	return 0;
 }
 
 void directory_free(struct directory *dir)
 {
-	directory_walk(dir, free_each_song, free_each_dir, dir);
-	dirvec_destroy(&dir->children);
-	songvec_destroy(&dir->songs);
-	if (dir != &music_root) {
-		assert(dir->parent);
-		dirvec_delete(&dir->parent->children, dir);
-		free(dir);
-	}
+	directory_walk(dir, free_each_song, free_each_dir, NULL);
 }
 
 static int dir_pruner(struct directory *dir, void *_dv)
@@ -133,8 +135,9 @@ int directory_walk(struct directory *dir,
 {
 	int err = 0;
 
-	if (forEachDir && (err = forEachDir(dir, data)) < 0)
-		return err;
+	if (forEachDir && forEachDir != free_each_dir)
+		if ((err = forEachDir(dir, data)) < 0)
+			return err;
 
 	if (forEachSong) {
 		err = songvec_for_each(&dir->songs, forEachSong, data);
@@ -150,5 +153,8 @@ int directory_walk(struct directory *dir,
 		dw_arg.data = data;
 		err = dirvec_for_each(&dir->children, dirwalk_x, &dw_arg);
 	}
+	if (forEachDir == free_each_dir)
+		if ((err = forEachDir(dir, data)) < 0)
+			return err;
 	return err;
 }
