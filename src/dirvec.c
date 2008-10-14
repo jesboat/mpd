@@ -74,17 +74,6 @@ void dirvec_add(struct dirvec *dv, struct directory *add)
 	pthread_mutex_unlock(&nr_lock);
 }
 
-void dirvec_destroy(struct dirvec *dv)
-{
-	pthread_mutex_lock(&nr_lock);
-	dv->nr = 0;
-	pthread_mutex_unlock(&nr_lock);
-	if (dv->base) {
-		free(dv->base);
-		dv->base = NULL;
-	}
-}
-
 int dirvec_for_each(const struct dirvec *dv,
                     int (*fn)(struct directory *, void *), void *arg)
 {

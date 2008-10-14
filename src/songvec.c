@@ -73,17 +73,6 @@ void songvec_add(struct songvec *sv, struct mpd_song *add)
 	pthread_mutex_unlock(&nr_lock);
 }
 
-void songvec_destroy(struct songvec *sv)
-{
-	pthread_mutex_lock(&nr_lock);
-	sv->nr = 0;
-	pthread_mutex_unlock(&nr_lock);
-	if (sv->base) {
-		free(sv->base);
-		sv->base = NULL;
-	}
-}
-
 int songvec_for_each(const struct songvec *sv,
                      int (*fn)(struct mpd_song *, void *), void *arg)
 {
