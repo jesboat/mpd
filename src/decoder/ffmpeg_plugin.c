@@ -416,6 +416,7 @@ static const char *const ffmpeg_mime_types[] = {
 	"application/x-ms-wmz",
 	"application/x-ms-wmd",
 	"audio/mpeg",
+	"audio/x-wav",
 	NULL
 };
 
