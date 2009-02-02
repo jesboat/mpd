@@ -251,8 +251,11 @@ play_chunk(struct song *song, struct music_chunk *chunk,
 	pcm_volume(chunk->data, chunk->length,
 		   format, pc.software_volume);
 
-	if (!playAudio(chunk->data, chunk->length))
+	if (!playAudio(chunk->data, chunk->length)) {
+		pc.errored_song = dc.current_song;
+		pc.error = PLAYER_ERROR_AUDIO;
 		return -1;
+	}
 
 	pc.total_play_time += sizeToTime * chunk->length;
 	return 0;
