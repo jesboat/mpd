@@ -7,6 +7,7 @@ ver 0.14.2 (2009/??/??)
   - ffmpeg: check if the time stamp is valid
   - ffmpeg: fixed seek integer overflow
   - ffmpeg: enable WAV streaming
+  - ffmpeg: added TTA support
   - wavpack: pass NULL if the .wvc file fails to open
   - mikmod: call MikMod_Exit() only in the finish() method
 * audio outputs:
