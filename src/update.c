@@ -192,7 +192,7 @@ removeDeletedFromDirectory(char *path_max_tmp, struct directory *directory)
 					S_ISDIR(st.st_mode)))
 			continue;
 		LOG("removing directory: %s\n", dv->base[i]->path);
-		dirvec_delete(dv, dv->base[i]);
+		delete_directory(dv->base[i]);
 		modified = true;
 	}
 
