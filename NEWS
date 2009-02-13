@@ -1,3 +1,6 @@
+ver 0.14.3 (2009/??/??)
+
+
 ver 0.14.2 (2009/02/13)
 * configure.ac:
   - define HAVE_FFMPEG after all checks
