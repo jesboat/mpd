@@ -3,6 +3,7 @@ ver 0.15.17 (2011/??/??)
   - vorbis: reset the Ogg stream after flush
 * decoders:
   - vorbis: fix tremor support
+* database: fix assertion failure on space-only directory name
 
 
 ver 0.15.16 (2011/03/13)

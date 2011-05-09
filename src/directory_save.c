@@ -126,6 +126,14 @@ directory_load(FILE *fp, struct directory *directory, GError **error)
 				return false;
 			}
 
+			if (*name == 0)
+				/* workaround: a base name that
+				   consists only of spaces is cleared
+				   by g_strchomp(), and that may cause
+				   an assertion failure in
+				   directory_new() */
+				continue;
+
 			subdir = directory_get_child(directory, name);
 			if (subdir != NULL) {
 				assert(subdir->parent == directory);
